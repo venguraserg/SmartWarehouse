@@ -1,34 +1,111 @@
 @host = http://localhost:5113
 
-### Создать склад
-POST {{host}}/api/warehouses
+### ===== Справочники =====
+
+### Единицы измерения (шт, компл, упак, м, кг, л создаются автоматически)
+GET {{host}}/api/units
+
+### Добавить категорию
+POST {{host}}/api/categories
 Content-Type: application/json
 
-{ "name": "Склад запчастей", "description": "Основной склад отдела эксплуатации" }
+{ "name": "Подшипники" }
 
-### Добавить ячейку на склад 1
-POST {{host}}/api/warehouses/1/locations
-Content-Type: application/json
+### Категории
+GET {{host}}/api/categories
 
-{ "code": "A-01-01", "name": "Стеллаж A, полка 1, ячейка 1" }
-
-### Создать позицию номенклатуры
+### Создать позицию (unitId — из списка единиц, categoryId — из категорий)
 POST {{host}}/api/items
 Content-Type: application/json
 
-{ "sku": "BRG-6205-2RS", "name": "Подшипник 6205-2RS", "category": "Подшипники", "unit": "шт", "minStock": 10, "maxStock": 30 }
+{ "sku": "BRG-6205-2RS", "name": "Подшипник 6205-2RS", "categoryId": 1, "unitId": 1, "minStock": 10, "maxStock": 30 }
 
-### Приход
-POST {{host}}/api/stock/movements
+### Поиск позиций
+GET {{host}}/api/items?search=6205
+
+### ===== Склад и места хранения =====
+
+### Создать склад (код — начало QR-кода всех мест)
+POST {{host}}/api/warehouses
 Content-Type: application/json
 
-{ "type": "Receipt", "itemId": 1, "quantity": 12, "toLocationId": 1, "document": "ТТН 12345", "performedBy": "Кладовщик" }
+{ "code": "СК1", "name": "Склад запчастей" }
 
-### Выдача
-POST {{host}}/api/stock/movements
+### Стеллаж A (верхний уровень склада)
+POST {{host}}/api/warehouses/1/locations
 Content-Type: application/json
 
-{ "type": "Issue", "itemId": 1, "quantity": 5, "fromLocationId": 1, "comment": "Ремонт насоса", "performedBy": "Кладовщик" }
+{ "parentId": null, "type": "Rack", "code": "A", "name": "Стеллаж A" }
+
+### Полка 01 на стеллаже A (parentId — id стеллажа)
+POST {{host}}/api/warehouses/1/locations
+Content-Type: application/json
+
+{ "parentId": 1, "type": "Shelf", "code": "01" }
+
+### Ячейки на полке
+POST {{host}}/api/warehouses/1/locations
+Content-Type: application/json
+
+{ "parentId": 2, "type": "Cell", "code": "01" }
+
+###
+POST {{host}}/api/warehouses/1/locations
+Content-Type: application/json
+
+{ "parentId": 2, "type": "Cell", "code": "02" }
+
+### Дерево мест склада
+GET {{host}}/api/warehouses/1/locations
+
+### Найти место по QR-коду
+GET {{host}}/api/locations/by-code/СК1-A-01-01
+
+### ===== Документы =====
+
+### Приход по накладной (несколько строк)
+POST {{host}}/api/documents
+Content-Type: application/json
+
+{
+  "type": "Receipt",
+  "externalNumber": "ТТН 12345",
+  "performedBy": "Кладовщик",
+  "lines": [
+    { "itemId": 1, "quantity": 8, "toLocationId": 3 },
+    { "itemId": 1, "quantity": 4, "toLocationId": 4 }
+  ]
+}
+
+### Выдача на оборудование
+POST {{host}}/api/documents
+Content-Type: application/json
+
+{
+  "type": "Issue",
+  "performedBy": "Кладовщик",
+  "comment": "Ремонт насоса",
+  "lines": [
+    { "itemId": 1, "quantity": 5, "fromLocationId": 3 }
+  ]
+}
+
+### Перемещение между ячейками
+POST {{host}}/api/documents
+Content-Type: application/json
+
+{
+  "type": "Transfer",
+  "lines": [ { "itemId": 1, "quantity": 2, "fromLocationId": 4, "toLocationId": 3 } ]
+}
+
+### Список документов (можно ?type=Receipt)
+GET {{host}}/api/documents
+
+### Документ со строками
+GET {{host}}/api/documents/1
+
+### ===== Остатки =====
 
 ### Остатки позиции по местам
 GET {{host}}/api/items/1/balances
@@ -36,5 +113,8 @@ GET {{host}}/api/items/1/balances
 ### История движений позиции
 GET {{host}}/api/items/1/movements
 
-### Список «ниже минимума»
+### Что лежит в ячейке
+GET {{host}}/api/locations/3/content
+
+### Позиции ниже минимума
 GET {{host}}/api/stock/below-minimum

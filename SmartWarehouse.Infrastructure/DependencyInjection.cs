@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddDbContext<WarehouseDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IStockRepository, StockRepository>();
         services.AddScoped<ICatalogRepository, CatalogRepository>();
+        services.AddScoped<ILocationRepository, LocationRepository>();
         return services;
     }
 }

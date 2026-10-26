@@ -10,8 +10,8 @@ namespace SmartWarehouse.API.Controllers;
 public class ItemsController(ICatalogService catalog, IStockService stock) : ControllerBase
 {
     [HttpGet]
-    public Task<IReadOnlyList<ItemDto>> List([FromQuery] string? search, CancellationToken ct) =>
-        catalog.ListItemsAsync(search, ct);
+    public Task<IReadOnlyList<ItemDto>> List([FromQuery] string? search, [FromQuery] int? categoryId, CancellationToken ct) =>
+        catalog.ListItemsAsync(search, categoryId, ct);
 
     [HttpGet("{id:int}")]
     public Task<ItemDto> Get(int id, CancellationToken ct) => catalog.GetItemAsync(id, ct);

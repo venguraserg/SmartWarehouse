@@ -5,10 +5,13 @@ namespace SmartWarehouse.Infrastructure.Data;
 
 public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : DbContext(options)
 {
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<UnitOfMeasure> Units => Set<UnitOfMeasure>();
     public DbSet<Item> Items => Set<Item>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StorageLocation> Locations => Set<StorageLocation>();
     public DbSet<StockBalance> Balances => Set<StockBalance>();
+    public DbSet<StockDocument> Documents => Set<StockDocument>();
     public DbSet<StockMovement> Movements => Set<StockMovement>();
     public DbSet<Equipment> Equipment => Set<Equipment>();
 

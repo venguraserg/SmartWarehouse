@@ -8,9 +8,12 @@ namespace SmartWarehouse.Tests;
 
 public class StockServiceTests
 {
-    private const int ItemId = 1;
+    private const int Bearing = 1;   // подшипник, шт (целые)
+    private const int Cable = 2;     // кабель, м (дробные)
     private const int CellA = 10;
     private const int CellB = 20;
+    private const int Shelf = 30;    // полка с вложенными ячейками — хранить в ней нельзя
+    private const int Pump = 5;
     private static readonly DateTimeOffset Now = new(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
 
     private readonly FakeStockRepository _repo = new();
@@ -18,121 +21,149 @@ public class StockServiceTests
 
     public StockServiceTests()
     {
-        _repo.Items.Add(new Item { Id = ItemId, Sku = "BRG-6205", Name = "Подшипник 6205", Unit = "шт", MinStock = 10, MaxStock = 30 });
-        _repo.Locations.Add(new StorageLocation { Id = CellA, WarehouseId = 1, Code = "A-01" });
-        _repo.Locations.Add(new StorageLocation { Id = CellB, WarehouseId = 1, Code = "B-01" });
-        _repo.Equipment.Add(new Equipment { Id = 5, Code = "PUMP-1", Name = "Насос 1" });
+        var pcs = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука", IsFractional = false };
+        var meter = new UnitOfMeasure { Id = 2, Code = "м", Name = "метр", IsFractional = true };
+
+        _repo.Items.Add(new Item { Id = Bearing, Sku = "BRG-6205", Name = "Подшипник 6205", UnitId = 1, Unit = pcs, MinStock = 10, MaxStock = 30 });
+        _repo.Items.Add(new Item { Id = Cable, Sku = "CBL-3X1.5", Name = "Кабель ВВГ 3х1,5", UnitId = 2, Unit = meter, MinStock = 0 });
+
+        _repo.Locations.Add(new StorageLocation { Id = Shelf, WarehouseId = 1, Type = LocationType.Shelf, Code = "01", FullCode = "СК1-A-01" });
+        _repo.Locations.Add(new StorageLocation { Id = CellA, WarehouseId = 1, ParentId = Shelf, Type = LocationType.Cell, Code = "01", FullCode = "СК1-A-01-01" });
+        _repo.Locations.Add(new StorageLocation { Id = CellB, WarehouseId = 1, ParentId = Shelf, Type = LocationType.Cell, Code = "02", FullCode = "СК1-A-01-02" });
+
+        _repo.Equipment.Add(new Equipment { Id = Pump, Code = "PUMP-1", Name = "Насос 1" });
+
         _service = new StockService(_repo, new FixedTimeProvider(Now));
     }
 
-    private static MovementRequest Req(MovementType type, decimal qty, int? from = null, int? to = null, int? equipment = null) =>
-        new(type, ItemId, qty, from, to, equipment, "Тест", null, null);
+    private static DocumentLineRequest Line(decimal qty, int? from = null, int? to = null, int item = Bearing) =>
+        new(item, qty, from, to);
 
-    private decimal Balance(int location) =>
-        _repo.Balances.FirstOrDefault(b => b.ItemId == ItemId && b.LocationId == location)?.Quantity ?? 0;
+    private static CreateDocumentRequest Doc(MovementType type, params DocumentLineRequest[] lines) =>
+        new(type, null, null, "Тест", null, lines);
+
+    private Task<DocumentDto> Post(MovementType type, params DocumentLineRequest[] lines) =>
+        _service.PostDocumentAsync(Doc(type, lines));
+
+    private decimal Balance(int location, int item = Bearing) =>
+        _repo.Balances.FirstOrDefault(b => b.ItemId == item && b.LocationId == location)?.Quantity ?? 0;
+
+    // ---------- Проведение документов ----------
 
     [Fact]
-    public async Task Приход_создаёт_остаток_и_запись_журнала()
+    public async Task Приход_создаёт_документ_строки_и_остаток()
     {
-        var result = await _service.RegisterAsync(Req(MovementType.Receipt, 12, to: CellA));
+        var doc = await _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Receipt, "ТТН 123", null, "Кладовщик", null,
+                [Line(12, to: CellA), Line(4.5m, to: CellB, item: Cable)]));
+
+        Assert.Equal("ПР-000001", doc.Number);
+        Assert.Equal("ТТН 123", doc.ExternalNumber);
+        Assert.Equal(Now, doc.OccurredAt);
+        Assert.Equal(2, doc.Lines.Count);
+        Assert.Equal("СК1-A-01-01", doc.Lines[0].ToLocation);
+        Assert.Equal("м", doc.Lines[1].UnitCode);
 
         Assert.Equal(12, Balance(CellA));
-        var movement = Assert.Single(_repo.Movements);
-        Assert.Equal(MovementType.Receipt, movement.Type);
-        Assert.Equal(Now, movement.OccurredAt);
-        Assert.Equal(1, result.Id);
+        Assert.Equal(4.5m, Balance(CellB, Cable));
         Assert.Equal(1, _repo.SaveCount);
     }
 
     [Fact]
-    public async Task Повторный_приход_увеличивает_остаток()
+    public async Task Несколько_строк_по_одной_позиции_и_месту_суммируются()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 5, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Receipt, 2.5m, to: CellA));
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellA));
 
-        Assert.Equal(7.5m, Balance(CellA));
+        Assert.Equal(8, Balance(CellA));
         Assert.Single(_repo.Balances);
     }
 
     [Fact]
     public async Task Выдача_уменьшает_остаток_и_привязывается_к_оборудованию()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 10, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Issue, 4, from: CellA, equipment: 5));
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+
+        var doc = await _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Issue, null, Pump, "Кладовщик", "Ремонт насоса", [Line(4, from: CellA)]));
 
         Assert.Equal(6, Balance(CellA));
-        Assert.Equal(5, _repo.Movements.Last().EquipmentId);
+        Assert.Equal(Pump, doc.EquipmentId);
+        Assert.Equal("ВЫД-000002", doc.Number);
     }
 
     [Fact]
-    public async Task Выдача_больше_остатка_запрещена_и_ничего_не_меняет()
+    public async Task Если_одна_строка_ошибочна_не_проводится_весь_документ()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 3, to: CellA));
+        await Post(MovementType.Receipt, Line(3, to: CellA), Line(1, to: CellB));
 
+        // Первая строка корректна, вторая уводит ячейку B в минус.
         var ex = await Assert.ThrowsAsync<InsufficientStockException>(
-            () => _service.RegisterAsync(Req(MovementType.Issue, 5, from: CellA)));
+            () => Post(MovementType.Issue, Line(2, from: CellA), Line(5, from: CellB)));
 
-        Assert.Equal(3, ex.Available);
-        Assert.Equal(3, Balance(CellA));
-        Assert.Single(_repo.Movements);
+        Assert.Equal("СК1-A-01-02", ex.LocationCode);
+        Assert.Equal(3, Balance(CellA)); // первая строка тоже не применилась
+        Assert.Equal(1, Balance(CellB));
+        Assert.Single(_repo.Documents);
+    }
+
+    [Fact]
+    public async Task Две_выдачи_из_одного_места_в_документе_проверяются_вместе()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA));
+
+        await Assert.ThrowsAsync<InsufficientStockException>(
+            () => Post(MovementType.Issue, Line(3, from: CellA), Line(3, from: CellA)));
+
+        Assert.Equal(5, Balance(CellA));
     }
 
     [Fact]
     public async Task Выдача_с_пустого_места_запрещена()
     {
-        await Assert.ThrowsAsync<InsufficientStockException>(
-            () => _service.RegisterAsync(Req(MovementType.Issue, 1, from: CellA)));
+        await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.Issue, Line(1, from: CellA)));
     }
 
     [Fact]
     public async Task Перемещение_переносит_остаток_между_местами()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 10, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Transfer, 4, from: CellA, to: CellB));
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Transfer, Line(4, from: CellA, to: CellB));
 
         Assert.Equal(6, Balance(CellA));
         Assert.Equal(4, Balance(CellB));
     }
 
     [Fact]
-    public async Task Перемещение_в_то_же_место_запрещено()
+    public async Task Списание_и_корректировки_меняют_остаток()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 10, to: CellA));
+        await Post(MovementType.Adjustment, Line(10, to: CellA));
+        await Post(MovementType.Adjustment, Line(1, from: CellA));
+        await Post(MovementType.WriteOff, Line(2, from: CellA));
 
-        await Assert.ThrowsAsync<DomainException>(
-            () => _service.RegisterAsync(Req(MovementType.Transfer, 1, from: CellA, to: CellA)));
+        Assert.Equal(7, Balance(CellA));
     }
 
-    [Fact]
-    public async Task Списание_уменьшает_остаток()
-    {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 10, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.WriteOff, 10, from: CellA));
-
-        Assert.Equal(0, Balance(CellA));
-    }
+    // ---------- Проверки ----------
 
     [Fact]
-    public async Task Корректировка_работает_в_обе_стороны()
+    public async Task Пустой_документ_отклоняется()
     {
-        await _service.RegisterAsync(Req(MovementType.Adjustment, 3, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Adjustment, 1, from: CellA));
-
-        Assert.Equal(2, Balance(CellA));
+        await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt));
     }
 
     [Theory]
-    [InlineData(MovementType.Receipt, CellA, null)]          // приход не может быть «откуда»
+    [InlineData(MovementType.Receipt, CellA, null)]
     [InlineData(MovementType.Receipt, null, null)]
-    [InlineData(MovementType.Issue, null, CellA)]            // выдача не может быть «куда»
+    [InlineData(MovementType.Issue, null, CellA)]
     [InlineData(MovementType.WriteOff, CellA, CellB)]
     [InlineData(MovementType.Transfer, CellA, null)]
+    [InlineData(MovementType.Transfer, CellA, CellA)]
     [InlineData(MovementType.Adjustment, CellA, CellB)]
     [InlineData(MovementType.Adjustment, null, null)]
-    public async Task Неверное_направление_операции_отклоняется(MovementType type, int? from, int? to)
+    public async Task Неверное_направление_строки_отклоняется(MovementType type, int? from, int? to)
     {
-        await Assert.ThrowsAsync<DomainException>(() => _service.RegisterAsync(Req(type, 1, from, to)));
-        Assert.Empty(_repo.Movements);
+        await Assert.ThrowsAsync<DomainException>(() => Post(type, Line(1, from, to)));
+        Assert.Empty(_repo.Documents);
     }
 
     [Theory]
@@ -140,16 +171,37 @@ public class StockServiceTests
     [InlineData(-1)]
     public async Task Количество_должно_быть_положительным(int qty)
     {
-        await Assert.ThrowsAsync<DomainException>(() => _service.RegisterAsync(Req(MovementType.Receipt, qty, to: CellA)));
+        await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(qty, to: CellA)));
+    }
+
+    [Fact]
+    public async Task Дробное_количество_для_штучной_позиции_запрещено()
+    {
+        var ex = await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(1.5m, to: CellA)));
+        Assert.Contains("целым", ex.Message);
+    }
+
+    [Fact]
+    public async Task Хранить_товар_в_месте_с_вложенными_ячейками_нельзя()
+    {
+        var ex = await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(1, to: Shelf)));
+        Assert.Contains("СК1-A-01", ex.Message);
+    }
+
+    [Fact]
+    public async Task Оборудование_можно_указать_только_для_выдачи_и_списания()
+    {
+        await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Receipt, null, Pump, null, null, [Line(1, to: CellA)])));
     }
 
     [Fact]
     public async Task Несуществующие_позиция_место_и_оборудование_дают_NotFound()
     {
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.RegisterAsync(
-            new MovementRequest(MovementType.Receipt, 999, 1, null, CellA, null, null, null, null)));
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.RegisterAsync(Req(MovementType.Receipt, 1, to: 999)));
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.RegisterAsync(Req(MovementType.Receipt, 1, to: CellA, equipment: 999)));
+        await Assert.ThrowsAsync<NotFoundException>(() => Post(MovementType.Receipt, Line(1, to: CellA, item: 999)));
+        await Assert.ThrowsAsync<NotFoundException>(() => Post(MovementType.Receipt, Line(1, to: 999)));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Issue, null, 999, null, null, [Line(1, from: CellA)])));
     }
 
     [Fact]
@@ -157,33 +209,27 @@ public class StockServiceTests
     {
         _repo.Items[0].IsActive = false;
 
-        await Assert.ThrowsAsync<DomainException>(() => _service.RegisterAsync(Req(MovementType.Receipt, 1, to: CellA)));
+        await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(1, to: CellA)));
     }
+
+    // ---------- Остатки и отчёты ----------
 
     [Fact]
     public async Task Ниже_минимума_считается_по_сумме_всех_мест_с_дозаказом_до_максимума()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 4, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Receipt, 3, to: CellB));
+        await Post(MovementType.Receipt, Line(4, to: CellA), Line(3, to: CellB));
 
         var low = Assert.Single(await _service.GetBelowMinimumAsync());
         Assert.Equal(7, low.Total);
         Assert.Equal(23, low.ToOrder); // максимум 30 − остаток 7
-    }
-
-    [Fact]
-    public async Task Позиция_с_остатком_не_ниже_минимума_не_попадает_в_список()
-    {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 10, to: CellA));
-
-        Assert.Empty(await _service.GetBelowMinimumAsync());
+        Assert.Equal("шт", low.UnitCode);
     }
 
     [Fact]
     public async Task Без_максимума_дозаказ_до_минимума()
     {
         _repo.Items[0].MaxStock = null;
-        await _service.RegisterAsync(Req(MovementType.Receipt, 4, to: CellA));
+        await Post(MovementType.Receipt, Line(4, to: CellA));
 
         var low = Assert.Single(await _service.GetBelowMinimumAsync());
         Assert.Equal(6, low.ToOrder);
@@ -192,11 +238,34 @@ public class StockServiceTests
     [Fact]
     public async Task Остатки_по_местам_без_нулевых()
     {
-        await _service.RegisterAsync(Req(MovementType.Receipt, 5, to: CellA));
-        await _service.RegisterAsync(Req(MovementType.Transfer, 5, from: CellA, to: CellB));
+        await Post(MovementType.Receipt, Line(5, to: CellA));
+        await Post(MovementType.Transfer, Line(5, from: CellA, to: CellB));
 
-        var balance = Assert.Single(await _service.GetBalancesAsync(ItemId));
-        Assert.Equal("B-01", balance.LocationCode);
+        var balance = Assert.Single(await _service.GetBalancesAsync(Bearing));
+        Assert.Equal("СК1-A-01-02", balance.LocationCode);
         Assert.Equal(5, balance.Quantity);
+    }
+
+    [Fact]
+    public async Task История_движений_показывает_номер_документа()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA));
+        await Post(MovementType.Issue, Line(2, from: CellA));
+
+        var history = await _service.GetMovementsAsync(Bearing);
+        Assert.Equal(2, history.Count);
+        Assert.Equal("ВЫД-000002", history[0].DocumentNumber);
+        Assert.Equal("СК1-A-01-01", history[0].FromLocation);
+    }
+
+    [Fact]
+    public async Task Список_документов_с_фильтром_по_типу()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(1, to: CellB));
+        await Post(MovementType.Issue, Line(2, from: CellA));
+
+        var receipts = await _service.ListDocumentsAsync(MovementType.Receipt);
+        var receipt = Assert.Single(receipts);
+        Assert.Equal(2, receipt.LineCount);
     }
 }

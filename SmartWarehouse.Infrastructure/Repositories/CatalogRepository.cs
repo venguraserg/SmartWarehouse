@@ -9,15 +9,53 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
 {
     private const int MaxListSize = 500;
 
+    // ---------- Категории ----------
+
+    public async Task<IReadOnlyList<Category>> ListCategoriesAsync(CancellationToken ct = default) =>
+        await db.Categories.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct);
+
+    public Task<bool> CategoryExistsAsync(int id, CancellationToken ct = default) =>
+        db.Categories.AnyAsync(x => x.Id == id, ct);
+
+    public Task<bool> CategoryNameExistsAsync(string name, CancellationToken ct = default)
+    {
+        var lower = name.ToLower();
+        return db.Categories.AnyAsync(x => x.Name.ToLower() == lower, ct);
+    }
+
+    public void AddCategory(Category category) => db.Categories.Add(category);
+
+    // ---------- Единицы измерения ----------
+
+    public async Task<IReadOnlyList<UnitOfMeasure>> ListUnitsAsync(CancellationToken ct = default) =>
+        await db.Units.AsNoTracking().OrderBy(x => x.Code).ToListAsync(ct);
+
+    public Task<bool> UnitExistsAsync(int id, CancellationToken ct = default) =>
+        db.Units.AnyAsync(x => x.Id == id, ct);
+
+    public Task<bool> UnitCodeExistsAsync(string code, CancellationToken ct = default)
+    {
+        var lower = code.ToLower();
+        return db.Units.AnyAsync(x => x.Code.ToLower() == lower, ct);
+    }
+
+    public void AddUnit(UnitOfMeasure unit) => db.Units.Add(unit);
+
+    // ---------- Номенклатура ----------
+
     public Task<Item?> GetItemAsync(int id, CancellationToken ct = default) =>
-        db.Items.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        db.Items
+            .AsNoTracking()
+            .Include(x => x.Category)
+            .Include(x => x.Unit)
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
 
     public Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default) =>
         db.Items.AnyAsync(x => x.Sku == sku, ct);
 
-    public async Task<IReadOnlyList<Item>> ListItemsAsync(string? search, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default)
     {
-        var query = db.Items.AsNoTracking();
+        var query = db.Items.AsNoTracking().Include(x => x.Category).Include(x => x.Unit).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
         {
@@ -25,27 +63,13 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
             query = query.Where(x => EF.Functions.ILike(x.Name, pattern) || EF.Functions.ILike(x.Sku, pattern));
         }
 
+        if (categoryId is not null)
+            query = query.Where(x => x.CategoryId == categoryId);
+
         return await query.OrderBy(x => x.Name).Take(MaxListSize).ToListAsync(ct);
     }
 
     public void AddItem(Item item) => db.Items.Add(item);
-
-    public Task<Warehouse?> GetWarehouseAsync(int id, CancellationToken ct = default) =>
-        db.Warehouses.FirstOrDefaultAsync(x => x.Id == id, ct);
-
-    public async Task<IReadOnlyList<Warehouse>> ListWarehousesAsync(CancellationToken ct = default) =>
-        await db.Warehouses
-            .AsNoTracking()
-            .Include(x => x.Locations.OrderBy(l => l.Code))
-            .OrderBy(x => x.Name)
-            .ToListAsync(ct);
-
-    public void AddWarehouse(Warehouse warehouse) => db.Warehouses.Add(warehouse);
-
-    public Task<bool> LocationCodeExistsAsync(string code, CancellationToken ct = default) =>
-        db.Locations.AnyAsync(x => x.Code == code, ct);
-
-    public void AddLocation(StorageLocation location) => db.Locations.Add(location);
 
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

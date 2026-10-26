@@ -10,12 +10,15 @@ public class Item
 
     public string Name { get; set; } = string.Empty;
 
-    public string? Category { get; set; }
+    public int? CategoryId { get; set; }
 
-    /// <summary>Единица измерения (шт, м, кг, л).</summary>
-    public string Unit { get; set; } = "шт";
+    public Category? Category { get; set; }
 
-    /// <summary>Минимальный остаток по всем местам. Ниже него позиция попадает в список закупки.</summary>
+    public int UnitId { get; set; }
+
+    public UnitOfMeasure Unit { get; set; } = null!;
+
+    /// <summary>Минимальный остаток по всем местам. Ниже него позиция попадает в список дефицита.</summary>
     public decimal MinStock { get; set; }
 
     /// <summary>Желаемый максимальный остаток (до какого уровня пополнять).</summary>

@@ -7,11 +7,11 @@ public class DomainException(string message) : Exception(message);
 public class NotFoundException(string message) : DomainException(message);
 
 /// <summary>На месте хранения недостаточно остатка для операции.</summary>
-public class InsufficientStockException(int itemId, int locationId, decimal available, decimal requested)
-    : DomainException($"Недостаточно остатка: позиция {itemId}, место {locationId}, в наличии {available}, требуется {requested}.")
+public class InsufficientStockException(string itemSku, string locationCode, decimal available, decimal requested)
+    : DomainException($"Недостаточно остатка: позиция {itemSku}, место {locationCode}, в наличии {available:0.###}, требуется {requested:0.###}.")
 {
-    public int ItemId { get; } = itemId;
-    public int LocationId { get; } = locationId;
+    public string ItemSku { get; } = itemSku;
+    public string LocationCode { get; } = locationCode;
     public decimal Available { get; } = available;
     public decimal Requested { get; } = requested;
 }
