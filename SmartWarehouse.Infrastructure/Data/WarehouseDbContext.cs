@@ -8,6 +8,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<UnitOfMeasure> Units => Set<UnitOfMeasure>();
     public DbSet<Item> Items => Set<Item>();
+    public DbSet<ItemImage> ItemImages => Set<ItemImage>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StorageLocation> Locations => Set<StorageLocation>();
     public DbSet<StockBalance> Balances => Set<StockBalance>();

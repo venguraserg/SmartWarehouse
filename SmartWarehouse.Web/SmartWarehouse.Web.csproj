@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Общие DTO и перечисления; к базе данных веб-приложение не обращается, только к API. -->
+    <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
+  </ItemGroup>
+
+</Project>

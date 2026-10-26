@@ -50,6 +50,18 @@ internal class ItemConfiguration : IEntityTypeConfiguration<Item>
     }
 }
 
+internal class ItemImageConfiguration : IEntityTypeConfiguration<ItemImage>
+{
+    public void Configure(EntityTypeBuilder<ItemImage> b)
+    {
+        b.ToTable("item_images");
+        b.HasKey(x => x.ItemId);
+        b.Property(x => x.ContentType).HasMaxLength(32).IsRequired();
+        b.Property(x => x.Data).IsRequired();
+        b.HasOne(x => x.Item).WithOne().HasForeignKey<ItemImage>(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal class WarehouseConfiguration : IEntityTypeConfiguration<Warehouse>
 {
     public void Configure(EntityTypeBuilder<Warehouse> b)

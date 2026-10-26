@@ -1,0 +1,90 @@
+@page "/"
+@inject ApiClient Api
+
+<PageTitle>Обзор — склад</PageTitle>
+
+<h1>Обзор</h1>
+
+<div class="actions" style="margin-bottom: 1.25rem">
+    <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
+    <a class="btn" href="/documents/new/Issue">− Выдача</a>
+    <a class="btn" href="/documents/new/Transfer">⇄ Перемещение</a>
+    <a class="btn" href="/documents/new/WriteOff">Списание</a>
+    <a class="btn" href="/documents/new/Adjustment">Корректировка</a>
+</div>
+
+<Alert Error="@error" />
+
+@if (lowStock is null || recent is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="stats">
+        <div class="stat @(lowStock.Count > 0 ? "warn" : null)">
+            <div class="stat-value">@lowStock.Count</div>
+            <div class="stat-label">позиций ниже минимума</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">@recent.Count(d => d.OccurredAt.ToLocalTime().Date == DateTime.Today)</div>
+            <div class="stat-label">документов сегодня</div>
+        </div>
+    </div>
+
+    <h2>Ниже минимального остатка</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th class="num">Остаток</th>
+                    <th class="num">Минимум</th>
+                    <th class="num">Пополнить</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in lowStock)
+                {
+                    <tr>
+                        <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
+                        <td>@row.Name</td>
+                        <td class="num">@Ui.Qty(row.Total) @row.UnitCode</td>
+                        <td class="num">@Ui.Qty(row.MinStock)</td>
+                        <td class="num"><span class="tag tag-warn">@Ui.Qty(row.ToOrder) @row.UnitCode</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (lowStock.Count == 0)
+        {
+            <div class="empty">Все позиции в норме.</div>
+        }
+    </div>
+
+    <h2>Последние документы</h2>
+    <DocumentTable Documents="recent.Take(10).ToList()" />
+}
+
+@code {
+    private List<LowStockItemDto>? lowStock;
+    private List<DocumentSummaryDto>? recent;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            lowStock = await Api.GetBelowMinimumAsync();
+            recent = await Api.GetDocumentsAsync(take: 50);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = $"Не удалось получить данные: {ex.Message}";
+        }
+    }
+}

@@ -29,5 +29,7 @@ jobs:
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
-      - name: Сборка Docker-образа
+      - name: Сборка образа API
         run: docker build -t smartwarehouse-api .
+      - name: Сборка образа веб-интерфейса
+        run: docker build -f Dockerfile.web -t smartwarehouse-web .

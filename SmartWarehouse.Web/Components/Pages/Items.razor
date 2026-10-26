@@ -1,0 +1,122 @@
+@page "/items"
+@inject ApiClient Api
+
+<PageTitle>Номенклатура — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Номенклатура</h1>
+    <span class="spacer"></span>
+    <a class="btn btn-primary" href="/items/new">+ Новая позиция</a>
+</div>
+
+<form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+    <input type="search" placeholder="Поиск по артикулу или наименованию" @bind="search" style="max-width: 360px" />
+    <select @bind="categoryId" @bind:after="LoadAsync" style="max-width: 240px">
+        <option value="">Все категории</option>
+        @foreach (var c in categories)
+        {
+            <option value="@c.Id">@c.Name</option>
+        }
+    </select>
+    <button class="btn" type="submit">Найти</button>
+    <label class="checkbox"><input type="checkbox" @bind="showInactive" /> показывать неактивные</label>
+</form>
+
+<Alert Error="@error" />
+
+@if (items is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    var visible = items.Where(i => showInactive || i.IsActive).ToList();
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 56px"></th>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th>Категория</th>
+                    <th>Ед.</th>
+                    <th class="num">Мин.</th>
+                    <th class="num">Макс.</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in visible)
+                {
+                    <tr class="@(item.IsActive ? null : "inactive")">
+                        <td>
+                            @if (Ui.ImageUrl(item.Id, item.ImageVersion) is { } url)
+                            {
+                                <img class="thumb" src="@url" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="thumb-empty"></div>
+                            }
+                        </td>
+                        <td class="mono"><a href="/items/@item.Id">@item.Sku</a></td>
+                        <td>
+                            <a href="/items/@item.Id">@item.Name</a>
+                            @if (!item.IsActive)
+                            {
+                                <span class="tag tag-neutral">неактивна</span>
+                            }
+                        </td>
+                        <td>@item.CategoryName</td>
+                        <td>@item.UnitCode</td>
+                        <td class="num">@Ui.Qty(item.MinStock)</td>
+                        <td class="num">@(item.MaxStock is { } max ? Ui.Qty(max) : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (visible.Count == 0)
+        {
+            <div class="empty">Ничего не найдено.</div>
+        }
+    </div>
+    <p class="muted">Показано: @visible.Count</p>
+}
+
+@code {
+    private List<ItemDto>? items;
+    private List<CategoryDto> categories = [];
+    private string? search;
+    private int? categoryId;
+    private bool showInactive;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            categories = await Api.GetCategoriesAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            items = await Api.GetItemsAsync(search, categoryId);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = $"Не удалось загрузить номенклатуру: {ex.Message}";
+        }
+    }
+}

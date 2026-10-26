@@ -1,4 +1,5 @@
-# Запуск: скопируйте .env.example в .env, задайте пароль и выполните `docker compose up -d --build`
+# Запуск: скопируйте .env.example в .env, задайте пароль и выполните `docker compose up -d --build`.
+# Веб-интерфейс: http://<сервер>:${WEB_PORT}, API: http://<сервер>:${API_PORT}.
 services:
   db:
     image: postgres:17
@@ -24,8 +25,22 @@ services:
     environment:
       ConnectionStrings__Default: "Host=db;Database=smartwarehouse;Username=smartwarehouse;Password=${POSTGRES_PASSWORD}"
       Database__MigrateOnStartup: "true"
+      TZ: ${TZ:-Europe/Minsk}
     ports:
       - "${API_PORT:-8080}:8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      Api__BaseUrl: "http://api:8080"
+      TZ: ${TZ:-Europe/Minsk}
+    ports:
+      - "${WEB_PORT:-8081}:8080"
 
 volumes:
   pgdata:

@@ -1,0 +1,175 @@
+@page "/items/new"
+@page "/items/{Id:int}/edit"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(IsNew ? "Новая позиция" : "Изменение позиции") — склад</PageTitle>
+
+<h1>@(IsNew ? "Новая позиция" : "Изменение позиции")</h1>
+
+<Alert Error="@error" />
+
+@if (loaded)
+{
+    <form class="panel" style="max-width: 760px" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+        <div class="field-row">
+            <div class="field">
+                <label for="sku">Артикул *</label>
+                @if (IsNew)
+                {
+                    <input id="sku" type="text" @bind="form.Sku" maxlength="64" required />
+                }
+                else
+                {
+                    <input id="sku" type="text" value="@form.Sku" disabled />
+                }
+            </div>
+            <div class="field">
+                <label for="unit">Единица измерения *</label>
+                <select id="unit" @bind="form.UnitId">
+                    @foreach (var u in units)
+                    {
+                        <option value="@u.Id">@u.Code — @u.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="name">Наименование *</label>
+            <input id="name" type="text" @bind="form.Name" maxlength="256" required />
+        </div>
+
+        <div class="field">
+            <label for="category">Категория</label>
+            <select id="category" @bind="form.CategoryId">
+                <option value="">— без категории —</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="field-row">
+            <div class="field">
+                <label for="min">Минимальный остаток</label>
+                <input id="min" type="number" min="0" step="any" @bind="form.MinStock" />
+            </div>
+            <div class="field">
+                <label for="max">Максимальный остаток</label>
+                <input id="max" type="number" min="0" step="any" @bind="form.MaxStock" />
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="desc">Описание</label>
+            <textarea id="desc" @bind="form.Description" maxlength="2000"></textarea>
+        </div>
+
+        @if (!IsNew)
+        {
+            <div class="field">
+                <label class="checkbox"><input type="checkbox" @bind="form.IsActive" /> Активна (доступна в документах)</label>
+            </div>
+        }
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit" disabled="@saving">Сохранить</button>
+            <a class="btn" href="@(IsNew ? "/items" : $"/items/{Id}")">Отмена</a>
+        </div>
+        @if (IsNew)
+        {
+            <p class="muted">Фото можно добавить в карточке позиции после сохранения.</p>
+        }
+    </form>
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private readonly ItemForm form = new();
+    private List<UnitDto> units = [];
+    private List<CategoryDto> categories = [];
+    private bool loaded;
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            units = await Api.GetUnitsAsync();
+            categories = await Api.GetCategoriesAsync();
+
+            if (Id is int id)
+            {
+                var item = await Api.GetItemAsync(id);
+                form.Sku = item.Sku;
+                form.Name = item.Name;
+                form.CategoryId = item.CategoryId;
+                form.UnitId = item.UnitId;
+                form.MinStock = item.MinStock;
+                form.MaxStock = item.MaxStock;
+                form.Description = item.Description;
+                form.IsActive = item.IsActive;
+            }
+            else if (units.Count > 0)
+            {
+                form.UnitId = units.FirstOrDefault(u => u.Code == "шт")?.Id ?? units[0].Id;
+            }
+
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        error = null;
+        try
+        {
+            ItemDto saved;
+            if (Id is int id)
+            {
+                saved = await Api.UpdateItemAsync(id, new UpdateItemRequest(
+                    form.Name, form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.IsActive));
+            }
+            else
+            {
+                saved = await Api.CreateItemAsync(new CreateItemRequest(
+                    form.Sku, form.Name, form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description));
+            }
+            Nav.NavigateTo($"/items/{saved.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private sealed class ItemForm
+    {
+        public string Sku { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int? CategoryId { get; set; }
+        public int UnitId { get; set; }
+        public decimal MinStock { get; set; }
+        public decimal? MaxStock { get; set; }
+        public string? Description { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

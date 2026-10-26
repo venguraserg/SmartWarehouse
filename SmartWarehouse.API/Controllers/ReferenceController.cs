@@ -29,3 +29,16 @@ public class UnitsController(ICatalogService catalog) : ControllerBase
     public async Task<ActionResult<UnitDto>> Create(CreateUnitRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await catalog.CreateUnitAsync(request, ct));
 }
+
+/// <summary>Справочник оборудования (дерево: участок → установка → узел).</summary>
+[ApiController]
+[Route("api/equipment")]
+public class EquipmentController(ICatalogService catalog) : ControllerBase
+{
+    [HttpGet]
+    public Task<IReadOnlyList<EquipmentDto>> List(CancellationToken ct) => catalog.ListEquipmentAsync(ct);
+
+    [HttpPost]
+    public async Task<ActionResult<EquipmentDto>> Create(CreateEquipmentRequest request, CancellationToken ct) =>
+        StatusCode(StatusCodes.Status201Created, await catalog.CreateEquipmentAsync(request, ct));
+}

@@ -71,5 +71,33 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
 
     public void AddItem(Item item) => db.Items.Add(item);
 
+    public Task<Item?> GetItemForUpdateAsync(int id, CancellationToken ct = default) =>
+        db.Items.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public Task<bool> ItemHasMovementsAsync(int id, CancellationToken ct = default) =>
+        db.Movements.AnyAsync(x => x.ItemId == id, ct);
+
+    // ---------- Фото ----------
+
+    public Task<ItemImage?> GetImageAsync(int itemId, CancellationToken ct = default) =>
+        db.ItemImages.FirstOrDefaultAsync(x => x.ItemId == itemId, ct);
+
+    public void AddImage(ItemImage image) => db.ItemImages.Add(image);
+
+    public void RemoveImage(ItemImage image) => db.ItemImages.Remove(image);
+
+    // ---------- Оборудование ----------
+
+    public async Task<IReadOnlyList<Equipment>> ListEquipmentAsync(CancellationToken ct = default) =>
+        await db.Equipment.AsNoTracking().OrderBy(x => x.Code).ToListAsync(ct);
+
+    public Task<bool> EquipmentExistsAsync(int id, CancellationToken ct = default) =>
+        db.Equipment.AnyAsync(x => x.Id == id, ct);
+
+    public Task<bool> EquipmentCodeExistsAsync(string code, CancellationToken ct = default) =>
+        db.Equipment.AnyAsync(x => x.Code == code, ct);
+
+    public void AddEquipment(Equipment equipment) => db.Equipment.Add(equipment);
+
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

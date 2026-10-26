@@ -34,7 +34,26 @@ public record ItemDto(
     decimal MinStock,
     decimal? MaxStock,
     string? Description,
+    bool IsActive,
+    long? ImageVersion);
+
+/// <summary>Изменение позиции. Артикул не меняется; единицу можно сменить, только пока по позиции не было движений.</summary>
+public record UpdateItemRequest(
+    string Name,
+    int? CategoryId,
+    int UnitId,
+    decimal MinStock,
+    decimal? MaxStock,
+    string? Description,
     bool IsActive);
+
+public record ItemImageDto(byte[] Data, string ContentType);
+
+// ---------- Оборудование ----------
+
+public record CreateEquipmentRequest(int? ParentId, string Code, string Name);
+
+public record EquipmentDto(int Id, int? ParentId, string Code, string Name);
 
 // ---------- Склады и места хранения ----------
 

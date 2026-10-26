@@ -2,7 +2,7 @@
 
 Складской учёт запасных частей и расходных материалов отдела эксплуатации технологического оборудования.
 
-**Стек:** ASP.NET Core Web API (.NET 10), EF Core + PostgreSQL. Позже: Blazor (веб) и мобильный клиент.
+**Стек:** ASP.NET Core Web API (.NET 10), EF Core + PostgreSQL, веб-интерфейс на Blazor. Позже: мобильный клиент.
 
 ## Структура
 
@@ -12,6 +12,7 @@
 | `SmartWarehouse.Application` | Сервисы (документы и остатки, справочники, места хранения), DTO, интерфейсы репозиториев |
 | `SmartWarehouse.Infrastructure` | EF Core, `WarehouseDbContext`, конфигурации таблиц, репозитории, начальное заполнение |
 | `SmartWarehouse.API` | REST API, обработка ошибок |
+| `SmartWarehouse.Web` | Веб-интерфейс (Blazor, интерактивный серверный режим). Работает только через API |
 | `SmartWarehouse.Tests` | Модульные тесты бизнес-правил (xUnit) |
 
 ## Модель данных
@@ -21,6 +22,7 @@
 | `Category` | `categories` | Категории номенклатуры |
 | `UnitOfMeasure` | `units` | Единицы измерения; признак `IsFractional` разрешает дробное количество |
 | `Item` | `items` | Номенклатура: артикул, наименование, категория, единица, мин./макс. остаток |
+| `ItemImage` | `item_images` | Фото позиции (одно, JPEG/PNG/WebP до 5 МБ), хранится в БД |
 | `Warehouse` | `warehouses` | Склад с коротким кодом (`СК1`) |
 | `StorageLocation` | `storage_locations` | Дерево мест: зона → стеллаж → полка → ячейка. `FullCode` (`СК1-A-01-03`) — содержимое QR-метки |
 | `StockDocument` | `stock_documents` | Документ: приход, выдача, перемещение, списание, корректировка. Номер `ПР-000015`, `ВЫД-000102`... |
@@ -56,6 +58,9 @@
 | GET/POST | `/api/categories` | Категории |
 | GET/POST | `/api/units` | Единицы измерения |
 | GET/POST | `/api/items` | Номенклатура (`?search=`, `?categoryId=`) |
+| PUT | `/api/items/{id}` | Изменить позицию |
+| GET/PUT/DELETE | `/api/items/{id}/image` | Фото позиции (PUT — multipart, поле `file`) |
+| GET/POST | `/api/equipment` | Оборудование |
 | GET | `/api/items/{id}/balances` | Остатки позиции по местам |
 | GET | `/api/items/{id}/movements` | История движений с номерами документов |
 | GET/POST | `/api/warehouses` | Склады |
@@ -82,9 +87,9 @@ dotnet ef migrations add InitialCreate -p SmartWarehouse.Infrastructure -s Smart
 
 После изменения модели добавляйте новую миграцию с понятным именем, например `dotnet ef migrations add AddSuppliers ...`.
 
-### 2. Локально (Visual Studio / dotnet run)
+### 2. Локально (Visual Studio)
 
-Строка подключения в репозитории не хранится. В Visual Studio: правой кнопкой по `SmartWarehouse.API` →
+Строка подключения в репозитории не хранится. Правой кнопкой по `SmartWarehouse.API` →
 **Manage User Secrets**, и впишите:
 
 ```json
@@ -96,7 +101,13 @@ dotnet ef migrations add InitialCreate -p SmartWarehouse.Infrastructure -s Smart
 }
 ```
 
-При запуске база и таблицы создадутся автоматически, справочник единиц заполнится.
+Запуск API и веб-интерфейса вместе: правой кнопкой по решению → **Configure Startup Projects** →
+**Multiple startup projects** → для `SmartWarehouse.API` и `SmartWarehouse.Web` выберите **Start** → F5.
+
+- API: http://localhost:5113
+- Веб-интерфейс: http://localhost:5200 (адрес API задан в `SmartWarehouse.Web/appsettings.json`, `Api:BaseUrl`)
+
+При первом запуске база и таблицы создадутся автоматически, справочник единиц заполнится.
 
 ### 3. Docker (сервер)
 
@@ -105,7 +116,7 @@ cp .env.example .env      # задайте POSTGRES_PASSWORD
 docker compose up -d --build
 ```
 
-API будет доступен на порту из `API_PORT` (по умолчанию 8080). Миграции применяются при старте.
+Веб-интерфейс — на порту `WEB_PORT` (по умолчанию 8081), API — на `API_PORT` (8080). Миграции применяются при старте.
 
 ## Тесты
 
@@ -113,5 +124,5 @@ API будет доступен на порту из `API_PORT` (по умолч
 dotnet test
 ```
 
-При каждом пуше и pull request GitHub Actions собирает решение, прогоняет тесты и собирает Docker-образ
+При каждом пуше и pull request GitHub Actions собирает решение, прогоняет тесты и собирает Docker-образы API и веб-интерфейса
 (см. `.github/workflows/ci.yml`).

@@ -29,5 +29,11 @@ public class Item
     /// <summary>Неактивные позиции скрыты из выбора, но остаются в истории.</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Когда загружено фото (null — фото нет). Само изображение хранится отдельно в <see cref="ItemImage"/>,
+    /// чтобы списки номенклатуры не тянули из БД двоичные данные. Значение служит и «версией» для кеша браузера.
+    /// </summary>
+    public DateTimeOffset? ImageUpdatedAt { get; set; }
+
     public ICollection<StockBalance> Balances { get; set; } = new List<StockBalance>();
 }

@@ -1,0 +1,21 @@
+# Сборка веб-интерфейса (Blazor)
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Сначала только файлы проектов — слой восстановления пакетов кешируется
+COPY SmartWarehouse.Domain/SmartWarehouse.Domain.csproj SmartWarehouse.Domain/
+COPY SmartWarehouse.Application/SmartWarehouse.Application.csproj SmartWarehouse.Application/
+COPY SmartWarehouse.Web/SmartWarehouse.Web.csproj SmartWarehouse.Web/
+RUN dotnet restore SmartWarehouse.Web/SmartWarehouse.Web.csproj
+
+COPY . .
+RUN dotnet publish SmartWarehouse.Web/SmartWarehouse.Web.csproj -c Release -o /app --no-restore
+
+# Рабочий образ
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /app .
+ENV ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 8080
+USER $APP_UID
+ENTRYPOINT ["dotnet", "SmartWarehouse.Web.dll"]
