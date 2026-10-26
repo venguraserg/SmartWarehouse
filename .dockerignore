@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+.env
+**/appsettings.Development.json
+SmartWarehouse.Tests/
