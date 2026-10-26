@@ -25,12 +25,14 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Применение миграций при старте (включается в Docker через Database__MigrateOnStartup=true).
+// Применение миграций и начальное заполнение справочников при старте
+// (включается через Database:MigrateOnStartup = true в user-secrets или переменной окружения).
 if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
     await db.Database.MigrateAsync();
+    await DbSeeder.SeedAsync(db);
 }
 
 app.UseExceptionHandler();
