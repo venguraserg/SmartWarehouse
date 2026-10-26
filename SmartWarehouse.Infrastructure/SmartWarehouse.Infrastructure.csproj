@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Data\" />
-    <Folder Include="Repositories\" />
+    <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
   </ItemGroup>
 
 </Project>

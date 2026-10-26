@@ -102,7 +102,8 @@ appsettings.Development.json
 
 # Локальный кеш инструментов миграций и контейнеров
 .elasticbeanstalk/
-.dockerignore
+# Пароли для docker compose (шаблон — .env.example)
+.env
 # Раскомментируйте строку ниже, если НЕ хотите пушить Dockerfile
 # Dockerfile
 

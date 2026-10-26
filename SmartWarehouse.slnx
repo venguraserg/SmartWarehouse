@@ -3,4 +3,5 @@
   <Project Path="SmartWarehouse.Application/SmartWarehouse.Application.csproj" Id="2a5d9b48-5a57-4d5f-ac32-f725f2c0a948" />
   <Project Path="SmartWarehouse.Domain/SmartWarehouse.Domain.csproj" Id="2eec5d66-ec33-472f-a6d0-cb21c28704fe" />
   <Project Path="SmartWarehouse.Infrastructure/SmartWarehouse.Infrastructure.csproj" Id="c66c4e25-fb74-491f-bba2-0b80aaca2f74" />
+  <Project Path="SmartWarehouse.Tests/SmartWarehouse.Tests.csproj" Id="9b1f3c2e-4d6a-4e8b-a1c7-5e2f8d9a0b13" />
 </Solution>

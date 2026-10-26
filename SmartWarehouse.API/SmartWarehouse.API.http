@@ -1,6 +1,40 @@
-@SmartWarehouse.API_HostAddress = http://localhost:5113
+@host = http://localhost:5113
 
-GET {{SmartWarehouse.API_HostAddress}}/weatherforecast/
-Accept: application/json
+### Создать склад
+POST {{host}}/api/warehouses
+Content-Type: application/json
 
-###
+{ "name": "Склад запчастей", "description": "Основной склад отдела эксплуатации" }
+
+### Добавить ячейку на склад 1
+POST {{host}}/api/warehouses/1/locations
+Content-Type: application/json
+
+{ "code": "A-01-01", "name": "Стеллаж A, полка 1, ячейка 1" }
+
+### Создать позицию номенклатуры
+POST {{host}}/api/items
+Content-Type: application/json
+
+{ "sku": "BRG-6205-2RS", "name": "Подшипник 6205-2RS", "category": "Подшипники", "unit": "шт", "minStock": 10, "maxStock": 30 }
+
+### Приход
+POST {{host}}/api/stock/movements
+Content-Type: application/json
+
+{ "type": "Receipt", "itemId": 1, "quantity": 12, "toLocationId": 1, "document": "ТТН 12345", "performedBy": "Кладовщик" }
+
+### Выдача
+POST {{host}}/api/stock/movements
+Content-Type: application/json
+
+{ "type": "Issue", "itemId": 1, "quantity": 5, "fromLocationId": 1, "comment": "Ремонт насоса", "performedBy": "Кладовщик" }
+
+### Остатки позиции по местам
+GET {{host}}/api/items/1/balances
+
+### История движений позиции
+GET {{host}}/api/items/1/movements
+
+### Список «ниже минимума»
+GET {{host}}/api/stock/below-minimum

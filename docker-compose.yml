@@ -1,0 +1,31 @@
+# Запуск: скопируйте .env.example в .env, задайте пароль и выполните `docker compose up -d --build`
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartwarehouse
+      POSTGRES_USER: smartwarehouse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в файле .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartwarehouse -d smartwarehouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=db;Database=smartwarehouse;Username=smartwarehouse;Password=${POSTGRES_PASSWORD}"
+      Database__MigrateOnStartup: "true"
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  pgdata:
