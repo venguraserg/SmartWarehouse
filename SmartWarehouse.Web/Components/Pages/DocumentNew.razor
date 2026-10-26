@@ -1,0 +1,356 @@
+@page "/documents/new/{Kind}"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@Title — склад</PageTitle>
+
+<h1>@Title</h1>
+
+<Alert Error="@error" />
+
+@if (type is null)
+{
+    <p>Неизвестный тип документа. <a href="/documents">К списку документов</a></p>
+}
+else if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+        <div class="panel">
+            <div class="field-row">
+                <div class="field">
+                    <label for="ext">@ExternalLabel</label>
+                    <input id="ext" type="text" @bind="externalNumber" maxlength="128" />
+                </div>
+                <div class="field">
+                    <label for="who">Кто проводит</label>
+                    <input id="who" type="text" @bind="performedBy" maxlength="128" placeholder="Фамилия И.О." />
+                </div>
+                @if (UsesEquipment)
+                {
+                    <div class="field">
+                        <label for="eq">Оборудование</label>
+                        <select id="eq" @bind="equipmentId">
+                            <option value="">— не указано —</option>
+                            @foreach (var e in equipment)
+                            {
+                                <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="field" style="margin-bottom: 0">
+                <label for="comment">Комментарий</label>
+                <input id="comment" type="text" @bind="comment" maxlength="1000" />
+            </div>
+        </div>
+
+        <h2>Строки</h2>
+
+        <datalist id="items-list">
+            @foreach (var label in itemsByLabel.Keys)
+            {
+                <option value="@label"></option>
+            }
+        </datalist>
+
+        <div class="table-wrap">
+            <table class="lines">
+                <thead>
+                    <tr>
+                        <th class="num">№</th>
+                        <th style="min-width: 260px">Позиция (артикул или наименование)</th>
+                        @if (type == MovementType.Adjustment)
+                        {
+                            <th>Действие</th>
+                        }
+                        @if (ShowFromColumn)
+                        {
+                            <th style="min-width: 190px">Откуда</th>
+                        }
+                        @if (ShowToColumn)
+                        {
+                            <th style="min-width: 170px">Куда</th>
+                        }
+                        <th style="width: 130px">Количество</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < lines.Count; i++)
+                    {
+                        var line = lines[i];
+                        var n = i + 1;
+                        <tr>
+                            <td class="num">@n</td>
+                            <td>
+                                <input type="text" list="items-list" @bind="line.ItemText" @bind:after="() => OnItemChangedAsync(line)"
+                                       placeholder="Начните вводить…" />
+                                @if (line.Item is not null)
+                                {
+                                    <div class="line-hint">
+                                        Всего на складе: @Ui.Qty(line.Available.Sum(a => a.Quantity)) @line.Item.UnitCode
+                                    </div>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(line.ItemText))
+                                {
+                                    <div class="line-hint" style="color: var(--danger)">Позиция не найдена — выберите из списка.</div>
+                                }
+                            </td>
+                            @if (type == MovementType.Adjustment)
+                            {
+                                <td>
+                                    <select @bind="line.Direction">
+                                        <option value="plus">+ добавить</option>
+                                        <option value="minus">− убрать</option>
+                                    </select>
+                                </td>
+                            }
+                            @if (ShowFromColumn)
+                            {
+                                <td>
+                                    @if (NeedsFrom(line))
+                                    {
+                                        <select @bind="line.FromId" disabled="@(line.Item is null)">
+                                            <option value="">@(line.Item is null ? "сначала позицию" : line.Available.Count == 0 ? "нет на складе" : "— выберите —")</option>
+                                            @foreach (var a in line.Available)
+                                            {
+                                                <option value="@a.LocationId">@a.LocationCode (@Ui.Qty(a.Quantity))</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                </td>
+                            }
+                            @if (ShowToColumn)
+                            {
+                                <td>
+                                    @if (NeedsTo(line))
+                                    {
+                                        <select @bind="line.ToId">
+                                            <option value="">— выберите —</option>
+                                            @foreach (var l in leaves)
+                                            {
+                                                <option value="@l.Id">@l.FullCode</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                </td>
+                            }
+                            <td>
+                                <input type="number" min="0" step="any" @bind="line.Quantity" />
+                                @if (line.Item is not null)
+                                {
+                                    <div class="line-hint">@line.Item.UnitCode</div>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)">✕</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="actions" style="margin-top: .75rem">
+            <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+        </div>
+
+        @if (leaves.Count == 0 && ShowToColumn)
+        {
+            <div class="alert alert-error" style="margin-top: 1rem">
+                Нет ни одного места хранения. Сначала создайте склад и ячейки в разделе <a href="/warehouses">Склады и места</a>.
+            </div>
+        }
+
+        <div class="actions" style="margin-top: 1.5rem">
+            <button class="btn btn-primary" type="submit" disabled="@saving">Провести документ</button>
+            <a class="btn" href="/documents">Отмена</a>
+        </div>
+        <p class="muted">Документ проводится целиком: если в какой-то строке ошибка или не хватает остатка, не изменится ничего.</p>
+    </form>
+}
+
+@code {
+    [Parameter] public string Kind { get; set; } = "";
+
+    private MovementType? type;
+    private bool loaded;
+    private bool saving;
+    private string? error;
+
+    private Dictionary<string, ItemDto> itemsByLabel = new(StringComparer.OrdinalIgnoreCase);
+    private List<LocationNodeDto> leaves = [];
+    private List<(EquipmentDto Item, int Depth)> equipment = [];
+
+    private string? externalNumber;
+    private string? performedBy;
+    private string? comment;
+    private int? equipmentId;
+    private List<LineModel> lines = [new()];
+
+    private string Title => type switch
+    {
+        MovementType.Receipt => "Приход",
+        MovementType.Issue => "Выдача",
+        MovementType.Transfer => "Перемещение",
+        MovementType.WriteOff => "Списание",
+        MovementType.Adjustment => "Корректировка остатков",
+        _ => "Новый документ"
+    };
+
+    private string ExternalLabel => type switch
+    {
+        MovementType.Receipt => "Накладная поставщика",
+        MovementType.Issue => "Заявка / наряд",
+        MovementType.WriteOff => "Акт списания",
+        MovementType.Adjustment => "Акт инвентаризации",
+        _ => "Основание"
+    };
+
+    private bool UsesEquipment => type is MovementType.Issue or MovementType.WriteOff;
+    private bool ShowFromColumn => type is MovementType.Issue or MovementType.WriteOff or MovementType.Transfer or MovementType.Adjustment;
+    private bool ShowToColumn => type is MovementType.Receipt or MovementType.Transfer or MovementType.Adjustment;
+
+    private bool NeedsFrom(LineModel line) =>
+        type is MovementType.Issue or MovementType.WriteOff or MovementType.Transfer
+        || (type == MovementType.Adjustment && line.Minus);
+
+    private bool NeedsTo(LineModel line) =>
+        type is MovementType.Receipt or MovementType.Transfer
+        || (type == MovementType.Adjustment && !line.Minus);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Компонент переиспользуется при переходе между типами — начинаем документ заново.
+        type = Enum.TryParse<MovementType>(Kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : null;
+        lines = [new()];
+        externalNumber = comment = null;
+        equipmentId = null;
+        error = null;
+
+        if (type is null || loaded)
+            return;
+
+        try
+        {
+            var items = await Api.GetItemsAsync();
+            itemsByLabel = items
+                .Where(i => i.IsActive)
+                .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
+            leaves = await Api.GetLeafLocationsAsync();
+            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = $"Не удалось загрузить справочники: {ex.Message}";
+        }
+    }
+
+    private async Task OnItemChangedAsync(LineModel line)
+    {
+        var text = line.ItemText?.Trim() ?? "";
+        line.Item = itemsByLabel.TryGetValue(text, out var byLabel)
+            ? byLabel
+            : itemsByLabel.Values.FirstOrDefault(i => string.Equals(i.Sku, text, StringComparison.OrdinalIgnoreCase));
+
+        line.Available = [];
+        line.FromId = null;
+
+        if (line.Item is null)
+            return;
+
+        line.ItemText = $"{line.Item.Sku} · {line.Item.Name}";
+        try
+        {
+            line.Available = await Api.GetBalancesAsync(line.Item.Id);
+            if (line.Available.Count == 1)
+                line.FromId = line.Available[0].LocationId;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void AddLine() => lines.Add(new LineModel { Direction = lines.LastOrDefault()?.Direction ?? "plus" });
+
+    private void RemoveLine(LineModel line)
+    {
+        if (lines.Count > 1)
+            lines.Remove(line);
+    }
+
+    private async Task SubmitAsync()
+    {
+        error = null;
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Item is null)
+            {
+                error = $"Строка {i + 1}: выберите позицию из списка.";
+                return;
+            }
+        }
+
+        var request = new CreateDocumentRequest(
+            type!.Value,
+            externalNumber,
+            UsesEquipment ? equipmentId : null,
+            performedBy,
+            comment,
+            lines.Select(l => new DocumentLineRequest(
+                l.Item!.Id,
+                l.Quantity,
+                NeedsFrom(l) ? l.FromId : null,
+                NeedsTo(l) ? l.ToId : null)).ToList());
+
+        saving = true;
+        try
+        {
+            var doc = await Api.PostDocumentAsync(request);
+            Nav.NavigateTo($"/documents/{doc.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private sealed class LineModel
+    {
+        public string? ItemText { get; set; }
+        public ItemDto? Item { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public int? FromId { get; set; }
+        public int? ToId { get; set; }
+
+        /// <summary>Для корректировки: «plus» — увеличить остаток, «minus» — уменьшить.</summary>
+        public string Direction { get; set; } = "plus";
+
+        public bool Minus => Direction == "minus";
+
+        public List<StockBalanceDto> Available { get; set; } = [];
+    }
+}

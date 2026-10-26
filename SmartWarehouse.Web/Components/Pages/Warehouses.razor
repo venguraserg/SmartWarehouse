@@ -1,0 +1,290 @@
+@page "/warehouses"
+@inject ApiClient Api
+
+<PageTitle>Склады и места — склад</PageTitle>
+
+<h1>Склады и места хранения</h1>
+
+<Alert Error="@error" Success="@success" />
+
+<div class="grid-sidebar">
+    <section class="panel">
+        <h2 style="margin-top: 0">Склады</h2>
+        <ul class="list-select">
+            @foreach (var w in warehouses)
+            {
+                <li>
+                    <button type="button" class="@(w.Id == warehouse?.Id ? "selected" : null)" @onclick="() => SelectWarehouseAsync(w)">
+                        <span class="mono">@w.Code</span> — @w.Name
+                    </button>
+                </li>
+            }
+        </ul>
+        @if (warehouses.Count == 0)
+        {
+            <p class="muted">Складов пока нет.</p>
+        }
+
+        <form style="margin-top: 1rem" @onsubmit="CreateWarehouseAsync" @onsubmit:preventDefault>
+            <div class="field">
+                <label for="wh-code">Код нового склада</label>
+                <input id="wh-code" type="text" @bind="newWarehouseCode" maxlength="16" placeholder="СК1" />
+            </div>
+            <div class="field">
+                <label for="wh-name">Название</label>
+                <input id="wh-name" type="text" @bind="newWarehouseName" maxlength="128" placeholder="Склад запчастей" />
+            </div>
+            <button class="btn" type="submit">Создать склад</button>
+        </form>
+    </section>
+
+    <section>
+        @if (warehouse is null)
+        {
+            <div class="panel muted">Выберите склад слева или создайте новый.</div>
+        }
+        else
+        {
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="toolbar" style="margin-bottom: .5rem">
+                        <h2 style="margin: 0">@warehouse.Name</h2>
+                        <span class="spacer"></span>
+                        <button class="btn btn-sm" type="button" @onclick="() => SelectLocationAsync(null)" disabled="@(selected is null)">Верхний уровень</button>
+                    </div>
+                    @if (tree.Count == 0)
+                    {
+                        <p class="muted">Мест хранения пока нет. Добавьте зону или стеллаж справа.</p>
+                    }
+                    else
+                    {
+                        <ul class="tree">
+                            @foreach (var node in tree)
+                            {
+                                <LocationNode Node="node" SelectedId="selected?.Id" OnSelect="SelectLocationAsync" />
+                            }
+                        </ul>
+                    }
+                </div>
+
+                <div>
+                    <div class="panel">
+                        @if (selected is null)
+                        {
+                            <h2 style="margin-top: 0">Добавить на верхний уровень</h2>
+                            <p class="muted">Код склада: <span class="mono">@warehouse.Code</span></p>
+                        }
+                        else
+                        {
+                            <h2 style="margin-top: 0" class="mono">@selected.FullCode</h2>
+                            <p class="muted">
+                                @Ui.LocType(selected.Type)@(string.IsNullOrEmpty(selected.Name) ? "" : $" · {selected.Name}")
+                            </p>
+                        }
+
+                        @if (AllowedChildTypes.Count > 0)
+                        {
+                            <form @onsubmit="AddLocationAsync" @onsubmit:preventDefault>
+                                <div class="field-row">
+                                    <div class="field">
+                                        <label for="loc-type">Тип</label>
+                                        <select id="loc-type" @bind="newType">
+                                            @foreach (var t in AllowedChildTypes)
+                                            {
+                                                <option value="@t">@Ui.LocType(t)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label for="loc-code">Код</label>
+                                        <input id="loc-code" type="text" @bind="newCode" maxlength="16" placeholder="A, 01, 03" />
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label for="loc-name">Название (необязательно)</label>
+                                    <input id="loc-name" type="text" @bind="newName" maxlength="128" />
+                                </div>
+                                <button class="btn btn-primary" type="submit">
+                                    Добавить @(selected is null ? "" : "внутрь")
+                                </button>
+                                <p class="muted" style="margin-bottom: 0">
+                                    Полный код: <span class="mono">@PreviewCode</span>
+                                </p>
+                            </form>
+                        }
+                        else
+                        {
+                            <p class="muted">В ячейку нельзя вложить другие места.</p>
+                        }
+                    </div>
+
+                    @if (selected is not null && selected.Children.Count == 0)
+                    {
+                        <div class="panel">
+                            <h2 style="margin-top: 0">Что лежит</h2>
+                            @if (content.Count == 0)
+                            {
+                                <p class="muted">Пусто.</p>
+                            }
+                            else
+                            {
+                                <table>
+                                    <thead><tr><th>Позиция</th><th class="num">Кол-во</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var c in content)
+                                        {
+                                            <tr>
+                                                <td><a href="/items/@c.ItemId">@c.Name</a><br /><span class="muted mono">@c.Sku</span></td>
+                                                <td class="num">@Ui.Qty(c.Quantity) @c.UnitCode</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<WarehouseDto> warehouses = [];
+    private WarehouseDto? warehouse;
+    private List<LocationNodeDto> tree = [];
+    private LocationNodeDto? selected;
+    private List<LocationContentDto> content = [];
+
+    private string? newWarehouseCode;
+    private string? newWarehouseName;
+    private LocationType newType = LocationType.Rack;
+    private string? newCode;
+    private string? newName;
+
+    private string? error;
+    private string? success;
+
+    /// <summary>Какие типы можно вложить в выбранное место (только «вниз»).</summary>
+    private List<LocationType> AllowedChildTypes =>
+        Enum.GetValues<LocationType>().Where(t => selected is null || t > selected.Type).ToList();
+
+    private string PreviewCode =>
+        $"{selected?.FullCode ?? warehouse?.Code}-{(string.IsNullOrWhiteSpace(newCode) ? "…" : newCode.Trim().ToUpperInvariant())}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWarehousesAsync();
+        if (warehouses.Count > 0)
+            await SelectWarehouseAsync(warehouses[0]);
+    }
+
+    private async Task LoadWarehousesAsync()
+    {
+        try
+        {
+            warehouses = await Api.GetWarehousesAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task SelectWarehouseAsync(WarehouseDto w)
+    {
+        warehouse = w;
+        selected = null;
+        await ReloadTreeAsync();
+        ResetNewType();
+    }
+
+    private async Task ReloadTreeAsync()
+    {
+        if (warehouse is null) return;
+        try
+        {
+            tree = await Api.GetLocationTreeAsync(warehouse.Id);
+            if (selected is not null)
+                selected = Find(tree, selected.Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task SelectLocationAsync(LocationNodeDto? node)
+    {
+        selected = node;
+        content = [];
+        error = success = null;
+        ResetNewType();
+
+        if (node is not null && node.Children.Count == 0)
+        {
+            try
+            {
+                content = await Api.GetLocationContentAsync(node.Id);
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                error = ex.Message;
+            }
+        }
+    }
+
+    private void ResetNewType()
+    {
+        var allowed = AllowedChildTypes;
+        if (allowed.Count > 0 && !allowed.Contains(newType))
+            newType = allowed[0];
+        if (selected is null)
+            newType = LocationType.Rack;
+    }
+
+    private async Task CreateWarehouseAsync()
+    {
+        error = success = null;
+        try
+        {
+            var created = await Api.CreateWarehouseAsync(new CreateWarehouseRequest(newWarehouseCode ?? "", newWarehouseName ?? "", null));
+            newWarehouseCode = newWarehouseName = null;
+            await LoadWarehousesAsync();
+            await SelectWarehouseAsync(warehouses.First(w => w.Id == created.Id));
+            success = $"Склад {created.Code} создан.";
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task AddLocationAsync()
+    {
+        if (warehouse is null) return;
+        error = success = null;
+        try
+        {
+            var created = await Api.AddLocationAsync(warehouse.Id,
+                new CreateLocationRequest(selected?.Id, newType, newCode ?? "", newName));
+            newCode = newName = null;
+            await ReloadTreeAsync();
+            success = $"Добавлено: {created.FullCode}";
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private static LocationNodeDto? Find(IEnumerable<LocationNodeDto> nodes, int id)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == id) return node;
+            if (Find(node.Children, id) is { } found) return found;
+        }
+        return null;
+    }
+}

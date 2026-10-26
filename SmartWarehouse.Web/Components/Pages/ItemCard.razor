@@ -1,0 +1,208 @@
+@page "/items/{Id:int}"
+@inject ApiClient Api
+
+<PageTitle>@(item?.Name ?? "Позиция") — склад</PageTitle>
+
+<Alert Error="@error" Success="@success" />
+
+@if (item is not null)
+{
+    <div class="page-head">
+        <h1>@item.Name</h1>
+        @if (!item.IsActive)
+        {
+            <span class="tag tag-neutral">неактивна</span>
+        }
+        <span class="spacer"></span>
+        <a class="btn" href="/items/@item.Id/edit">Изменить</a>
+    </div>
+
+    <div class="panel">
+        <div class="item-head">
+            <div>
+                <div class="item-photo">
+                    @if (Ui.ImageUrl(item.Id, item.ImageVersion) is { } url)
+                    {
+                        <img src="@url" alt="Фото: @item.Name" />
+                    }
+                    else
+                    {
+                        <span>Нет фото</span>
+                    }
+                </div>
+                <div style="margin-top: .6rem">
+                    <label for="photo">@(item.ImageVersion is null ? "Загрузить фото" : "Заменить фото") (JPEG, PNG, WebP, до 5 МБ)</label>
+                    <InputFile id="photo" class="file-input" accept="image/jpeg,image/png,image/webp" OnChange="UploadAsync" disabled="@busy" />
+                    @if (item.ImageVersion is not null)
+                    {
+                        <div style="margin-top: .4rem">
+                            <button class="btn btn-danger btn-sm" type="button" @onclick="DeleteImageAsync" disabled="@busy">Удалить фото</button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <dl class="props">
+                <dt>Артикул</dt>
+                <dd class="mono">@item.Sku</dd>
+                <dt>Категория</dt>
+                <dd>@(item.CategoryName ?? "—")</dd>
+                <dt>Единица</dt>
+                <dd>@item.UnitCode</dd>
+                <dt>Минимум</dt>
+                <dd>@Ui.Qty(item.MinStock)</dd>
+                <dt>Максимум</dt>
+                <dd>@(item.MaxStock is { } max ? Ui.Qty(max) : "—")</dd>
+                <dt>Всего на складе</dt>
+                <dd>
+                    <strong>@Ui.Qty(Total) @item.UnitCode</strong>
+                    @if (Total < item.MinStock)
+                    {
+                        <span class="tag tag-warn">ниже минимума</span>
+                    }
+                </dd>
+                @if (!string.IsNullOrWhiteSpace(item.Description))
+                {
+                    <dt>Описание</dt>
+                    <dd style="white-space: pre-line">@item.Description</dd>
+                }
+            </dl>
+        </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 1rem">
+        <div>
+            <h2 style="margin-top: 0">Остатки по местам</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Место</th><th class="num">Количество</th></tr></thead>
+                    <tbody>
+                        @foreach (var b in balances)
+                        {
+                            <tr>
+                                <td class="mono">@b.LocationCode</td>
+                                <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (balances.Count == 0)
+                {
+                    <div class="empty">На складе нет.</div>
+                }
+            </div>
+        </div>
+
+        <div>
+            <h2 style="margin-top: 0">История движений</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Документ</th><th>Дата</th><th>Откуда → куда</th><th class="num">Кол-во</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in movements)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="mono" href="/documents/@m.DocumentId">@m.DocumentNumber</a><br />
+                                    <span class="tag @Ui.DocTypeClass(m.Type)">@Ui.DocType(m.Type)</span>
+                                </td>
+                                <td>@Ui.Date(m.OccurredAt)</td>
+                                <td class="mono">@(m.FromLocation ?? "—") → @(m.ToLocation ?? "—")</td>
+                                <td class="num">@Ui.Qty(m.Quantity)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (movements.Count == 0)
+                {
+                    <div class="empty">Движений не было.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ItemDto? item;
+    private List<StockBalanceDto> balances = [];
+    private List<MovementDto> movements = [];
+    private bool busy;
+    private string? error;
+    private string? success;
+
+    private decimal Total => balances.Sum(b => b.Quantity);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            item = await Api.GetItemAsync(Id);
+            balances = await Api.GetBalancesAsync(Id);
+            movements = await Api.GetMovementsAsync(Id, 50);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        const long maxBytes = 5 * 1024 * 1024;
+        error = success = null;
+
+        var file = e.File;
+        if (file.Size > maxBytes)
+        {
+            error = "Файл больше 5 МБ. Уменьшите фото и попробуйте снова.";
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            using var buffer = new MemoryStream();
+            await using (var stream = file.OpenReadStream(maxBytes))
+            {
+                await stream.CopyToAsync(buffer);
+            }
+
+            item = await Api.UploadItemImageAsync(Id, buffer.ToArray(), file.Name, file.ContentType);
+            success = "Фото сохранено.";
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or IOException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteImageAsync()
+    {
+        error = success = null;
+        busy = true;
+        try
+        {
+            await Api.DeleteItemImageAsync(Id);
+            item = await Api.GetItemAsync(Id);
+            success = "Фото удалено.";
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

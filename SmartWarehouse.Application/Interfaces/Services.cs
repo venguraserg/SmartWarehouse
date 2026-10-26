@@ -38,6 +38,19 @@ public interface ICatalogService
     Task<ItemDto> GetItemAsync(int id, CancellationToken ct = default);
 
     Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default);
+
+    Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default);
+
+    /// <summary>Загружает или заменяет фото позиции. Формат определяется по содержимому файла.</summary>
+    Task<ItemDto> SetImageAsync(int itemId, byte[] data, CancellationToken ct = default);
+
+    Task<ItemImageDto> GetImageAsync(int itemId, CancellationToken ct = default);
+
+    Task DeleteImageAsync(int itemId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<EquipmentDto>> ListEquipmentAsync(CancellationToken ct = default);
+
+    Task<EquipmentDto> CreateEquipmentAsync(CreateEquipmentRequest request, CancellationToken ct = default);
 }
 
 public interface ILocationService

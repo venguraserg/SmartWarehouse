@@ -1,0 +1,36 @@
+@* Таблица документов (список, обзор). *@
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Номер</th>
+                <th>Тип</th>
+                <th>Дата</th>
+                <th>Основание</th>
+                <th>Кто провёл</th>
+                <th class="num">Строк</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var doc in Documents)
+            {
+                <tr>
+                    <td class="mono"><a href="/documents/@doc.Id">@doc.Number</a></td>
+                    <td><span class="tag @Ui.DocTypeClass(doc.Type)">@Ui.DocType(doc.Type)</span></td>
+                    <td>@Ui.Date(doc.OccurredAt)</td>
+                    <td>@doc.ExternalNumber</td>
+                    <td>@doc.PerformedBy</td>
+                    <td class="num">@doc.LineCount</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (Documents.Count == 0)
+    {
+        <div class="empty">Документов пока нет.</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DocumentSummaryDto> Documents { get; set; } = [];
+}

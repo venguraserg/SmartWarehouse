@@ -1,0 +1,26 @@
+@* Узел дерева мест хранения (рекурсивный). *@
+<li>
+    <button type="button" class="tree-node @(Node.Id == SelectedId ? "selected" : null)" @onclick="() => OnSelect.InvokeAsync(Node)">
+        <span class="tree-type">@Ui.LocType(Node.Type)</span>
+        <span class="mono">@Node.Code</span>
+        @if (!string.IsNullOrEmpty(Node.Name))
+        {
+            <span class="muted">@Node.Name</span>
+        }
+    </button>
+    @if (Node.Children.Count > 0)
+    {
+        <ul>
+            @foreach (var child in Node.Children)
+            {
+                <LocationNode Node="child" SelectedId="SelectedId" OnSelect="OnSelect" />
+            }
+        </ul>
+    }
+</li>
+
+@code {
+    [Parameter, EditorRequired] public LocationNodeDto Node { get; set; } = null!;
+    [Parameter] public int? SelectedId { get; set; }
+    [Parameter] public EventCallback<LocationNodeDto> OnSelect { get; set; }
+}

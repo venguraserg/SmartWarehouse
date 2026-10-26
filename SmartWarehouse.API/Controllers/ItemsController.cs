@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
+using SmartWarehouse.Domain.Exceptions;
 
 namespace SmartWarehouse.API.Controllers;
 
@@ -21,6 +23,38 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     {
         var item = await catalog.CreateItemAsync(request, ct);
         return CreatedAtAction(nameof(Get), new { id = item.Id }, item);
+    }
+
+    [HttpPut("{id:int}")]
+    public Task<ItemDto> Update(int id, UpdateItemRequest request, CancellationToken ct) =>
+        catalog.UpdateItemAsync(id, request, ct);
+
+    /// <summary>Фото позиции.</summary>
+    [HttpGet("{id:int}/image")]
+    public async Task<IActionResult> GetImage(int id, CancellationToken ct)
+    {
+        var image = await catalog.GetImageAsync(id, ct);
+        return File(image.Data, image.ContentType);
+    }
+
+    /// <summary>Загрузить или заменить фото (multipart/form-data, поле «file»; JPEG, PNG или WebP до 5 МБ).</summary>
+    [HttpPut("{id:int}/image")]
+    [RequestSizeLimit(ImageRules.MaxBytes + 64 * 1024)]
+    public async Task<ItemDto> SetImage(int id, IFormFile file, CancellationToken ct)
+    {
+        if (file.Length > ImageRules.MaxBytes)
+            throw new DomainException($"Изображение больше {ImageRules.MaxBytes / 1024 / 1024} МБ.");
+
+        using var buffer = new MemoryStream((int)file.Length);
+        await file.CopyToAsync(buffer, ct);
+        return await catalog.SetImageAsync(id, buffer.ToArray(), ct);
+    }
+
+    [HttpDelete("{id:int}/image")]
+    public async Task<IActionResult> DeleteImage(int id, CancellationToken ct)
+    {
+        await catalog.DeleteImageAsync(id, ct);
+        return NoContent();
     }
 
     [HttpGet("{id:int}/balances")]

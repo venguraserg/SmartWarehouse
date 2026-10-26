@@ -1,0 +1,40 @@
+@inherits LayoutComponentBase
+
+<div class="app">
+    <aside class="sidebar">
+        <a class="brand" href="/">
+            <span class="brand-mark">SW</span>
+            <span class="brand-text">Склад запчастей</span>
+        </a>
+
+        <button class="menu-toggle" type="button" @onclick="() => menuOpen = !menuOpen" aria-label="Меню">☰</button>
+
+        <nav class="nav @(menuOpen ? "open" : null)" @onclick="() => menuOpen = false">
+            <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
+
+            <div class="nav-group">Учёт</div>
+            <NavLink href="/documents">Документы</NavLink>
+            <NavLink href="/documents/new/Receipt">+ Приход</NavLink>
+            <NavLink href="/documents/new/Issue">− Выдача</NavLink>
+            <NavLink href="/documents/new/Transfer">⇄ Перемещение</NavLink>
+
+            <div class="nav-group">Данные</div>
+            <NavLink href="/items">Номенклатура</NavLink>
+            <NavLink href="/warehouses">Склады и места</NavLink>
+            <NavLink href="/references">Справочники</NavLink>
+        </nav>
+    </aside>
+
+    <main class="content">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Произошла ошибка. <a href="." class="reload">Обновить страницу</a>
+    <span class="dismiss">✕</span>
+</div>
+
+@code {
+    private bool menuOpen;
+}

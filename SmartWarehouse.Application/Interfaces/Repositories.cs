@@ -78,6 +78,27 @@ public interface ICatalogRepository
 
     void AddItem(Item item);
 
+    /// <summary>Позиция для изменения (отслеживаемая сущность).</summary>
+    Task<Item?> GetItemForUpdateAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Были ли по позиции движения (тогда нельзя менять единицу измерения).</summary>
+    Task<bool> ItemHasMovementsAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Фото позиции (отслеживаемая сущность) или null.</summary>
+    Task<ItemImage?> GetImageAsync(int itemId, CancellationToken ct = default);
+
+    void AddImage(ItemImage image);
+
+    void RemoveImage(ItemImage image);
+
+    Task<IReadOnlyList<Equipment>> ListEquipmentAsync(CancellationToken ct = default);
+
+    Task<bool> EquipmentExistsAsync(int id, CancellationToken ct = default);
+
+    Task<bool> EquipmentCodeExistsAsync(string code, CancellationToken ct = default);
+
+    void AddEquipment(Equipment equipment);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 

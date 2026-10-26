@@ -1,0 +1,58 @@
+@page "/documents"
+@inject ApiClient Api
+
+<PageTitle>Документы — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Документы</h1>
+    <span class="spacer"></span>
+    <div class="actions">
+        <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
+        <a class="btn" href="/documents/new/Issue">Выдача</a>
+        <a class="btn" href="/documents/new/Transfer">Перемещение</a>
+        <a class="btn" href="/documents/new/WriteOff">Списание</a>
+        <a class="btn" href="/documents/new/Adjustment">Корректировка</a>
+    </div>
+</div>
+
+<div class="toolbar">
+    <select @bind="filter" @bind:after="LoadAsync" style="max-width: 220px">
+        <option value="">Все типы</option>
+        @foreach (var t in Enum.GetValues<MovementType>())
+        {
+            <option value="@t">@Ui.DocType(t)</option>
+        }
+    </select>
+</div>
+
+<Alert Error="@error" />
+
+@if (documents is not null)
+{
+    <DocumentTable Documents="documents" />
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    private List<DocumentSummaryDto>? documents;
+    private MovementType? filter;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            documents = await Api.GetDocumentsAsync(filter, 200);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}

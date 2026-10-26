@@ -1,0 +1,177 @@
+@page "/references"
+@inject ApiClient Api
+
+<PageTitle>Справочники — склад</PageTitle>
+
+<h1>Справочники</h1>
+
+<Alert Error="@error" Success="@success" />
+
+<div class="grid-2">
+    <section class="panel">
+        <h2 style="margin-top: 0">Категории</h2>
+        <form class="inline-form" @onsubmit="AddCategoryAsync" @onsubmit:preventDefault>
+            <div class="field">
+                <label for="cat-name">Новая категория</label>
+                <input id="cat-name" type="text" @bind="categoryName" maxlength="128" placeholder="Подшипники" />
+            </div>
+            <button class="btn btn-primary" type="submit">Добавить</button>
+        </form>
+        <ul style="margin: 1rem 0 0; padding-left: 1.1rem">
+            @foreach (var c in categories)
+            {
+                <li>@c.Name</li>
+            }
+        </ul>
+        @if (categories.Count == 0)
+        {
+            <p class="muted">Категорий пока нет.</p>
+        }
+    </section>
+
+    <section class="panel">
+        <h2 style="margin-top: 0">Единицы измерения</h2>
+        <form class="inline-form" @onsubmit="AddUnitAsync" @onsubmit:preventDefault>
+            <div class="field" style="max-width: 110px">
+                <label for="unit-code">Обозначение</label>
+                <input id="unit-code" type="text" @bind="unitCode" maxlength="16" placeholder="пар" />
+            </div>
+            <div class="field">
+                <label for="unit-name">Название</label>
+                <input id="unit-name" type="text" @bind="unitName" maxlength="64" placeholder="пара" />
+            </div>
+            <label class="checkbox" style="margin-bottom: .5rem"><input type="checkbox" @bind="unitFractional" /> дробная</label>
+            <button class="btn btn-primary" type="submit">Добавить</button>
+        </form>
+        <table style="margin-top: 1rem">
+            <thead><tr><th>Обозн.</th><th>Название</th><th>Количество</th></tr></thead>
+            <tbody>
+                @foreach (var u in units)
+                {
+                    <tr>
+                        <td>@u.Code</td>
+                        <td>@u.Name</td>
+                        <td class="muted">@(u.IsFractional ? "дробное" : "целое")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<section class="panel" style="margin-top: 1rem">
+    <h2 style="margin-top: 0">Оборудование</h2>
+    <p class="muted">Участки, установки и узлы — на них оформляется выдача запчастей.</p>
+    <form class="inline-form" @onsubmit="AddEquipmentAsync" @onsubmit:preventDefault>
+        <div class="field">
+            <label for="eq-parent">Входит в</label>
+            <select id="eq-parent" @bind="equipmentParentId">
+                <option value="">— верхний уровень —</option>
+                @foreach (var e in equipmentTree)
+                {
+                    <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="max-width: 160px">
+            <label for="eq-code">Код</label>
+            <input id="eq-code" type="text" @bind="equipmentCode" maxlength="64" placeholder="L1-P1" />
+        </div>
+        <div class="field">
+            <label for="eq-name">Наименование</label>
+            <input id="eq-name" type="text" @bind="equipmentName" maxlength="256" placeholder="Насос центробежный" />
+        </div>
+        <button class="btn btn-primary" type="submit">Добавить</button>
+    </form>
+
+    <div class="table-wrap" style="margin-top: 1rem">
+        <table>
+            <thead><tr><th>Код</th><th>Наименование</th></tr></thead>
+            <tbody>
+                @foreach (var e in equipmentTree)
+                {
+                    <tr>
+                        <td class="mono" style="@Indent(e.Depth)">@e.Item.Code</td>
+                        <td>@e.Item.Name</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (equipmentTree.Count == 0)
+        {
+            <div class="empty">Оборудование не заведено.</div>
+        }
+    </div>
+</section>
+
+@code {
+    private List<CategoryDto> categories = [];
+    private List<UnitDto> units = [];
+    private List<(EquipmentDto Item, int Depth)> equipmentTree = [];
+
+    private string? categoryName;
+    private string? unitCode;
+    private string? unitName;
+    private bool unitFractional;
+    private int? equipmentParentId;
+    private string? equipmentCode;
+    private string? equipmentName;
+
+    private string? error;
+    private string? success;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private static string Indent(int depth) =>
+        FormattableString.Invariant($"padding-left: {0.75 + depth * 1.25}rem");
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            categories = await Api.GetCategoriesAsync();
+            units = await Api.GetUnitsAsync();
+            equipmentTree = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private Task AddCategoryAsync() => RunAsync(async () =>
+    {
+        await Api.CreateCategoryAsync(new CreateCategoryRequest(categoryName ?? "", null));
+        success = $"Категория «{categoryName}» добавлена.";
+        categoryName = null;
+    });
+
+    private Task AddUnitAsync() => RunAsync(async () =>
+    {
+        await Api.CreateUnitAsync(new CreateUnitRequest(unitCode ?? "", unitName ?? "", unitFractional));
+        success = $"Единица «{unitCode}» добавлена.";
+        unitCode = unitName = null;
+        unitFractional = false;
+    });
+
+    private Task AddEquipmentAsync() => RunAsync(async () =>
+    {
+        await Api.CreateEquipmentAsync(new CreateEquipmentRequest(equipmentParentId, equipmentCode ?? "", equipmentName ?? ""));
+        success = $"Оборудование «{equipmentCode}» добавлено.";
+        equipmentCode = equipmentName = null;
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        error = success = null;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}
