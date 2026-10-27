@@ -17,14 +17,14 @@
 }
 <Alert Error="@error" />
 
-<EditForm Model="Input" FormName="login" OnSubmit="LoginAsync">
+<EditForm Model="Input!" FormName="login" OnSubmit="LoginAsync">
     <div class="field">
         <label for="login">Логин</label>
-        <InputText id="login" @bind-Value="Input.Login" autocomplete="username" autofocus />
+        <InputText id="login" @bind-Value="Input!.Login" autocomplete="username" autofocus />
     </div>
     <div class="field">
         <label for="password">Пароль</label>
-        <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="current-password" />
+        <InputText id="password" type="password" @bind-Value="Input!.Password" autocomplete="current-password" />
     </div>
     <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center">Войти</button>
 </EditForm>
@@ -34,7 +34,9 @@
 @code {
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromForm] private LoginForm Input { get; set; } = new();
+    [SupplyParameterFromForm] private LoginForm? Input { get; set; }
+
+    protected override void OnInitialized() => Input ??= new LoginForm();
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery] private int? Expired { get; set; }
 
@@ -45,7 +47,7 @@
         LoginResponse login;
         try
         {
-            login = await Api.LoginAsync(new LoginRequest(Input.Login ?? "", Input.Password ?? ""));
+            login = await Api.LoginAsync(new LoginRequest(Input!.Login ?? "", Input.Password ?? ""));
         }
         catch (ApiException ex)
         {
