@@ -57,8 +57,18 @@ public class ApiClient(HttpClient http)
     public Task<EmployeeDto> UpdateEmployeeAsync(int id, SaveEmployeeRequest request, CancellationToken ct = default) =>
         SendAsync<EmployeeDto>(HttpMethod.Put, $"api/employees/{id}", request, ct);
 
-    public Task<List<EmployeeIssueDto>> GetEmployeeIssuesAsync(int id, int take = 200, CancellationToken ct = default) =>
-        GetAsync<List<EmployeeIssueDto>>($"api/employees/{id}/issues?take={take}", ct);
+    public Task<List<EmployeeMovementDto>> GetEmployeeHistoryAsync(int id, int take = 200, CancellationToken ct = default) =>
+        GetAsync<List<EmployeeMovementDto>>($"api/employees/{id}/history?take={take}", ct);
+
+    /// <summary>Что числится за сотрудниками (подотчёт). Фильтры необязательны.</summary>
+    public Task<List<CustodyRowDto>> GetCustodyAsync(int? employeeId = null, int? itemId = null, string? search = null, CancellationToken ct = default)
+    {
+        var parts = new List<string>();
+        if (employeeId is not null) parts.Add($"employeeId={employeeId}");
+        if (itemId is not null) parts.Add($"itemId={itemId}");
+        if (!string.IsNullOrWhiteSpace(search)) parts.Add($"search={Uri.EscapeDataString(search.Trim())}");
+        return GetAsync<List<CustodyRowDto>>(parts.Count == 0 ? "api/custody" : $"api/custody?{string.Join('&', parts)}", ct);
+    }
 
     // ---------- Номенклатура ----------
 
@@ -170,6 +180,14 @@ public class ApiClient(HttpClient http)
 
     public Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default) =>
         GetAsync<DocumentDto>($"api/documents/{id}", ct);
+
+    /// <summary>Акт на списание (PDF).</summary>
+    public async Task<byte[]> GetWriteOffActAsync(long documentId, CancellationToken ct = default)
+    {
+        using var response = await http.GetAsync($"api/documents/{documentId}/act", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
 
     public Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default) =>
         SendAsync<DocumentDto>(HttpMethod.Post, "api/documents", request, ct);

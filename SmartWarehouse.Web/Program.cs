@@ -36,6 +36,20 @@ app.MapGet("/item-image/{id:int}", async (int id, ApiClient api, CancellationTok
     return image is null ? Results.NotFound() : Results.File(image.Data, image.ContentType);
 });
 
+// Акт на списание открывается в браузере как PDF (печать или «Сохранить как PDF»).
+app.MapGet("/document-act/{id:long}", async (long id, ApiClient api, CancellationToken ct) =>
+{
+    try
+    {
+        var pdf = await api.GetWriteOffActAsync(id, ct);
+        return Results.File(pdf, "application/pdf");
+    }
+    catch (ApiException ex)
+    {
+        return Results.Text(ex.Message, "text/plain; charset=utf-8", statusCode: (int)ex.Status);
+    }
+});
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

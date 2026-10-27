@@ -6,6 +6,10 @@
 <PageTitle>@Title — склад</PageTitle>
 
 <h1>@Title</h1>
+@if (Hint is not null)
+{
+    <p class="muted" style="margin-top: -.5rem">@Hint</p>
+}
 
 <Alert Error="@error" />
 
@@ -25,17 +29,43 @@ else
     <form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
         <div class="panel">
             <div class="field-row">
+                @if (UsesAccountable)
+                {
+                    <div class="field">
+                        <label for="accountable">@Ui.AccountableLabel(type.Value) <span class="req">*</span></label>
+                        <select id="accountable" @bind="accountableId" @bind:after="OnAccountableChangedAsync"
+                                class="@(AccountableError is not null && showErrors ? "invalid" : null)">
+                            <option value="">— выберите сотрудника —</option>
+                            @foreach (var e in AccountableChoices)
+                            {
+                                <option value="@e.Id">@EmployeeLabel(e)@(e.IsActive ? "" : " (не работает)")</option>
+                            }
+                        </select>
+                        @if (showErrors)
+                        {
+                            <FieldError Message="@AccountableError" />
+                        }
+                        @if (type == MovementType.Issue && activeEmployees.Count == 0)
+                        {
+                            <div class="field-hint">Сначала заведите <a href="/employees">сотрудников</a>.</div>
+                        }
+                        else if (type != MovementType.Issue && accountableId is not null && custody.Count == 0)
+                        {
+                            <div class="field-hint">За этим сотрудником ничего не числится.</div>
+                        }
+                    </div>
+                }
                 <div class="field">
                     <label for="ext">@ExternalLabel</label>
                     <input id="ext" type="text" @bind="externalNumber" maxlength="128" />
                 </div>
                 <div class="field">
-                    <label for="who">Кто проводит</label>
-                    @if (employees.Count > 0)
+                    <label for="who">@(type == MovementType.WriteOff ? "Кто оформляет (кладовщик)" : "Кто проводит")</label>
+                    @if (activeEmployees.Count > 0)
                     {
                         <select id="who" @bind="performedById">
                             <option value="">— не указан —</option>
-                            @foreach (var e in employees)
+                            @foreach (var e in activeEmployees)
                             {
                                 <option value="@e.Id">@EmployeeLabel(e)</option>
                             }
@@ -44,22 +74,8 @@ else
                     else
                     {
                         <input id="who" type="text" @bind="performedBy" maxlength="128" placeholder="Фамилия И.О." />
-                        <div class="field-hint">Заведите <a href="/employees">сотрудников</a>, чтобы выбирать из списка.</div>
                     }
                 </div>
-                @if (type == MovementType.Issue && employees.Count > 0)
-                {
-                    <div class="field">
-                        <label for="to-whom">Кому выдано</label>
-                        <select id="to-whom" @bind="receivedById">
-                            <option value="">— не указано —</option>
-                            @foreach (var e in employees)
-                            {
-                                <option value="@e.Id">@EmployeeLabel(e)</option>
-                            }
-                        </select>
-                    </div>
-                }
                 @if (UsesEquipment)
                 {
                     <div class="field">
@@ -75,15 +91,16 @@ else
                 }
             </div>
             <div class="field" style="margin-bottom: 0">
-                <label for="comment">Комментарий</label>
-                <input id="comment" type="text" @bind="comment" maxlength="1000" />
+                <label for="comment">@(type == MovementType.WriteOff ? "Причина списания" : "Комментарий")</label>
+                <input id="comment" type="text" @bind="comment" maxlength="1000"
+                       placeholder="@(type == MovementType.WriteOff ? "Израсходовано при ремонте, брак, износ…" : null)" />
             </div>
         </div>
 
         <h2>Строки</h2>
 
         <datalist id="items-list">
-            @foreach (var label in itemsByLabel.Keys)
+            @foreach (var label in ItemChoices)
             {
                 <option value="@label"></option>
             }
@@ -123,9 +140,7 @@ else
                                        placeholder="Начните вводить…" class="@(ShowLineError(line) ? "invalid" : null)" />
                                 @if (line.Item is not null)
                                 {
-                                    <div class="line-hint">
-                                        Всего на складе: @Ui.Qty(line.Available.Sum(a => a.Quantity)) @line.Item.UnitCode
-                                    </div>
+                                    <div class="line-hint">@StockHint(line)</div>
                                 }
                                 else if (!string.IsNullOrWhiteSpace(line.ItemText))
                                 {
@@ -201,6 +216,10 @@ else
 
         <div class="actions" style="margin-top: .75rem">
             <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+            @if (FromEmployee && custody.Count > 0)
+            {
+                <button class="btn" type="button" @onclick="FillAllCustodyAsync">Заполнить всем, что числится</button>
+            }
         </div>
 
         @if (leaves.Count == 0 && ShowToColumn)
@@ -210,15 +229,24 @@ else
             </div>
         }
 
-        @if (showErrors && LinesWithErrors.Count > 0)
+        @if (showErrors && (LinesWithErrors.Count > 0 || AccountableError is not null))
         {
             <div class="alert alert-error" style="margin-top: 1rem">
-                Проверьте строки: @(string.Join(", ", LinesWithErrors)). Ошибки показаны под позициями.
+                @if (AccountableError is not null)
+                {
+                    <div>@AccountableError</div>
+                }
+                @if (LinesWithErrors.Count > 0)
+                {
+                    <div>Проверьте строки: @(string.Join(", ", LinesWithErrors)). Ошибки показаны под позициями.</div>
+                }
             </div>
         }
 
         <div class="actions" style="margin-top: 1.5rem">
-            <button class="btn btn-primary" type="submit" disabled="@saving">Провести документ</button>
+            <button class="btn btn-primary" type="submit" disabled="@saving">
+                @(type == MovementType.WriteOff ? "Списать и сформировать акт" : "Провести документ")
+            </button>
             <a class="btn" href="/documents">Отмена</a>
         </div>
         <p class="muted">Документ проводится целиком: если в какой-то строке ошибка или не хватает остатка, не изменится ничего.</p>
@@ -228,59 +256,98 @@ else
 @code {
     [Parameter] public string Kind { get; set; } = "";
 
+    /// <summary>Сотрудник подставляется сразу (переход «Списать» / «Вернуть» из карточки сотрудника).</summary>
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
+
     private MovementType? type;
     private bool loaded;
     private bool saving;
+    private bool showErrors;
     private string? error;
 
     private Dictionary<string, ItemDto> itemsByLabel = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
-    private bool showErrors;
     private List<LocationNodeDto> leaves = [];
     private List<(EquipmentDto Item, int Depth)> equipment = [];
+    private List<EmployeeDto> allEmployees = [];
+    private List<EmployeeDto> activeEmployees = [];
+    private HashSet<int> custodyHolders = [];
 
     private string? externalNumber;
     private string? performedBy;
     private int? performedById;
-    private int? receivedById;
-    private List<EmployeeDto> employees = [];
+    private int? accountableId;
     private string? comment;
     private int? equipmentId;
     private List<LineModel> lines = [new()];
 
+    /// <summary>Что числится за выбранным сотрудником: позиция → количество (для списания и возврата).</summary>
+    private Dictionary<int, decimal> custody = new();
+
+    // ---------- Тип документа ----------
+
     private string Title => type switch
     {
         MovementType.Receipt => "Приход",
-        MovementType.Issue => "Выдача",
+        MovementType.Issue => "Выдача сотруднику",
         MovementType.Transfer => "Перемещение",
-        MovementType.WriteOff => "Списание",
+        MovementType.WriteOff => "Списание с сотрудника",
         MovementType.Adjustment => "Корректировка остатков",
+        MovementType.Return => "Возврат на склад",
         _ => "Новый документ"
+    };
+
+    private string? Hint => type switch
+    {
+        MovementType.Issue => "Товар уходит из ячейки и числится за сотрудником, пока его не спишут или не вернут.",
+        MovementType.WriteOff => "Списывается то, что числится за сотрудником. После проведения формируется акт на списание (PDF).",
+        MovementType.Return => "Неиспользованное возвращается от сотрудника в ячейку склада.",
+        MovementType.Adjustment => "Исправление остатков в ячейках по результатам пересчёта (в т.ч. брак, найденный на складе).",
+        _ => null
     };
 
     private string ExternalLabel => type switch
     {
         MovementType.Receipt => "Накладная поставщика",
         MovementType.Issue => "Заявка / наряд",
-        MovementType.WriteOff => "Акт списания",
+        MovementType.WriteOff => "Наряд / основание",
         MovementType.Adjustment => "Акт инвентаризации",
         _ => "Основание"
     };
 
-    private static string EmployeeLabel(EmployeeDto e) =>
-        string.IsNullOrEmpty(e.Position) ? e.ShortName : $"{e.ShortName} — {e.Position}";
-
+    private bool UsesAccountable => type is MovementType.Issue or MovementType.WriteOff or MovementType.Return;
+    private bool FromEmployee => type is MovementType.WriteOff or MovementType.Return;
     private bool UsesEquipment => type is MovementType.Issue or MovementType.WriteOff;
-    private bool ShowFromColumn => type is MovementType.Issue or MovementType.WriteOff or MovementType.Transfer or MovementType.Adjustment;
-    private bool ShowToColumn => type is MovementType.Receipt or MovementType.Transfer or MovementType.Adjustment;
+    private bool ShowFromColumn => type is MovementType.Issue or MovementType.Transfer or MovementType.Adjustment;
+    private bool ShowToColumn => type is MovementType.Receipt or MovementType.Transfer or MovementType.Adjustment or MovementType.Return;
 
     private bool NeedsFrom(LineModel line) =>
-        type is MovementType.Issue or MovementType.WriteOff or MovementType.Transfer
+        type is MovementType.Issue or MovementType.Transfer
         || (type == MovementType.Adjustment && line.Minus);
 
     private bool NeedsTo(LineModel line) =>
-        type is MovementType.Receipt or MovementType.Transfer
+        type is MovementType.Receipt or MovementType.Transfer or MovementType.Return
         || (type == MovementType.Adjustment && !line.Minus);
+
+    /// <summary>Выдавать можно только работающим; списать и вернуть — и с уволенных, если за ними что-то числится.</summary>
+    private IEnumerable<EmployeeDto> AccountableChoices =>
+        type == MovementType.Issue ? activeEmployees : allEmployees.Where(e => e.IsActive || custodyHolders.Contains(e.Id));
+
+    /// <summary>Подсказки позиций: при списании и возврате — только то, что числится за сотрудником.</summary>
+    private IEnumerable<string> ItemChoices =>
+        FromEmployee
+            ? itemsByLabel.Where(kv => custody.ContainsKey(kv.Value.Id)).Select(kv => kv.Key)
+            : itemsByLabel.Keys;
+
+    private static string EmployeeLabel(EmployeeDto e) =>
+        string.IsNullOrEmpty(e.Position) ? e.ShortName : $"{e.ShortName} — {e.Position}";
+
+    private string StockHint(LineModel line) =>
+        FromEmployee
+            ? $"За сотрудником: {Ui.Qty(CustodyOf(line))} {line.Item!.UnitCode}"
+            : $"Всего на складе: {Ui.Qty(line.Available.Sum(a => a.Quantity))} {line.Item!.UnitCode}";
+
+    // ---------- Загрузка ----------
 
     protected override async Task OnParametersSetAsync()
     {
@@ -289,34 +356,63 @@ else
         lines = [new()];
         externalNumber = comment = null;
         equipmentId = null;
-        receivedById = null;
+        accountableId = null;
+        custody = new();
         error = null;
         showErrors = false;
 
-        if (type is null || loaded)
+        if (type is null)
             return;
 
-        try
+        if (!loaded)
         {
-            var items = await Api.GetItemsAsync();
-            itemsByLabel = items
-                .Where(i => i.IsActive)
-                .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
-            leaves = await Api.GetLeafLocationsAsync();
-            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
-            fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var items = await Api.GetItemsAsync();
+                itemsByLabel = items
+                    .Where(i => i.IsActive)
+                    .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
+                leaves = await Api.GetLeafLocationsAsync();
+                equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+                fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+                allEmployees = await Api.GetEmployeesAsync(includeInactive: true);
+                activeEmployees = allEmployees.Where(e => e.IsActive).ToList();
+                custodyHolders = (await Api.GetCustodyAsync()).Select(r => r.EmployeeId).ToHashSet();
 
-            employees = await Api.GetEmployeesAsync(includeInactive: false);
-
-            // Кто проводит — как в прошлый раз на этом компьютере.
-            var lastPerformer = await Store.GetIntAsync("doc.performedById");
-            performedById = employees.Any(e => e.Id == lastPerformer) ? lastPerformer : null;
-            performedBy ??= await Store.GetAsync("doc.performedBy");
-            loaded = true;
+                // Кто проводит — как в прошлый раз на этом компьютере.
+                var lastPerformer = await Store.GetIntAsync("doc.performedById");
+                performedById = activeEmployees.Any(e => e.Id == lastPerformer) ? lastPerformer : null;
+                performedBy ??= await Store.GetAsync("doc.performedBy");
+                loaded = true;
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                error = $"Не удалось загрузить справочники: {ex.Message}";
+                return;
+            }
         }
-        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+
+        if (UsesAccountable && EmployeeParam is int employeeId && AccountableChoices.Any(e => e.Id == employeeId))
         {
-            error = $"Не удалось загрузить справочники: {ex.Message}";
+            accountableId = employeeId;
+            await OnAccountableChangedAsync();
+        }
+    }
+
+    /// <summary>Выбран сотрудник: для списания и возврата загружаем, что за ним числится.</summary>
+    private async Task OnAccountableChangedAsync()
+    {
+        custody = new();
+        if (FromEmployee && accountableId is int id)
+        {
+            try
+            {
+                custody = (await Api.GetCustodyAsync(employeeId: id)).ToDictionary(r => r.ItemId, r => r.Quantity);
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                error = ex.Message;
+            }
         }
     }
 
@@ -343,13 +439,17 @@ else
             error = ex.Message;
         }
 
+        // При списании и возврате по умолчанию — всё, что числится за сотрудником по этой позиции.
+        if (FromEmployee && line.Quantity == 1 && CustodyOf(line) > 0)
+            line.Quantity = CustodyOf(line);
+
         await PrefillLocationsAsync(line);
     }
 
     /// <summary>
     /// Предзаполнение мест в строке:
     /// «Откуда» — место, где этой позиции больше всего;
-    /// «Куда» (приход, корректировка «+») — место, где позиция уже лежит, иначе ячейка прошлого прихода.
+    /// «Куда» (приход, возврат, корректировка «+») — место, где позиция уже лежит, иначе ячейка прошлого прихода.
     /// Перемещение «куда» не подставляем: его пользователь выбирает сам.
     /// </summary>
     private async Task PrefillLocationsAsync(LineModel line)
@@ -377,7 +477,38 @@ else
         StateHasChanged();
     }
 
-    // ---------- Проверка строк (до отправки на сервер) ----------
+    /// <summary>Строки по всему, что числится за сотрудником (удобно при увольнении или закрытии наряда).</summary>
+    private async Task FillAllCustodyAsync()
+    {
+        lines = [];
+        foreach (var (itemId, quantity) in custody)
+        {
+            var label = itemsByLabel.FirstOrDefault(kv => kv.Value.Id == itemId).Key;
+            if (label is null) continue;
+
+            var line = new LineModel { ItemText = label, Quantity = quantity };
+            lines.Add(line);
+            await OnItemChangedAsync(line);
+        }
+        if (lines.Count == 0)
+            lines.Add(new LineModel());
+    }
+
+    private void AddLine() => lines.Add(new LineModel { Direction = lines.LastOrDefault()?.Direction ?? "plus" });
+
+    private void RemoveLine(LineModel line)
+    {
+        if (lines.Count > 1)
+            lines.Remove(line);
+    }
+
+    // ---------- Проверка (до отправки на сервер) ----------
+
+    private decimal CustodyOf(LineModel line) =>
+        line.Item is not null && custody.TryGetValue(line.Item.Id, out var q) ? q : 0;
+
+    private string? AccountableError =>
+        UsesAccountable && accountableId is null ? $"Укажите сотрудника: «{Ui.AccountableLabel(type!.Value)}»." : null;
 
     private bool ShowLineError(LineModel line) =>
         LineError(line) is not null && (showErrors || line.Item is not null);
@@ -394,6 +525,17 @@ else
             && line.Quantity != decimal.Truncate(line.Quantity))
             return $"«{line.Item.UnitCode}» — только целое количество.";
 
+        var above = lines.TakeWhile(l => !ReferenceEquals(l, line)).Where(l => l.Item?.Id == line.Item.Id).ToList();
+
+        if (FromEmployee && accountableId is not null)
+        {
+            if (CustodyOf(line) == 0)
+                return "За сотрудником эта позиция не числится.";
+            var left = CustodyOf(line) - above.Sum(l => l.Quantity);
+            if (line.Quantity > left)
+                return $"За сотрудником числится только {Ui.Qty(Math.Max(0, left))} {line.Item.UnitCode}.";
+        }
+
         if (NeedsFrom(line))
         {
             if (line.Available.Count == 0)
@@ -403,10 +545,7 @@ else
 
             // Учитываем другие строки этого документа, которые берут из того же места.
             var available = line.Available.FirstOrDefault(a => a.LocationId == line.FromId)?.Quantity ?? 0;
-            var takenAbove = lines
-                .TakeWhile(l => !ReferenceEquals(l, line))
-                .Where(l => l.Item?.Id == line.Item.Id && NeedsFrom(l) && l.FromId == line.FromId)
-                .Sum(l => l.Quantity);
+            var takenAbove = above.Where(l => NeedsFrom(l) && l.FromId == line.FromId).Sum(l => l.Quantity);
             if (line.Quantity > available - takenAbove)
                 return $"В этом месте есть только {Ui.Qty(Math.Max(0, available - takenAbove))} {line.Item.UnitCode}.";
         }
@@ -423,20 +562,14 @@ else
     private List<int> LinesWithErrors =>
         lines.Select((l, i) => (l, n: i + 1)).Where(x => LineError(x.l) is not null).Select(x => x.n).ToList();
 
-    private void AddLine() => lines.Add(new LineModel { Direction = lines.LastOrDefault()?.Direction ?? "plus" });
-
-    private void RemoveLine(LineModel line)
-    {
-        if (lines.Count > 1)
-            lines.Remove(line);
-    }
+    // ---------- Проведение ----------
 
     private async Task SubmitAsync()
     {
         error = null;
         showErrors = true;
 
-        if (LinesWithErrors.Count > 0)
+        if (LinesWithErrors.Count > 0 || AccountableError is not null)
             return;
 
         var request = new CreateDocumentRequest(
@@ -451,7 +584,7 @@ else
                 NeedsFrom(l) ? l.FromId : null,
                 NeedsTo(l) ? l.ToId : null)).ToList(),
             PerformedById: performedById,
-            ReceivedById: type == MovementType.Issue ? receivedById : null);
+            ReceivedById: UsesAccountable ? accountableId : null);
 
         saving = true;
         try

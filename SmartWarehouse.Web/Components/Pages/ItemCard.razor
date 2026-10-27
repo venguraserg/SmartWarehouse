@@ -53,7 +53,7 @@
                 <dd>@Ui.Qty(item.MinStock)</dd>
                 <dt>Максимум</dt>
                 <dd>@(item.MaxStock is { } max ? Ui.Qty(max) : "—")</dd>
-                <dt>Всего на складе</dt>
+                <dt>На складе</dt>
                 <dd>
                     <strong>@Ui.Qty(Total) @item.UnitCode</strong>
                     @if (Total < item.MinStock)
@@ -89,6 +89,26 @@
                 @if (balances.Count == 0)
                 {
                     <div class="empty">На складе нет.</div>
+                }
+            </div>
+
+            <h2>За сотрудниками (подотчёт)</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Сотрудник</th><th class="num">Количество</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in custody)
+                        {
+                            <tr>
+                                <td><a href="/employees/@c.EmployeeId">@c.EmployeeName</a></td>
+                                <td class="num">@Ui.Qty(c.Quantity) @item.UnitCode</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (custody.Count == 0)
+                {
+                    <div class="empty">Ни за кем не числится.</div>
                 }
             </div>
         </div>
@@ -136,6 +156,7 @@ else if (error is null)
     private ItemDto? item;
     private List<StockBalanceDto> balances = [];
     private List<MovementDto> movements = [];
+    private List<CustodyRowDto> custody = [];
     private bool busy;
     private string? error;
     private string? success;
@@ -149,6 +170,7 @@ else if (error is null)
             item = await Api.GetItemAsync(Id);
             balances = await Api.GetBalancesAsync(Id);
             movements = await Api.GetMovementsAsync(Id, 50);
+            custody = await Api.GetCustodyAsync(itemId: Id);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

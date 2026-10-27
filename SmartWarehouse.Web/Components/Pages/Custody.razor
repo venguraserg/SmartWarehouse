@@ -1,0 +1,101 @@
+@page "/custody"
+@inject ApiClient Api
+
+<PageTitle>Подотчёт — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Подотчёт</h1>
+    <span class="spacer"></span>
+    <a class="btn" href="/documents/new/Issue">− Выдать</a>
+    <a class="btn" href="/documents/new/Return">↩ Вернуть</a>
+    <a class="btn btn-primary" href="/documents/new/WriteOff">Списать</a>
+</div>
+<p class="muted" style="margin-top: -.5rem">Что выдано со склада и числится за сотрудниками — до списания или возврата.</p>
+
+<form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+    <input type="search" placeholder="Сотрудник, табельный номер, артикул или наименование" @bind="search" style="max-width: 420px" />
+    <button class="btn" type="submit">Найти</button>
+</form>
+
+<Alert Error="@error" />
+
+@if (rows is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else if (rows.Count == 0)
+{
+    <div class="panel empty">@(string.IsNullOrWhiteSpace(search) ? "За сотрудниками ничего не числится." : "Ничего не найдено.")</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 56px"></th>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th class="num">Количество</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in rows.GroupBy(r => r.EmployeeId))
+                {
+                    var first = group.First();
+                    <tr class="group-row">
+                        <td colspan="4">
+                            <div class="toolbar" style="margin: 0">
+                                <a href="/employees/@first.EmployeeId">@first.EmployeeName</a>
+                                @if (!string.IsNullOrEmpty(first.Position))
+                                {
+                                    <span class="muted">· @first.Position</span>
+                                }
+                                @if (!first.EmployeeIsActive)
+                                {
+                                    <span class="tag tag-neutral">не работает</span>
+                                }
+                                <span class="spacer"></span>
+                                <a class="btn btn-sm" href="/documents/new/Return?employee=@first.EmployeeId">Вернуть</a>
+                                <a class="btn btn-sm" href="/documents/new/WriteOff?employee=@first.EmployeeId">Списать</a>
+                            </div>
+                        </td>
+                    </tr>
+                    @foreach (var r in group)
+                    {
+                        <tr>
+                            <td><Thumb ItemId="r.ItemId" ImageVersion="r.ImageVersion" /></td>
+                            <td class="mono"><a href="/items/@r.ItemId">@r.Sku</a></td>
+                            <td>@r.ItemName</td>
+                            <td class="num">@Ui.Qty(r.Quantity) @r.UnitCode</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<CustodyRowDto>? rows;
+    private string? search;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            rows = await Api.GetCustodyAsync(search: search);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}
