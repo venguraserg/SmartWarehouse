@@ -34,20 +34,18 @@
 @code {
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromForm] private LoginForm? Input { get; set; }
+    [SupplyParameterFromForm] private LoginForm Input { get; set; } = new();
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery] private int? Expired { get; set; }
 
     private string? error;
-
-    protected override void OnInitialized() => Input ??= new LoginForm();
 
     private async Task LoginAsync()
     {
         LoginResponse login;
         try
         {
-            login = await Api.LoginAsync(new LoginRequest(Input!.Login ?? "", Input.Password ?? ""));
+            login = await Api.LoginAsync(new LoginRequest(Input.Login ?? "", Input.Password ?? ""));
         }
         catch (ApiException ex)
         {
