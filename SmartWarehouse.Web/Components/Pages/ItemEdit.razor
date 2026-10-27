@@ -1,6 +1,7 @@
 @page "/items/new"
 @page "/items/{Id:int}/edit"
 @inject ApiClient Api
+@inject BrowserStore Store
 @inject NavigationManager Nav
 
 <PageTitle>@(IsNew ? "Новая позиция" : "Изменение позиции") — склад</PageTitle>
@@ -14,10 +15,16 @@
     <form class="panel" style="max-width: 760px" @onsubmit="SaveAsync" @onsubmit:preventDefault>
         <div class="field-row">
             <div class="field">
-                <label for="sku">Артикул *</label>
+                <label for="sku">Артикул <span class="req">*</span></label>
                 @if (IsNew)
                 {
-                    <input id="sku" type="text" @bind="form.Sku" maxlength="64" required />
+                    <div class="input-with-btn">
+                        <input id="sku" type="text" @bind="form.Sku" @bind:event="oninput" maxlength="64"
+                               class="@(SkuError is not null ? "invalid" : null)" />
+                        <button class="btn btn-sm" type="button" title="Подставить следующий свободный номер" @onclick="SuggestSkuAsync">↻</button>
+                    </div>
+                    <FieldError Message="@SkuError" />
+                    <div class="field-hint">Предложен следующий свободный номер. Можно заменить на артикул производителя.</div>
                 }
                 else
                 {
@@ -25,7 +32,7 @@
                 }
             </div>
             <div class="field">
-                <label for="unit">Единица измерения *</label>
+                <label for="unit">Единица измерения <span class="req">*</span></label>
                 <select id="unit" @bind="form.UnitId">
                     @foreach (var u in units)
                     {
@@ -36,8 +43,10 @@
         </div>
 
         <div class="field">
-            <label for="name">Наименование *</label>
-            <input id="name" type="text" @bind="form.Name" maxlength="256" required />
+            <label for="name">Наименование <span class="req">*</span></label>
+            <input id="name" type="text" @bind="form.Name" @bind:event="oninput" maxlength="256"
+                   class="@(NameError is not null ? "invalid" : null)" placeholder="Подшипник 6205-2RS" />
+            <FieldError Message="@NameError" />
         </div>
 
         <div class="field">
@@ -54,11 +63,17 @@
         <div class="field-row">
             <div class="field">
                 <label for="min">Минимальный остаток</label>
-                <input id="min" type="number" min="0" step="any" @bind="form.MinStock" />
+                <input id="min" type="number" min="0" step="any" @bind="form.MinStock"
+                       class="@(MinError is not null ? "invalid" : null)" />
+                <FieldError Message="@MinError" />
+                <div class="field-hint">Ниже этого количества позиция попадёт в список «ниже минимума». 0 — не следить.</div>
             </div>
             <div class="field">
                 <label for="max">Максимальный остаток</label>
-                <input id="max" type="number" min="0" step="any" @bind="form.MaxStock" />
+                <input id="max" type="number" min="0" step="any" @bind="form.MaxStock"
+                       class="@(MaxError is not null ? "invalid" : null)" />
+                <FieldError Message="@MaxError" />
+                <div class="field-hint">До какого количества пополнять. Можно оставить пустым.</div>
             </div>
         </div>
 
@@ -75,7 +90,7 @@
         }
 
         <div class="actions">
-            <button class="btn btn-primary" type="submit" disabled="@saving">Сохранить</button>
+            <button class="btn btn-primary" type="submit" disabled="@(!IsValid || saving)">Сохранить</button>
             <a class="btn" href="@(IsNew ? "/items" : $"/items/{Id}")">Отмена</a>
         </div>
         @if (IsNew)
@@ -100,6 +115,20 @@ else if (error is null)
     private bool saving;
     private string? error;
 
+    // ---------- Проверки (те же правила, что на сервере) ----------
+
+    private string? SkuError => IsNew && string.IsNullOrWhiteSpace(form.Sku) ? "Укажите артикул." : null;
+    private string? NameError => string.IsNullOrWhiteSpace(form.Name) ? "Укажите наименование." : null;
+    private string? MinError => form.MinStock < 0 ? "Не может быть отрицательным." : null;
+    private string? MaxError =>
+        form.MaxStock < 0 ? "Не может быть отрицательным."
+        : form.MaxStock is { } max && max < form.MinStock ? "Не может быть меньше минимального."
+        : null;
+
+    private bool IsValid => SkuError is null && NameError is null && MinError is null && MaxError is null && form.UnitId > 0;
+
+    // ---------- Загрузка ----------
+
     protected override async Task OnInitializedAsync()
     {
         try
@@ -119,9 +148,18 @@ else if (error is null)
                 form.Description = item.Description;
                 form.IsActive = item.IsActive;
             }
-            else if (units.Count > 0)
+            else
             {
-                form.UnitId = units.FirstOrDefault(u => u.Code == "шт")?.Id ?? units[0].Id;
+                // Предзаполнение: свободный артикул, единица и категория — как в прошлый раз.
+                form.Sku = await Api.GetNextSkuAsync();
+
+                var lastUnit = await Store.GetIntAsync("item.unit");
+                form.UnitId = units.Any(u => u.Id == lastUnit)
+                    ? lastUnit!.Value
+                    : units.FirstOrDefault(u => u.Code == "шт")?.Id ?? units.FirstOrDefault()?.Id ?? 0;
+
+                var lastCategory = await Store.GetIntAsync("item.category");
+                form.CategoryId = categories.Any(c => c.Id == lastCategory) ? lastCategory : null;
             }
 
             loaded = true;
@@ -132,8 +170,24 @@ else if (error is null)
         }
     }
 
+    private async Task SuggestSkuAsync()
+    {
+        try
+        {
+            form.Sku = await Api.GetNextSkuAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    // ---------- Сохранение ----------
+
     private async Task SaveAsync()
     {
+        if (!IsValid) return;
+
         saving = true;
         error = null;
         try
@@ -142,12 +196,14 @@ else if (error is null)
             if (Id is int id)
             {
                 saved = await Api.UpdateItemAsync(id, new UpdateItemRequest(
-                    form.Name, form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.IsActive));
+                    form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.IsActive));
             }
             else
             {
                 saved = await Api.CreateItemAsync(new CreateItemRequest(
-                    form.Sku, form.Name, form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description));
+                    form.Sku.Trim(), form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description));
+                await Store.SetAsync("item.unit", form.UnitId);
+                await Store.SetAsync("item.category", form.CategoryId);
             }
             Nav.NavigateTo($"/items/{saved.Id}");
         }

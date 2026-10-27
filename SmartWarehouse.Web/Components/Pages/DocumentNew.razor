@@ -1,5 +1,6 @@
 @page "/documents/new/{Kind}"
 @inject ApiClient Api
+@inject BrowserStore Store
 @inject NavigationManager Nav
 
 <PageTitle>@Title — склад</PageTitle>
@@ -92,7 +93,7 @@ else
                             <td class="num">@n</td>
                             <td>
                                 <input type="text" list="items-list" @bind="line.ItemText" @bind:after="() => OnItemChangedAsync(line)"
-                                       placeholder="Начните вводить…" />
+                                       placeholder="Начните вводить…" class="@(ShowLineError(line) ? "invalid" : null)" />
                                 @if (line.Item is not null)
                                 {
                                     <div class="line-hint">
@@ -103,11 +104,15 @@ else
                                 {
                                     <div class="line-hint" style="color: var(--danger)">Позиция не найдена — выберите из списка.</div>
                                 }
+                                @if (ShowLineError(line))
+                                {
+                                    <FieldError Message="@LineError(line)" />
+                                }
                             </td>
                             @if (type == MovementType.Adjustment)
                             {
                                 <td>
-                                    <select @bind="line.Direction">
+                                    <select @bind="line.Direction" @bind:after="() => PrefillLocationsAsync(line)">
                                         <option value="plus">+ добавить</option>
                                         <option value="minus">− убрать</option>
                                     </select>
@@ -152,7 +157,7 @@ else
                                 </td>
                             }
                             <td>
-                                <input type="number" min="0" step="any" @bind="line.Quantity" />
+                                <input type="number" min="0" step="any" @bind="line.Quantity" class="@(ShowLineError(line) && line.Quantity <= 0 ? "invalid" : null)" />
                                 @if (line.Item is not null)
                                 {
                                     <div class="line-hint">@line.Item.UnitCode</div>
@@ -178,6 +183,13 @@ else
             </div>
         }
 
+        @if (showErrors && LinesWithErrors.Count > 0)
+        {
+            <div class="alert alert-error" style="margin-top: 1rem">
+                Проверьте строки: @(string.Join(", ", LinesWithErrors)). Ошибки показаны под позициями.
+            </div>
+        }
+
         <div class="actions" style="margin-top: 1.5rem">
             <button class="btn btn-primary" type="submit" disabled="@saving">Провести документ</button>
             <a class="btn" href="/documents">Отмена</a>
@@ -195,6 +207,8 @@ else
     private string? error;
 
     private Dictionary<string, ItemDto> itemsByLabel = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
+    private bool showErrors;
     private List<LocationNodeDto> leaves = [];
     private List<(EquipmentDto Item, int Depth)> equipment = [];
 
@@ -243,6 +257,7 @@ else
         externalNumber = comment = null;
         equipmentId = null;
         error = null;
+        showErrors = false;
 
         if (type is null || loaded)
             return;
@@ -255,6 +270,10 @@ else
                 .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
             leaves = await Api.GetLeafLocationsAsync();
             equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+
+            // Кто проводит — как в прошлый раз на этом компьютере.
+            performedBy ??= await Store.GetAsync("doc.performedBy");
             loaded = true;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
@@ -280,14 +299,91 @@ else
         try
         {
             line.Available = await Api.GetBalancesAsync(line.Item.Id);
-            if (line.Available.Count == 1)
-                line.FromId = line.Available[0].LocationId;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
         }
+
+        await PrefillLocationsAsync(line);
     }
+
+    /// <summary>
+    /// Предзаполнение мест в строке:
+    /// «Откуда» — место, где этой позиции больше всего;
+    /// «Куда» (приход, корректировка «+») — место, где позиция уже лежит, иначе ячейка прошлого прихода.
+    /// Перемещение «куда» не подставляем: его пользователь выбирает сам.
+    /// </summary>
+    private async Task PrefillLocationsAsync(LineModel line)
+    {
+        if (line.Item is null)
+            return;
+
+        if (NeedsFrom(line) && (line.FromId is null || line.Available.All(a => a.LocationId != line.FromId)))
+            line.FromId = line.Available.OrderByDescending(a => a.Quantity).FirstOrDefault()?.LocationId;
+
+        if (NeedsTo(line) && line.ToId is null && type != MovementType.Transfer)
+        {
+            var whereItLies = line.Available
+                .OrderByDescending(a => a.Quantity)
+                .Select(a => (int?)a.LocationId)
+                .FirstOrDefault(id => leaves.Any(l => l.Id == id));
+
+            var lastTo = await Store.GetIntAsync("doc.lastTo");
+
+            line.ToId = whereItLies
+                ?? (leaves.Any(l => l.Id == lastTo) ? lastTo : null)
+                ?? (leaves.Count == 1 ? (int?)leaves[0].Id : null);
+        }
+
+        StateHasChanged();
+    }
+
+    // ---------- Проверка строк (до отправки на сервер) ----------
+
+    private bool ShowLineError(LineModel line) =>
+        LineError(line) is not null && (showErrors || line.Item is not null);
+
+    private string? LineError(LineModel line)
+    {
+        if (line.Item is null)
+            return "Выберите позицию из списка.";
+
+        if (line.Quantity <= 0)
+            return "Количество должно быть больше нуля.";
+
+        if (fractionalByUnit.TryGetValue(line.Item.UnitCode, out var fractional) && !fractional
+            && line.Quantity != decimal.Truncate(line.Quantity))
+            return $"«{line.Item.UnitCode}» — только целое количество.";
+
+        if (NeedsFrom(line))
+        {
+            if (line.Available.Count == 0)
+                return "Этой позиции нет на складе.";
+            if (line.FromId is null)
+                return "Выберите, откуда взять.";
+
+            // Учитываем другие строки этого документа, которые берут из того же места.
+            var available = line.Available.FirstOrDefault(a => a.LocationId == line.FromId)?.Quantity ?? 0;
+            var takenAbove = lines
+                .TakeWhile(l => !ReferenceEquals(l, line))
+                .Where(l => l.Item?.Id == line.Item.Id && NeedsFrom(l) && l.FromId == line.FromId)
+                .Sum(l => l.Quantity);
+            if (line.Quantity > available - takenAbove)
+                return $"В этом месте есть только {Ui.Qty(Math.Max(0, available - takenAbove))} {line.Item.UnitCode}.";
+        }
+
+        if (NeedsTo(line) && line.ToId is null)
+            return "Выберите, куда положить.";
+
+        if (type == MovementType.Transfer && line.FromId is not null && line.FromId == line.ToId)
+            return "Место отправления и назначения совпадают.";
+
+        return null;
+    }
+
+    private List<int> LinesWithErrors =>
+        lines.Select((l, i) => (l, n: i + 1)).Where(x => LineError(x.l) is not null).Select(x => x.n).ToList();
 
     private void AddLine() => lines.Add(new LineModel { Direction = lines.LastOrDefault()?.Direction ?? "plus" });
 
@@ -300,15 +396,10 @@ else
     private async Task SubmitAsync()
     {
         error = null;
+        showErrors = true;
 
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (lines[i].Item is null)
-            {
-                error = $"Строка {i + 1}: выберите позицию из списка.";
-                return;
-            }
-        }
+        if (LinesWithErrors.Count > 0)
+            return;
 
         var request = new CreateDocumentRequest(
             type!.Value,
@@ -326,6 +417,12 @@ else
         try
         {
             var doc = await Api.PostDocumentAsync(request);
+
+            await Store.SetAsync("doc.performedBy", performedBy);
+            var lastTo = lines.Where(NeedsTo).Select(l => l.ToId).LastOrDefault(id => id is not null);
+            if (lastTo is not null)
+                await Store.SetAsync("doc.lastTo", lastTo);
+
             Nav.NavigateTo($"/documents/{doc.Id}");
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

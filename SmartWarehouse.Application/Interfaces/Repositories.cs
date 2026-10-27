@@ -78,6 +78,9 @@ public interface ICatalogRepository
 
     void AddItem(Item item);
 
+    /// <summary>Артикулы, начинающиеся с префикса (для подбора следующего свободного).</summary>
+    Task<IReadOnlyList<string>> ListSkusStartingWithAsync(string prefix, CancellationToken ct = default);
+
     /// <summary>Позиция для изменения (отслеживаемая сущность).</summary>
     Task<Item?> GetItemForUpdateAsync(int id, CancellationToken ct = default);
 

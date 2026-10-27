@@ -62,6 +62,10 @@ public class ApiClient(HttpClient http)
     public Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default) =>
         SendAsync<ItemDto>(HttpMethod.Put, $"api/items/{id}", request, ct);
 
+    /// <summary>Следующий свободный артикул вида «ЗЧ-000001».</summary>
+    public async Task<string> GetNextSkuAsync(CancellationToken ct = default) =>
+        (await GetAsync<NextSkuBody>("api/items/next-sku", ct)).Sku;
+
     public Task<List<StockBalanceDto>> GetBalancesAsync(int itemId, CancellationToken ct = default) =>
         GetAsync<List<StockBalanceDto>>($"api/items/{itemId}/balances", ct);
 
@@ -198,4 +202,6 @@ public class ApiClient(HttpClient http)
     }
 
     private sealed record ProblemBody(string? Title, string? Detail);
+
+    private sealed record NextSkuBody(string Sku);
 }

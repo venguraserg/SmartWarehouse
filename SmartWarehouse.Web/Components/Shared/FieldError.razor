@@ -1,0 +1,9 @@
+@* Сообщение о проблеме под полем формы. *@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="field-error">@Message</div>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+}

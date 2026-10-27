@@ -101,6 +101,21 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         return items.Select(ToDto).ToList();
     }
 
+    /// <summary>Префикс автоматических артикулов (запчасть).</summary>
+    public const string AutoSkuPrefix = "ЗЧ-";
+
+    public async Task<string> SuggestSkuAsync(CancellationToken ct = default)
+    {
+        var existing = await repo.ListSkusStartingWithAsync(AutoSkuPrefix, ct);
+
+        var max = existing
+            .Select(s => int.TryParse(s.AsSpan(AutoSkuPrefix.Length), out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return $"{AutoSkuPrefix}{max + 1:D6}";
+    }
+
     public async Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default)
     {
         var item = await repo.GetItemForUpdateAsync(id, ct)
