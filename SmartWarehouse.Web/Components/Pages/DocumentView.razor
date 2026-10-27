@@ -11,6 +11,10 @@
         <h1 class="mono">@doc.Number</h1>
         <span class="tag @Ui.DocTypeClass(doc.Type)">@Ui.DocType(doc.Type)</span>
         <span class="spacer"></span>
+        @if (doc.Type == MovementType.WriteOff)
+        {
+            <a class="btn btn-primary" href="/document-act/@doc.Id" target="_blank" rel="noopener">Акт на списание (PDF)</a>
+        }
         <a class="btn" href="/documents">К списку</a>
     </div>
 
@@ -31,9 +35,9 @@
                     @(doc.PerformedBy ?? "—")
                 }
             </dd>
-            @if (doc.Type == MovementType.Issue)
+            @if (doc.Type is MovementType.Issue or MovementType.WriteOff or MovementType.Return)
             {
-                <dt>Кому выдано</dt>
+                <dt>@Ui.AccountableLabel(doc.Type)</dt>
                 <dd>
                     @if (doc.ReceivedById is int receiverId)
                     {
@@ -52,7 +56,7 @@
             }
             @if (!string.IsNullOrWhiteSpace(doc.Comment))
             {
-                <dt>Комментарий</dt>
+                <dt>@(doc.Type == MovementType.WriteOff ? "Куда использовано" : "Комментарий")</dt>
                 <dd style="white-space: pre-line">@doc.Comment</dd>
             }
         </dl>

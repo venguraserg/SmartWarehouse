@@ -148,6 +148,11 @@ internal class StockMovementConfiguration : IEntityTypeConfiguration<StockMoveme
         b.HasOne(x => x.FromLocation).WithMany().HasForeignKey(x => x.FromLocationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.ToLocation).WithMany().HasForeignKey(x => x.ToLocationId).OnDelete(DeleteBehavior.Restrict);
 
+        b.HasOne(x => x.FromEmployee).WithMany().HasForeignKey(x => x.FromEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.ToEmployee).WithMany().HasForeignKey(x => x.ToEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.FromEmployeeId);
+        b.HasIndex(x => x.ToEmployeeId);
+
         b.HasIndex(x => new { x.DocumentId, x.LineNo }).IsUnique();
         b.HasIndex(x => new { x.ItemId, x.OccurredAt });
     }
@@ -169,6 +174,21 @@ internal class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         b.Property(x => x.Department).HasMaxLength(128);
         b.Property(x => x.Phone).HasMaxLength(32);
         b.HasIndex(x => new { x.LastName, x.FirstName });
+    }
+}
+
+internal class EmployeeBalanceConfiguration : IEntityTypeConfiguration<EmployeeBalance>
+{
+    public void Configure(EntityTypeBuilder<EmployeeBalance> b)
+    {
+        b.ToTable("employee_balances", t => t.HasCheckConstraint("ck_employee_balances_quantity_nonnegative", "\"Quantity\" >= 0"));
+        b.HasKey(x => new { x.EmployeeId, x.ItemId });
+        b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
+        b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+
+        // Защита от одновременного списания одного подотчёта (см. StockBalance).
+        b.Property<uint>("Version").IsRowVersion();
     }
 }
 

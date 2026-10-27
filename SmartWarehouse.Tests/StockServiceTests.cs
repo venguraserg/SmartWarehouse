@@ -14,6 +14,7 @@ public class StockServiceTests
     private const int CellB = 20;
     private const int Shelf = 30;    // полка с вложенными ячейками — хранить в ней нельзя
     private const int Pump = 5;
+    private const int Worker = 2;    // сотрудник, на которого оформляются выдачи по умолчанию
     private static readonly DateTimeOffset Now = new(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
 
     private readonly FakeStockRepository _repo = new();
@@ -37,14 +38,20 @@ public class StockServiceTests
 
         _repo.Equipment.Add(new Equipment { Id = Pump, Code = "PUMP-1", Name = "Насос 1" });
 
+        _repo.Employees.Add(new Employee { Id = 1, LastName = "Иванов", FirstName = "Иван", MiddleName = "Петрович", Position = "Кладовщик" });
+        _repo.Employees.Add(new Employee { Id = Worker, LastName = "Петров", FirstName = "Сергей", Position = "Слесарь" });
+        _repo.Employees.Add(new Employee { Id = 3, LastName = "Сидоров", FirstName = "Олег", IsActive = false });
+
         _service = new StockService(_repo, new FixedTimeProvider(Now));
     }
 
     private static DocumentLineRequest Line(decimal qty, int? from = null, int? to = null, int item = Bearing) =>
         new(item, qty, from, to);
 
+    // Для выдачи, списания и возврата сразу указываем сотрудника Worker.
     private static CreateDocumentRequest Doc(MovementType type, params DocumentLineRequest[] lines) =>
-        new(type, null, null, "Тест", null, lines);
+        new(type, null, null, "Тест", type == MovementType.WriteOff ? "Замена при ремонте насоса" : null, lines,
+            ReceivedById: StockService.UsesAccountable(type) ? Worker : null);
 
     private Task<DocumentDto> Post(MovementType type, params DocumentLineRequest[] lines) =>
         _service.PostDocumentAsync(Doc(type, lines));
@@ -88,7 +95,7 @@ public class StockServiceTests
         await Post(MovementType.Receipt, Line(10, to: CellA));
 
         var doc = await _service.PostDocumentAsync(
-            new CreateDocumentRequest(MovementType.Issue, null, Pump, "Кладовщик", "Ремонт насоса", [Line(4, from: CellA)]));
+            new CreateDocumentRequest(MovementType.Issue, null, Pump, "Кладовщик", "Ремонт насоса", [Line(4, from: CellA)], ReceivedById: Worker));
 
         Assert.Equal(6, Balance(CellA));
         Assert.Equal(Pump, doc.EquipmentId);
@@ -138,13 +145,12 @@ public class StockServiceTests
     }
 
     [Fact]
-    public async Task Списание_и_корректировки_меняют_остаток()
+    public async Task Корректировки_меняют_остаток()
     {
         await Post(MovementType.Adjustment, Line(10, to: CellA));
         await Post(MovementType.Adjustment, Line(1, from: CellA));
-        await Post(MovementType.WriteOff, Line(2, from: CellA));
 
-        Assert.Equal(7, Balance(CellA));
+        Assert.Equal(9, Balance(CellA));
     }
 
     // ---------- Проверки ----------
@@ -160,6 +166,9 @@ public class StockServiceTests
     [InlineData(MovementType.Receipt, null, null)]
     [InlineData(MovementType.Issue, null, CellA)]
     [InlineData(MovementType.WriteOff, CellA, CellB)]
+    [InlineData(MovementType.WriteOff, CellA, null)]       // списание — только с сотрудника, без места
+    [InlineData(MovementType.Return, CellA, null)]          // возврат — только «куда»
+    [InlineData(MovementType.Return, null, null)]
     [InlineData(MovementType.Transfer, CellA, null)]
     [InlineData(MovementType.Transfer, CellA, CellA)]
     [InlineData(MovementType.Adjustment, CellA, CellB)]
@@ -205,7 +214,7 @@ public class StockServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => Post(MovementType.Receipt, Line(1, to: CellA, item: 999)));
         await Assert.ThrowsAsync<NotFoundException>(() => Post(MovementType.Receipt, Line(1, to: 999)));
         await Assert.ThrowsAsync<NotFoundException>(() => _service.PostDocumentAsync(
-            new CreateDocumentRequest(MovementType.Issue, null, 999, null, null, [Line(1, from: CellA)])));
+            new CreateDocumentRequest(MovementType.Issue, null, 999, null, null, [Line(1, from: CellA)], ReceivedById: Worker)));
     }
 
     [Fact]
@@ -339,17 +348,9 @@ public class StockServiceTests
 
     // ---------- Сотрудники в документах ----------
 
-    private void AddEmployees()
-    {
-        _repo.Employees.Add(new Employee { Id = 1, LastName = "Иванов", FirstName = "Иван", MiddleName = "Петрович", Position = "Кладовщик" });
-        _repo.Employees.Add(new Employee { Id = 2, LastName = "Петров", FirstName = "Сергей", Position = "Слесарь" });
-        _repo.Employees.Add(new Employee { Id = 3, LastName = "Сидоров", FirstName = "Олег", IsActive = false });
-    }
-
     [Fact]
     public async Task Выдача_записывает_кто_провёл_и_кому_выдано()
     {
-        AddEmployees();
         await Post(MovementType.Receipt, Line(10, to: CellA));
 
         var doc = await _service.PostDocumentAsync(new CreateDocumentRequest(
@@ -365,7 +366,6 @@ public class StockServiceTests
     [Fact]
     public async Task Получатель_только_для_выдачи()
     {
-        AddEmployees();
         await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
             MovementType.Receipt, null, null, null, null, [Line(1, to: CellA)], ReceivedById: 2)));
     }
@@ -373,7 +373,6 @@ public class StockServiceTests
     [Fact]
     public async Task Неработающий_или_несуществующий_сотрудник_отклоняется()
     {
-        AddEmployees();
         await Post(MovementType.Receipt, Line(10, to: CellA));
 
         await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
@@ -381,5 +380,119 @@ public class StockServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
             MovementType.Issue, null, null, null, null, [Line(1, from: CellA)], PerformedById: 99)));
         Assert.Equal(10, Balance(CellA));
+    }
+
+    // ---------- Подотчёт: выдача → списание / возврат ----------
+
+    private decimal Custody(int employee = Worker, int item = Bearing) =>
+        _repo.EmployeeBalances.FirstOrDefault(b => b.EmployeeId == employee && b.ItemId == item)?.Quantity ?? 0;
+
+    [Fact]
+    public async Task Выдача_переводит_товар_со_склада_за_сотрудника()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        Assert.Equal(6, Balance(CellA));
+        Assert.Equal(4, Custody());
+        Assert.Equal(Worker, _repo.Documents.Last().Lines.Single().ToEmployeeId);
+    }
+
+    [Fact]
+    public async Task Выдача_без_сотрудника_запрещена()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Issue, null, null, null, null, [Line(1, from: CellA)])));
+        Assert.Contains("Кому выдано", ex.Message);
+        Assert.Equal(10, Balance(CellA));
+    }
+
+    [Fact]
+    public async Task Списание_происходит_с_сотрудника()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        var act = await Post(MovementType.WriteOff, Line(3));
+
+        Assert.Equal("СП-000003", act.Number);
+        Assert.Equal("Петров С.", act.ReceivedBy);
+        Assert.Equal(1, Custody());
+        Assert.Equal(6, Balance(CellA)); // склад не меняется
+        Assert.Equal(Worker, _repo.Documents.Last().Lines.Single().FromEmployeeId);
+    }
+
+    [Fact]
+    public async Task Списать_больше_чем_числится_за_сотрудником_нельзя()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(2, from: CellA));
+
+        var ex = await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.WriteOff, Line(3)));
+
+        Assert.Contains("Петров С.", ex.Message);
+        Assert.Equal(2, Custody());
+    }
+
+    [Fact]
+    public async Task Списать_с_сотрудника_за_которым_ничего_нет_нельзя()
+    {
+        await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.WriteOff, Line(1)));
+    }
+
+    [Fact]
+    public async Task Возврат_от_сотрудника_на_склад()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        await Post(MovementType.Return, Line(3, to: CellB));
+
+        Assert.Equal(1, Custody());
+        Assert.Equal(3, Balance(CellB));
+        Assert.Equal(6, Balance(CellA));
+    }
+
+    [Fact]
+    public async Task С_уволенного_можно_списать_и_вернуть_но_выдать_нельзя()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+        _repo.Employees.Single(e => e.Id == Worker).IsActive = false;
+
+        await Post(MovementType.WriteOff, Line(1));
+        await Post(MovementType.Return, Line(1, to: CellA));
+        await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Issue, Line(1, from: CellA)));
+
+        Assert.Equal(2, Custody());
+    }
+
+    [Fact]
+    public async Task Ниже_минимума_не_учитывает_выданное_сотрудникам()
+    {
+        // Минимум подшипника 10: на складе 10, выдали 4 — на складе 6, это ниже минимума.
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        var low = Assert.Single(await _service.GetBelowMinimumAsync());
+        Assert.Equal(6, low.Total);
+    }
+
+    [Fact]
+    public async Task В_акте_списания_нужно_указать_куда_использовано()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.WriteOff, null, null, null, null, [Line(1)], ReceivedById: Worker)));
+        Assert.Contains("куда использовано", ex.Message);
+
+        // Достаточно указать оборудование.
+        await _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.WriteOff, null, Pump, null, null, [Line(1)], ReceivedById: Worker));
+        Assert.Equal(3, Custody());
     }
 }

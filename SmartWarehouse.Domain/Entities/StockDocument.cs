@@ -37,12 +37,14 @@ public class StockDocument
     /// </summary>
     public string? PerformedBy { get; set; }
 
-    /// <summary>Кому выдано (только для выдачи).</summary>
+    /// <summary>
+    /// Подотчётное лицо: кому выдано (выдача), с кого списано (списание), кто вернул (возврат).
+    /// </summary>
     public int? ReceivedById { get; set; }
 
     public Employee? ReceivedByEmployee { get; set; }
 
-    /// <summary>Кому выдано — текстом на момент проведения.</summary>
+    /// <summary>Подотчётное лицо — текстом на момент проведения.</summary>
     public string? ReceivedBy { get; set; }
 
     public string? Comment { get; set; }
@@ -58,6 +60,7 @@ public class StockDocument
             MovementType.Transfer => "ПЕР",
             MovementType.WriteOff => "СП",
             MovementType.Adjustment => "КОР",
+            MovementType.Return => "ВЗ",
             _ => "ДОК"
         };
         return $"{prefix}-{id:D6}";

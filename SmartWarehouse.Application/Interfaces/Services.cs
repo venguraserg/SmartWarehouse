@@ -70,8 +70,11 @@ public interface IEmployeeService
 
     Task<EmployeeDto> UpdateAsync(int id, SaveEmployeeRequest request, CancellationToken ct = default);
 
-    /// <summary>Что выдавалось сотруднику.</summary>
-    Task<IReadOnlyList<EmployeeIssueDto>> GetIssuesAsync(int id, int take = 200, CancellationToken ct = default);
+    /// <summary>История подотчёта: выдачи, списания, возвраты.</summary>
+    Task<IReadOnlyList<EmployeeMovementDto>> GetHistoryAsync(int id, int take = 200, CancellationToken ct = default);
+
+    /// <summary>Что числится за сотрудниками. Фильтры: сотрудник, позиция, текст.</summary>
+    Task<IReadOnlyList<CustodyRowDto>> ListCustodyAsync(int? employeeId = null, int? itemId = null, string? search = null, CancellationToken ct = default);
 }
 
 public interface ILocationService

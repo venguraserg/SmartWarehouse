@@ -43,6 +43,11 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public void AddBalance(StockBalance balance) => db.Balances.Add(balance);
 
+    public Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default) =>
+        db.EmployeeBalances.FirstOrDefaultAsync(x => x.ItemId == itemId && x.EmployeeId == employeeId, ct);
+
+    public void AddEmployeeBalance(EmployeeBalance balance) => db.EmployeeBalances.Add(balance);
+
     public void AddDocument(StockDocument document) => db.Documents.Add(document);
 
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>

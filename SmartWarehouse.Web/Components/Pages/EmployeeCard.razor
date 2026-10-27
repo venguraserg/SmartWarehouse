@@ -31,7 +31,48 @@
         </dl>
     </div>
 
-    <h2>Что выдавалось</h2>
+    <div class="page-head" style="margin-top: 1.5rem; margin-bottom: .75rem">
+        <h2 style="margin: 0">Числится за сотрудником</h2>
+        <span class="spacer"></span>
+        @if (custody.Count > 0)
+        {
+            <a class="btn btn-primary" href="/documents/new/WriteOff?employee=@employee.Id">Списать</a>
+            <a class="btn" href="/documents/new/Return?employee=@employee.Id">Вернуть на склад</a>
+        }
+        @if (employee.IsActive)
+        {
+            <a class="btn" href="/documents/new/Issue?employee=@employee.Id">Выдать</a>
+        }
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 56px"></th>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th class="num">Количество</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in custody)
+                {
+                    <tr>
+                        <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
+                        <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
+                        <td>@c.ItemName</td>
+                        <td class="num"><strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (custody.Count == 0)
+        {
+            <div class="empty">За сотрудником ничего не числится.</div>
+        }
+    </div>
+
+    <h2>История: выдачи, списания, возвраты</h2>
     <div class="table-wrap">
         <table>
             <thead>
@@ -40,27 +81,30 @@
                     <th>Документ</th>
                     <th>Артикул</th>
                     <th>Наименование</th>
-                    <th>Откуда</th>
+                    <th>Место</th>
                     <th class="num">Количество</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var i in issues)
+                @foreach (var m in history)
                 {
                     <tr>
-                        <td>@Ui.Date(i.OccurredAt)</td>
-                        <td class="mono"><a href="/documents/@i.DocumentId">@i.DocumentNumber</a></td>
-                        <td class="mono"><a href="/items/@i.ItemId">@i.Sku</a></td>
-                        <td>@i.ItemName</td>
-                        <td class="mono">@i.FromLocation</td>
-                        <td class="num">@Ui.Qty(i.Quantity) @i.UnitCode</td>
+                        <td>@Ui.Date(m.OccurredAt)</td>
+                        <td>
+                            <a class="mono" href="/documents/@m.DocumentId">@m.DocumentNumber</a>
+                            <span class="tag @Ui.DocTypeClass(m.Type)">@Ui.DocType(m.Type)</span>
+                        </td>
+                        <td class="mono"><a href="/items/@m.ItemId">@m.Sku</a></td>
+                        <td>@m.ItemName</td>
+                        <td class="mono">@m.Location</td>
+                        <td class="num">@(m.Quantity > 0 ? "+" : "−")@Ui.Qty(Math.Abs(m.Quantity)) @m.UnitCode</td>
                     </tr>
                 }
             </tbody>
         </table>
-        @if (issues.Count == 0)
+        @if (history.Count == 0)
         {
-            <div class="empty">Сотруднику ничего не выдавалось.</div>
+            <div class="empty">Движений по подотчёту не было.</div>
         }
     </div>
 }
@@ -73,7 +117,8 @@ else if (error is null)
     [Parameter] public int Id { get; set; }
 
     private EmployeeDto? employee;
-    private List<EmployeeIssueDto> issues = [];
+    private List<CustodyRowDto> custody = [];
+    private List<EmployeeMovementDto> history = [];
     private string? error;
 
     protected override async Task OnParametersSetAsync()
@@ -81,7 +126,8 @@ else if (error is null)
         try
         {
             employee = await Api.GetEmployeeAsync(Id);
-            issues = await Api.GetEmployeeIssuesAsync(Id);
+            custody = await Api.GetCustodyAsync(employeeId: Id);
+            history = await Api.GetEmployeeHistoryAsync(Id);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

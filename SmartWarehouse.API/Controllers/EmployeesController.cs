@@ -28,8 +28,24 @@ public class EmployeesController(IEmployeeService employees) : ControllerBase
     public Task<EmployeeDto> Update(int id, SaveEmployeeRequest request, CancellationToken ct) =>
         employees.UpdateAsync(id, request, ct);
 
-    /// <summary>Что выдавалось сотруднику.</summary>
-    [HttpGet("{id:int}/issues")]
-    public Task<IReadOnlyList<EmployeeIssueDto>> Issues(int id, [FromQuery] int take = 200, CancellationToken ct = default) =>
-        employees.GetIssuesAsync(id, take, ct);
+    /// <summary>История подотчёта сотрудника: выдачи (+), списания и возвраты (−).</summary>
+    [HttpGet("{id:int}/history")]
+    public Task<IReadOnlyList<EmployeeMovementDto>> History(int id, [FromQuery] int take = 200, CancellationToken ct = default) =>
+        employees.GetHistoryAsync(id, take, ct);
+
+    /// <summary>Что числится за сотрудником.</summary>
+    [HttpGet("{id:int}/custody")]
+    public Task<IReadOnlyList<CustodyRowDto>> Custody(int id, CancellationToken ct) =>
+        employees.ListCustodyAsync(employeeId: id, ct: ct);
+}
+
+/// <summary>Подотчёт: что числится за сотрудниками.</summary>
+[ApiController]
+[Route("api/custody")]
+public class CustodyController(IEmployeeService employees) : ControllerBase
+{
+    /// <summary>Фильтры: employeeId, itemId, search (ФИО, табельный, артикул, наименование).</summary>
+    [HttpGet]
+    public Task<IReadOnlyList<CustodyRowDto>> List([FromQuery] int? employeeId, [FromQuery] int? itemId, [FromQuery] string? search, CancellationToken ct) =>
+        employees.ListCustodyAsync(employeeId, itemId, search, ct);
 }

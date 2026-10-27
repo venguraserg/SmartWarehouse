@@ -16,6 +16,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<StockMovement> Movements => Set<StockMovement>();
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EmployeeBalance> EmployeeBalances => Set<EmployeeBalance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

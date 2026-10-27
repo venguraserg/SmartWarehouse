@@ -15,12 +15,13 @@ public static class Ui
         MovementType.Transfer => "Перемещение",
         MovementType.WriteOff => "Списание",
         MovementType.Adjustment => "Корректировка",
+        MovementType.Return => "Возврат",
         _ => type.ToString()
     };
 
     public static string DocTypeClass(MovementType type) => type switch
     {
-        MovementType.Receipt => "tag-in",
+        MovementType.Receipt or MovementType.Return => "tag-in",
         MovementType.Issue or MovementType.WriteOff => "tag-out",
         _ => "tag-neutral"
     };
@@ -32,6 +33,15 @@ public static class Ui
         LocationType.Shelf => "Полка",
         LocationType.Cell => "Ячейка",
         _ => type.ToString()
+    };
+
+    /// <summary>Как подписать подотчётное лицо в документе этого типа.</summary>
+    public static string AccountableLabel(MovementType type) => type switch
+    {
+        MovementType.Issue => "Кому выдано",
+        MovementType.WriteOff => "С кого списано",
+        MovementType.Return => "Кто вернул",
+        _ => "Сотрудник"
     };
 
     /// <summary>Количество без лишних нулей: 12, 4,5, 0,125.</summary>

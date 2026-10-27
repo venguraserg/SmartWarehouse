@@ -37,5 +37,15 @@ public class StockMovement
 
     public StorageLocation? ToLocation { get; set; }
 
+    /// <summary>С какого сотрудника убыло (списание, возврат).</summary>
+    public int? FromEmployeeId { get; set; }
+
+    public Employee? FromEmployee { get; set; }
+
+    /// <summary>За каким сотрудником стало числиться (выдача).</summary>
+    public int? ToEmployeeId { get; set; }
+
+    public Employee? ToEmployee { get; set; }
+
     public decimal Quantity { get; set; }
 }
