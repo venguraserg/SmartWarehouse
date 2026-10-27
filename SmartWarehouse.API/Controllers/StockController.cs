@@ -9,6 +9,14 @@ namespace SmartWarehouse.API.Controllers;
 [Route("api/stock")]
 public class StockController(IStockService stock) : ControllerBase
 {
+    /// <summary>
+    /// Что лежит на складе по факту. Фильтры: warehouseId, location (код места — с вложенными),
+    /// search (наименование или артикул), categoryId, belowMinimum.
+    /// </summary>
+    [HttpGet]
+    public Task<StockSearchResult> Search([FromQuery] StockQuery query, CancellationToken ct) =>
+        stock.SearchStockAsync(query, ct);
+
     /// <summary>Позиции с остатком ниже минимума и сколько нужно пополнить.</summary>
     [HttpGet("below-minimum")]
     public Task<IReadOnlyList<LowStockItemDto>> BelowMinimum(CancellationToken ct) =>

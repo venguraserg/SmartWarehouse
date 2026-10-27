@@ -1,4 +1,5 @@
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Domain.Enums;
 
@@ -65,6 +66,28 @@ internal class FakeStockRepository : IStockRepository
     public Task<IReadOnlyList<StockMovement>> GetMovementsForItemAsync(int itemId, int take, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<StockMovement>>(
             Documents.SelectMany(d => d.Lines).Where(x => x.ItemId == itemId).OrderByDescending(x => x.Id).Take(take).ToList());
+
+    public Task<IReadOnlyList<StockBalance>> SearchBalancesAsync(StockFilter filter, int take, CancellationToken ct = default)
+    {
+        IEnumerable<StockBalance> query = Balances.Where(b => b.Quantity > 0);
+
+        foreach (var b in Balances)
+            b.Item = Items.First(i => i.Id == b.ItemId);
+
+        if (filter.WarehouseId is int w)
+            query = query.Where(b => b.Location.WarehouseId == w);
+        if (filter.LocationCode is string code)
+            query = query.Where(b => LocationCodeMatch.Matches(b.Location.FullCode, code));
+        if (filter.Search is string s)
+            query = query.Where(b => b.Item.Name.Contains(s, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(s, StringComparison.OrdinalIgnoreCase));
+        if (filter.CategoryId is int c)
+            query = query.Where(b => b.Item.CategoryId == c);
+        if (filter.BelowMinimum)
+            query = query.Where(b => Balances.Where(x => x.ItemId == b.ItemId).Sum(x => x.Quantity) < b.Item.MinStock);
+
+        return Task.FromResult<IReadOnlyList<StockBalance>>(
+            query.OrderBy(b => b.Location.FullCode, StringComparer.Ordinal).ThenBy(b => b.Item.Name).Take(take).ToList());
+    }
 
     public Task<IReadOnlyList<ItemStock>> GetItemsBelowMinimumAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemStock>>(

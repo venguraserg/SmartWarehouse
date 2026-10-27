@@ -9,6 +9,9 @@ public record ItemStock(Item Item, decimal Total);
 /// <summary>Шапка документа с числом строк — для списков.</summary>
 public record DocumentHeader(StockDocument Document, int LineCount);
 
+/// <summary>Нормализованные фильтры поиска остатков для репозитория.</summary>
+public record StockFilter(int? WarehouseId, string? LocationCode, string? Search, int? CategoryId, bool BelowMinimum);
+
 /// <summary>Краткие сведения о месте хранения для проверок при проведении документа.</summary>
 public record LocationInfo(int Id, string FullCode, bool HasChildren);
 
@@ -42,6 +45,12 @@ public interface IStockRepository
 
     /// <summary>Последние движения позиции (с документом и местами), новые первыми.</summary>
     Task<IReadOnlyList<StockMovement>> GetMovementsForItemAsync(int itemId, int take, CancellationToken ct = default);
+
+    /// <summary>
+    /// Ненулевые остатки по фильтрам (с позицией, единицей, категорией, местом и складом),
+    /// упорядоченные по коду места и наименованию.
+    /// </summary>
+    Task<IReadOnlyList<StockBalance>> SearchBalancesAsync(StockFilter filter, int take, CancellationToken ct = default);
 
     /// <summary>Активные позиции (с единицей), у которых суммарный остаток ниже минимума.</summary>
     Task<IReadOnlyList<ItemStock>> GetItemsBelowMinimumAsync(CancellationToken ct = default);

@@ -19,6 +19,9 @@ public interface IStockService
 
     Task<IReadOnlyList<MovementDto>> GetMovementsAsync(int itemId, int take = 100, CancellationToken ct = default);
 
+    /// <summary>Что лежит на складе по факту: остатки по местам с фильтрами.</summary>
+    Task<StockSearchResult> SearchStockAsync(StockQuery query, CancellationToken ct = default);
+
     /// <summary>Позиции с остатком ниже минимума.</summary>
     Task<IReadOnlyList<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default);
 }

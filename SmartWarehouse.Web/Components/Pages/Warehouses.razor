@@ -54,6 +54,7 @@
                     <div class="toolbar" style="margin-bottom: .5rem">
                         <h2 style="margin: 0">@warehouse.Name</h2>
                         <span class="spacer"></span>
+                        <a class="btn btn-sm" href="/stock?warehouse=@warehouse.Id">Остатки склада</a>
                         <button class="btn btn-sm" type="button" @onclick="() => SelectLocationAsync(null)" disabled="@(selected is null)">Верхний уровень</button>
                     </div>
                     @if (tree.Count == 0)
@@ -83,6 +84,7 @@
                             <h2 style="margin-top: 0" class="mono">@selected.FullCode</h2>
                             <p class="muted">
                                 @Ui.LocType(selected.Type)@(string.IsNullOrEmpty(selected.Name) ? "" : $" · {selected.Name}")
+                                · <a href="/stock?location=@Uri.EscapeDataString(selected.FullCode)">что лежит здесь и внутри</a>
                             </p>
                         }
 

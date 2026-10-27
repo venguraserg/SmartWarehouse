@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Domain.Enums;
 using SmartWarehouse.Infrastructure.Data;
@@ -85,6 +86,50 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .ThenByDescending(x => x.Id)
             .Take(take)
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<StockBalance>> SearchBalancesAsync(StockFilter filter, int take, CancellationToken ct = default)
+    {
+        var query = db.Balances
+            .AsNoTracking()
+            .Include(b => b.Item).ThenInclude(i => i.Unit)
+            .Include(b => b.Item).ThenInclude(i => i.Category)
+            .Include(b => b.Location).ThenInclude(l => l.Warehouse)
+            .Where(b => b.Quantity > 0);
+
+        if (filter.WarehouseId is int warehouseId)
+            query = query.Where(b => b.Location.WarehouseId == warehouseId);
+
+        if (filter.LocationCode is string code)
+        {
+            // То же правило, что LocationCodeMatch.Matches: совпадение по целым частям кода.
+            var subtree = code + LocationCodeMatch.Separator;
+            var suffix = LocationCodeMatch.Separator + code;
+            var middle = LocationCodeMatch.Separator + code + LocationCodeMatch.Separator;
+            query = query.Where(b =>
+                b.Location.FullCode == code
+                || b.Location.FullCode.StartsWith(subtree)
+                || b.Location.FullCode.EndsWith(suffix)
+                || b.Location.FullCode.Contains(middle));
+        }
+
+        if (filter.Search is string search)
+        {
+            var pattern = $"%{search}%";
+            query = query.Where(b => EF.Functions.ILike(b.Item.Name, pattern) || EF.Functions.ILike(b.Item.Sku, pattern));
+        }
+
+        if (filter.CategoryId is int categoryId)
+            query = query.Where(b => b.Item.CategoryId == categoryId);
+
+        if (filter.BelowMinimum)
+            query = query.Where(b => b.Item.Balances.Sum(x => x.Quantity) < b.Item.MinStock);
+
+        return await query
+            .OrderBy(b => b.Location.FullCode)
+            .ThenBy(b => b.Item.Name)
+            .Take(take)
+            .ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<ItemStock>> GetItemsBelowMinimumAsync(CancellationToken ct = default)
     {

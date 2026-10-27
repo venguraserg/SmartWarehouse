@@ -1,0 +1,14 @@
+@* Миниатюра фото позиции (или серый квадрат, если фото нет). *@
+@if (Ui.ImageUrl(ItemId, ImageVersion) is { } url)
+{
+    <img class="thumb" src="@url" alt="" loading="lazy" />
+}
+else
+{
+    <div class="thumb-empty"></div>
+}
+
+@code {
+    [Parameter] public int ItemId { get; set; }
+    [Parameter] public long? ImageVersion { get; set; }
+}

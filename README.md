@@ -70,6 +70,7 @@
 | GET | `/api/locations/{id}/content` | Что лежит в месте |
 | GET/POST | `/api/documents` | Список документов (`?type=`) / создать и провести документ |
 | GET | `/api/documents/{id}` | Документ со строками |
+| GET | `/api/stock` | Что лежит по факту: `warehouseId`, `location` (код места — с вложенными; можно без кода склада), `search`, `categoryId`, `belowMinimum` |
 | GET | `/api/stock/below-minimum` | Позиции ниже минимума и сколько пополнить |
 
 Примеры запросов — в `SmartWarehouse.API/SmartWarehouse.API.http`.
