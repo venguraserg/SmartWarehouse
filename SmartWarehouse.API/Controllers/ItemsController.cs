@@ -15,6 +15,10 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     public Task<IReadOnlyList<ItemDto>> List([FromQuery] string? search, [FromQuery] int? categoryId, CancellationToken ct) =>
         catalog.ListItemsAsync(search, categoryId, ct);
 
+    /// <summary>Следующий свободный артикул вида «ЗЧ-000001».</summary>
+    [HttpGet("next-sku")]
+    public async Task<object> NextSku(CancellationToken ct) => new { sku = await catalog.SuggestSkuAsync(ct) };
+
     [HttpGet("{id:int}")]
     public Task<ItemDto> Get(int id, CancellationToken ct) => catalog.GetItemAsync(id, ct);
 

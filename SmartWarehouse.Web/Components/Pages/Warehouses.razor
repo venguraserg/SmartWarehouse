@@ -27,14 +27,18 @@
 
         <form style="margin-top: 1rem" @onsubmit="CreateWarehouseAsync" @onsubmit:preventDefault>
             <div class="field">
-                <label for="wh-code">Код нового склада</label>
-                <input id="wh-code" type="text" @bind="newWarehouseCode" maxlength="16" placeholder="СК1" />
+                <label for="wh-code">Код нового склада <span class="req">*</span></label>
+                <CodeInput Id="wh-code" @bind-Value="newWarehouseCode" Placeholder="СК1" Invalid="@(WarehouseCodeError is not null)" />
+                <FieldError Message="@WarehouseCodeError" />
+                <div class="field-hint">Только буквы и цифры. С него начинаются коды всех мест склада.</div>
             </div>
             <div class="field">
-                <label for="wh-name">Название</label>
-                <input id="wh-name" type="text" @bind="newWarehouseName" maxlength="128" placeholder="Склад запчастей" />
+                <label for="wh-name">Название <span class="req">*</span></label>
+                <input id="wh-name" type="text" @bind="newWarehouseName" @bind:event="oninput" maxlength="128"
+                       class="@(WarehouseNameError is not null ? "invalid" : null)" />
+                <FieldError Message="@WarehouseNameError" />
             </div>
-            <button class="btn" type="submit">Создать склад</button>
+            <button class="btn" type="submit" disabled="@(!WarehouseFormValid || busy)">Создать склад</button>
         </form>
     </section>
 
@@ -88,7 +92,7 @@
                                 <div class="field-row">
                                     <div class="field">
                                         <label for="loc-type">Тип</label>
-                                        <select id="loc-type" @bind="newType">
+                                        <select id="loc-type" @bind="newType" @bind:after="SuggestLocationCode">
                                             @foreach (var t in AllowedChildTypes)
                                             {
                                                 <option value="@t">@Ui.LocType(t)</option>
@@ -96,15 +100,16 @@
                                         </select>
                                     </div>
                                     <div class="field">
-                                        <label for="loc-code">Код</label>
-                                        <input id="loc-code" type="text" @bind="newCode" maxlength="16" placeholder="A, 01, 03" />
+                                        <label for="loc-code">Код <span class="req">*</span></label>
+                                        <CodeInput Id="loc-code" @bind-Value="newCode" Placeholder="A, 01, 03" Invalid="@(LocationCodeError is not null)" />
+                                        <FieldError Message="@LocationCodeError" />
                                     </div>
                                 </div>
                                 <div class="field">
                                     <label for="loc-name">Название (необязательно)</label>
                                     <input id="loc-name" type="text" @bind="newName" maxlength="128" />
                                 </div>
-                                <button class="btn btn-primary" type="submit">
+                                <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || busy)">
                                     Добавить @(selected is null ? "" : "внутрь")
                                 </button>
                                 <p class="muted" style="margin-bottom: 0">
@@ -162,15 +167,38 @@
     private string? newCode;
     private string? newName;
 
+    private bool busy;
     private string? error;
     private string? success;
+
+    // ---------- Проверки (те же правила, что на сервере) ----------
+
+    private string? WarehouseCodeError =>
+        string.IsNullOrEmpty(newWarehouseCode) ? "Укажите код склада."
+        : warehouses.Any(w => string.Equals(w.Code, newWarehouseCode, StringComparison.OrdinalIgnoreCase)) ? $"Склад {newWarehouseCode} уже есть."
+        : null;
+
+    private string? WarehouseNameError =>
+        string.IsNullOrWhiteSpace(newWarehouseName) ? "Укажите название." : null;
+
+    private bool WarehouseFormValid => WarehouseCodeError is null && WarehouseNameError is null;
+
+    /// <summary>Соседние места на том уровне, куда добавляем.</summary>
+    private IReadOnlyList<LocationNodeDto> Siblings => selected?.Children ?? tree;
+
+    private string? LocationCodeError =>
+        string.IsNullOrEmpty(newCode) ? "Укажите код."
+        : Siblings.Any(s => string.Equals(s.Code, newCode, StringComparison.OrdinalIgnoreCase)) ? $"Код {newCode} на этом уровне уже занят."
+        : null;
 
     /// <summary>Какие типы можно вложить в выбранное место (только «вниз»).</summary>
     private List<LocationType> AllowedChildTypes =>
         Enum.GetValues<LocationType>().Where(t => selected is null || t > selected.Type).ToList();
 
     private string PreviewCode =>
-        $"{selected?.FullCode ?? warehouse?.Code}-{(string.IsNullOrWhiteSpace(newCode) ? "…" : newCode.Trim().ToUpperInvariant())}";
+        $"{selected?.FullCode ?? warehouse?.Code}-{(string.IsNullOrEmpty(newCode) ? "…" : newCode)}";
+
+    // ---------- Загрузка и выбор ----------
 
     protected override async Task OnInitializedAsync()
     {
@@ -184,11 +212,19 @@
         try
         {
             warehouses = await Api.GetWarehousesAsync();
+            SuggestWarehouse();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
         }
+    }
+
+    /// <summary>Предзаполнение формы нового склада: следующий свободный код и название.</summary>
+    private void SuggestWarehouse()
+    {
+        newWarehouseCode = Codes.NextWarehouseCode(warehouses.Select(w => w.Code));
+        newWarehouseName = warehouses.Count == 0 ? "Склад запчастей" : $"Склад {newWarehouseCode}";
     }
 
     private async Task SelectWarehouseAsync(WarehouseDto w)
@@ -234,47 +270,65 @@
         }
     }
 
+    /// <summary>Тип по умолчанию — на уровень ниже выбранного места (на верхнем уровне — стеллаж).</summary>
     private void ResetNewType()
     {
         var allowed = AllowedChildTypes;
-        if (allowed.Count > 0 && !allowed.Contains(newType))
-            newType = allowed[0];
-        if (selected is null)
-            newType = LocationType.Rack;
+        newType = selected is null
+            ? LocationType.Rack
+            : allowed.Count > 0 ? allowed[0] : newType;
+        SuggestLocationCode();
     }
+
+    /// <summary>Предзаполнение кода: следующая свободная буква или номер среди соседей.</summary>
+    private void SuggestLocationCode() =>
+        newCode = Codes.NextLocationCode(newType, Siblings.Select(s => s.Code));
+
+    // ---------- Сохранение ----------
 
     private async Task CreateWarehouseAsync()
     {
+        if (!WarehouseFormValid) return;
         error = success = null;
+        busy = true;
         try
         {
-            var created = await Api.CreateWarehouseAsync(new CreateWarehouseRequest(newWarehouseCode ?? "", newWarehouseName ?? "", null));
-            newWarehouseCode = newWarehouseName = null;
+            var created = await Api.CreateWarehouseAsync(new CreateWarehouseRequest(newWarehouseCode!, newWarehouseName!.Trim(), null));
             await LoadWarehousesAsync();
             await SelectWarehouseAsync(warehouses.First(w => w.Id == created.Id));
-            success = $"Склад {created.Code} создан.";
+            success = $"Склад {created.Code} создан. Теперь добавьте стеллажи и ячейки справа.";
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
         }
     }
 
     private async Task AddLocationAsync()
     {
-        if (warehouse is null) return;
+        if (warehouse is null || LocationCodeError is not null) return;
         error = success = null;
+        busy = true;
         try
         {
             var created = await Api.AddLocationAsync(warehouse.Id,
-                new CreateLocationRequest(selected?.Id, newType, newCode ?? "", newName));
-            newCode = newName = null;
+                new CreateLocationRequest(selected?.Id, newType, newCode!, string.IsNullOrWhiteSpace(newName) ? null : newName.Trim()));
+            newName = null;
             await ReloadTreeAsync();
+            SuggestLocationCode(); // сразу следующий код — удобно добавлять ячейки подряд
             success = $"Добавлено: {created.FullCode}";
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
         }
     }
 

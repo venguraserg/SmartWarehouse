@@ -1,0 +1,38 @@
+@* Поле кода (склад, место хранения): при выходе из поля код приводится к допустимому виду —
+   верхний регистр, только буквы и цифры. Например, «a-01» станет «A01». *@
+<input @key="renderVersion" id="@Id" type="text" class="@(Invalid ? "invalid" : null)" value="@Value"
+       @onchange="OnChangeAsync" @oninput="OnInputAsync"
+       maxlength="@(Codes.MaxLength + 8)" placeholder="@Placeholder" autocomplete="off" spellcheck="false" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+
+    // Смена ключа пересоздаёт поле, чтобы показать исправленный код, даже если он совпал с прежним значением.
+    private int renderVersion;
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        // Во время ввода только сообщаем значение (для подсказок), не трогая курсор.
+        var normalized = Codes.Normalize(e.Value?.ToString());
+        if (normalized != Value)
+        {
+            Value = normalized;
+            await ValueChanged.InvokeAsync(normalized);
+        }
+    }
+
+    private async Task OnChangeAsync(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var normalized = Codes.Normalize(raw);
+        if (normalized != raw)
+            renderVersion++;
+
+        Value = normalized;
+        await ValueChanged.InvokeAsync(normalized);
+    }
+}

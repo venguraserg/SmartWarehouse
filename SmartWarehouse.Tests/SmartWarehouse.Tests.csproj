@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
+    <ProjectReference Include="..\SmartWarehouse.Web\SmartWarehouse.Web.csproj" />
   </ItemGroup>
 
 </Project>

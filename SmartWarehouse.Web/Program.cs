@@ -14,6 +14,8 @@ builder.Services.AddHttpClient<ApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+builder.Services.AddScoped<BrowserStore>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

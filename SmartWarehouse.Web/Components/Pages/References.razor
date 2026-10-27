@@ -13,10 +13,12 @@
         <form class="inline-form" @onsubmit="AddCategoryAsync" @onsubmit:preventDefault>
             <div class="field">
                 <label for="cat-name">Новая категория</label>
-                <input id="cat-name" type="text" @bind="categoryName" maxlength="128" placeholder="Подшипники" />
+                <input id="cat-name" type="text" @bind="categoryName" @bind:event="oninput" maxlength="128" placeholder="Подшипники"
+                       class="@(CategoryError is not null ? "invalid" : null)" />
             </div>
-            <button class="btn btn-primary" type="submit">Добавить</button>
+            <button class="btn btn-primary" type="submit" disabled="@(CategoryError is not null || string.IsNullOrWhiteSpace(categoryName) || busy)">Добавить</button>
         </form>
+        <FieldError Message="@CategoryError" />
         <ul style="margin: 1rem 0 0; padding-left: 1.1rem">
             @foreach (var c in categories)
             {
@@ -34,15 +36,18 @@
         <form class="inline-form" @onsubmit="AddUnitAsync" @onsubmit:preventDefault>
             <div class="field" style="max-width: 110px">
                 <label for="unit-code">Обозначение</label>
-                <input id="unit-code" type="text" @bind="unitCode" maxlength="16" placeholder="пар" />
+                <input id="unit-code" type="text" @bind="unitCode" @bind:event="oninput" maxlength="16" placeholder="пар"
+                       class="@(UnitCodeError is not null ? "invalid" : null)" />
             </div>
             <div class="field">
                 <label for="unit-name">Название</label>
-                <input id="unit-name" type="text" @bind="unitName" maxlength="64" placeholder="пара" />
+                <input id="unit-name" type="text" @bind="unitName" @bind:event="oninput" maxlength="64" placeholder="пара" />
             </div>
             <label class="checkbox" style="margin-bottom: .5rem"><input type="checkbox" @bind="unitFractional" /> дробная</label>
-            <button class="btn btn-primary" type="submit">Добавить</button>
+            <button class="btn btn-primary" type="submit" disabled="@(!UnitFormValid || busy)">Добавить</button>
         </form>
+        <FieldError Message="@UnitCodeError" />
+        <div class="field-hint">«Дробная» — можно учитывать 0,5 (метры, литры). Для штук оставьте выключенным.</div>
         <table style="margin-top: 1rem">
             <thead><tr><th>Обозн.</th><th>Название</th><th>Количество</th></tr></thead>
             <tbody>
@@ -65,8 +70,8 @@
     <form class="inline-form" @onsubmit="AddEquipmentAsync" @onsubmit:preventDefault>
         <div class="field">
             <label for="eq-parent">Входит в</label>
-            <select id="eq-parent" @bind="equipmentParentId">
-                <option value="">— верхний уровень —</option>
+            <select id="eq-parent" @bind="equipmentParentId" @bind:after="SuggestEquipmentCode">
+                <option value="">— верхний уровень (участок) —</option>
                 @foreach (var e in equipmentTree)
                 {
                     <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
@@ -74,15 +79,17 @@
             </select>
         </div>
         <div class="field" style="max-width: 160px">
-            <label for="eq-code">Код</label>
-            <input id="eq-code" type="text" @bind="equipmentCode" maxlength="64" placeholder="L1-P1" />
+            <label for="eq-code">Код <span class="req">*</span></label>
+            <input id="eq-code" type="text" @bind="equipmentCode" @bind:event="oninput" maxlength="64"
+                   class="@(EquipmentCodeError is not null ? "invalid" : null)" />
         </div>
         <div class="field">
-            <label for="eq-name">Наименование</label>
-            <input id="eq-name" type="text" @bind="equipmentName" maxlength="256" placeholder="Насос центробежный" />
+            <label for="eq-name">Наименование <span class="req">*</span></label>
+            <input id="eq-name" type="text" @bind="equipmentName" @bind:event="oninput" maxlength="256" placeholder="Насос центробежный" />
         </div>
-        <button class="btn btn-primary" type="submit">Добавить</button>
+        <button class="btn btn-primary" type="submit" disabled="@(!EquipmentFormValid || busy)">Добавить</button>
     </form>
+    <FieldError Message="@EquipmentCodeError" />
 
     <div class="table-wrap" style="margin-top: 1rem">
         <table>
@@ -107,6 +114,7 @@
 @code {
     private List<CategoryDto> categories = [];
     private List<UnitDto> units = [];
+    private List<EquipmentDto> equipment = [];
     private List<(EquipmentDto Item, int Depth)> equipmentTree = [];
 
     private string? categoryName;
@@ -117,8 +125,35 @@
     private string? equipmentCode;
     private string? equipmentName;
 
+    private bool busy;
     private string? error;
     private string? success;
+
+    // ---------- Проверки ----------
+
+    private string? CategoryError =>
+        !string.IsNullOrWhiteSpace(categoryName)
+        && categories.Any(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase))
+            ? $"Категория «{categoryName.Trim()}» уже есть."
+            : null;
+
+    private string? UnitCodeError =>
+        !string.IsNullOrWhiteSpace(unitCode)
+        && units.Any(u => string.Equals(u.Code, unitCode.Trim(), StringComparison.OrdinalIgnoreCase))
+            ? $"Единица «{unitCode.Trim()}» уже есть."
+            : null;
+
+    private bool UnitFormValid =>
+        UnitCodeError is null && !string.IsNullOrWhiteSpace(unitCode) && !string.IsNullOrWhiteSpace(unitName);
+
+    private string? EquipmentCodeError =>
+        string.IsNullOrWhiteSpace(equipmentCode) ? "Укажите код оборудования."
+        : equipment.Any(e => string.Equals(e.Code, equipmentCode.Trim(), StringComparison.OrdinalIgnoreCase)) ? $"Код {equipmentCode.Trim()} уже занят."
+        : null;
+
+    private bool EquipmentFormValid => EquipmentCodeError is null && !string.IsNullOrWhiteSpace(equipmentName);
+
+    // ---------- Загрузка ----------
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -131,7 +166,9 @@
         {
             categories = await Api.GetCategoriesAsync();
             units = await Api.GetUnitsAsync();
-            equipmentTree = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            equipment = await Api.GetEquipmentAsync();
+            equipmentTree = EquipmentTree.Flatten(equipment);
+            SuggestEquipmentCode();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -139,31 +176,44 @@
         }
     }
 
+    /// <summary>Предзаполнение кода оборудования: «код родителя-01» или «УЧ-01» на верхнем уровне.</summary>
+    private void SuggestEquipmentCode()
+    {
+        var parentCode = equipment.FirstOrDefault(e => e.Id == equipmentParentId)?.Code;
+        equipmentCode = Codes.NextEquipmentCode(parentCode, equipment.Select(e => e.Code));
+    }
+
+    // ---------- Сохранение ----------
+
     private Task AddCategoryAsync() => RunAsync(async () =>
     {
-        await Api.CreateCategoryAsync(new CreateCategoryRequest(categoryName ?? "", null));
-        success = $"Категория «{categoryName}» добавлена.";
+        var name = categoryName!.Trim();
+        await Api.CreateCategoryAsync(new CreateCategoryRequest(name, null));
+        success = $"Категория «{name}» добавлена.";
         categoryName = null;
     });
 
     private Task AddUnitAsync() => RunAsync(async () =>
     {
-        await Api.CreateUnitAsync(new CreateUnitRequest(unitCode ?? "", unitName ?? "", unitFractional));
-        success = $"Единица «{unitCode}» добавлена.";
+        var code = unitCode!.Trim();
+        await Api.CreateUnitAsync(new CreateUnitRequest(code, unitName!.Trim(), unitFractional));
+        success = $"Единица «{code}» добавлена.";
         unitCode = unitName = null;
         unitFractional = false;
     });
 
     private Task AddEquipmentAsync() => RunAsync(async () =>
     {
-        await Api.CreateEquipmentAsync(new CreateEquipmentRequest(equipmentParentId, equipmentCode ?? "", equipmentName ?? ""));
-        success = $"Оборудование «{equipmentCode}» добавлено.";
-        equipmentCode = equipmentName = null;
+        var code = equipmentCode!.Trim();
+        await Api.CreateEquipmentAsync(new CreateEquipmentRequest(equipmentParentId, code, equipmentName!.Trim()));
+        success = $"Оборудование «{code}» добавлено.";
+        equipmentName = null;
     });
 
     private async Task RunAsync(Func<Task> action)
     {
         error = success = null;
+        busy = true;
         try
         {
             await action();
@@ -172,6 +222,10 @@
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
         }
     }
 }

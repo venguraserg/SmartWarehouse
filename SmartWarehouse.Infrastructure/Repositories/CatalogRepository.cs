@@ -71,6 +71,9 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
 
     public void AddItem(Item item) => db.Items.Add(item);
 
+    public async Task<IReadOnlyList<string>> ListSkusStartingWithAsync(string prefix, CancellationToken ct = default) =>
+        await db.Items.Where(x => x.Sku.StartsWith(prefix)).Select(x => x.Sku).ToListAsync(ct);
+
     public Task<Item?> GetItemForUpdateAsync(int id, CancellationToken ct = default) =>
         db.Items.FirstOrDefaultAsync(x => x.Id == id, ct);
 

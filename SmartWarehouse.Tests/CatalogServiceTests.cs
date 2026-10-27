@@ -130,6 +130,21 @@ public class CatalogServiceTests
         await Assert.ThrowsAsync<DomainException>(() => CreateItemAsync("A1"));
     }
 
+    // ---------- Подсказка артикула ----------
+
+    [Fact]
+    public async Task Подсказка_артикула_следующий_номер()
+    {
+        Assert.Equal("ЗЧ-000001", await _service.SuggestSkuAsync());
+
+        await CreateItemAsync("ЗЧ-000007");
+        await CreateItemAsync("ЗЧ-000003");
+        await CreateItemAsync("ЗЧ-ABC");       // нечисловой хвост не мешает
+        await CreateItemAsync("6205-2RS");     // чужие артикулы не учитываются
+
+        Assert.Equal("ЗЧ-000008", await _service.SuggestSkuAsync());
+    }
+
     // ---------- Оборудование ----------
 
     [Fact]
@@ -198,6 +213,9 @@ internal class FakeCatalogRepository : ICatalogRepository
         Task.FromResult<IReadOnlyList<Item>>(Items.ToList());
 
     public void AddItem(Item item) => _added.Add(item);
+
+    public Task<IReadOnlyList<string>> ListSkusStartingWithAsync(string prefix, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<string>>(Items.Where(x => x.Sku.StartsWith(prefix)).Select(x => x.Sku).ToList());
 
     public Task<Item?> GetItemForUpdateAsync(int id, CancellationToken ct = default) =>
         Task.FromResult(Items.FirstOrDefault(x => x.Id == id));
