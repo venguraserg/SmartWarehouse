@@ -61,6 +61,21 @@ h2 { font-size: 1.1rem; margin: 1.75rem 0 .75rem; }
 
 .content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 1200px; }
 
+.nav-user { margin-top: 1.5rem; padding: .75rem .6rem 0; border-top: 1px solid rgba(255,255,255,.1); }
+.nav-user-name { color: #fff; font-weight: 600; margin-bottom: .35rem; }
+.nav-user-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; font-size: .85rem; }
+.nav-user-actions a { padding: 0; color: var(--sidebar-text); }
+.nav-user-actions form { margin: 0; }
+.link-button { background: none; border: none; padding: 0; font: inherit; color: var(--sidebar-text); cursor: pointer; }
+.link-button:hover { color: #fff; text-decoration: underline; }
+
+/* ===== Вход ===== */
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; background: var(--sidebar); }
+.auth-card { width: 100%; max-width: 380px; background: var(--surface); border-radius: 10px; padding: 1.75rem 1.75rem 1.25rem; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.auth-brand { color: var(--text); margin-bottom: 1.25rem; padding: 0; }
+.auth-card h1 { font-size: 1.25rem; }
+.role-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+
 /* ===== Панели и сетки ===== */
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; }
 .panel + .panel { margin-top: 1rem; }

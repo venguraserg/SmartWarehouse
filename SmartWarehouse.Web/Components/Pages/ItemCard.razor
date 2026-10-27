@@ -14,7 +14,7 @@
             <span class="tag tag-neutral">неактивна</span>
         }
         <span class="spacer"></span>
-        <a class="btn" href="/items/@item.Id/edit">Изменить</a>
+<AuthorizeView Roles="@AppRoles.Warehouse"><a class="btn" href="/items/@item.Id/edit">Изменить</a></AuthorizeView>
     </div>
 
     <div class="panel">
@@ -30,6 +30,7 @@
                         <span>Нет фото</span>
                     }
                 </div>
+                <AuthorizeView Roles="@AppRoles.Warehouse">
                 <div style="margin-top: .6rem">
                     <label for="photo">@(item.ImageVersion is null ? "Загрузить фото" : "Заменить фото") (JPEG, PNG, WebP, до 5 МБ)</label>
                     <InputFile id="photo" class="file-input" accept="image/jpeg,image/png,image/webp" OnChange="UploadAsync" disabled="@busy" />
@@ -40,6 +41,7 @@
                         </div>
                     }
                 </div>
+                </AuthorizeView>
             </div>
 
             <dl class="props">

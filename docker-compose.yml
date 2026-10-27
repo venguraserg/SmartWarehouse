@@ -25,6 +25,9 @@ services:
     environment:
       ConnectionStrings__Default: "Host=db;Database=smartwarehouse;Username=smartwarehouse;Password=${POSTGRES_PASSWORD}"
       Database__MigrateOnStartup: "true"
+      # Ключ подписи токенов входа (не короче 32 символов) и начальный пароль администратора.
+      Auth__JwtKey: ${JWT_KEY:?Задайте JWT_KEY в файле .env (не короче 32 символов)}
+      Auth__InitialAdminPassword: ${ADMIN_PASSWORD:-admin123}
       TZ: ${TZ:-Europe/Minsk}
     ports:
       - "${API_PORT:-8080}:8080"
@@ -38,9 +41,14 @@ services:
       - api
     environment:
       Api__BaseUrl: "http://api:8080"
+      # Ключи шифрования cookie входа сохраняются между перезапусками контейнера.
+      DataProtection__KeysPath: /keys
       TZ: ${TZ:-Europe/Minsk}
+    volumes:
+      - webkeys:/keys
     ports:
       - "${WEB_PORT:-8081}:8080"
 
 volumes:
   pgdata:
+  webkeys:

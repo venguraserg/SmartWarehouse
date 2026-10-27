@@ -1,6 +1,22 @@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <RedirectToLogin />
+                }
+                else
+                {
+                    <h1>Нет доступа</h1>
+                    <p>У вашей учётной записи нет прав на этот раздел. Если они нужны — обратитесь к администратору.</p>
+                    <p><a href="/">На главную</a></p>
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <p class="loading">Проверка входа…</p>
+            </Authorizing>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
     <NotFound>

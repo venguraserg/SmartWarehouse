@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Nav
 
 <div class="app">
     <aside class="sidebar">
@@ -10,23 +11,51 @@
         <button class="menu-toggle" type="button" @onclick="() => menuOpen = !menuOpen" aria-label="Меню">☰</button>
 
         <nav class="nav @(menuOpen ? "open" : null)" @onclick="() => menuOpen = false">
-            <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
+            <AuthorizeView>
+                <Authorized>
+                    <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
 
-            <div class="nav-group">Учёт</div>
-            <NavLink href="/stock">Остатки</NavLink>
-            <NavLink href="/custody">Подотчёт</NavLink>
-            <NavLink href="/documents">Документы</NavLink>
-            <NavLink href="/documents/new/Receipt">+ Приход</NavLink>
-            <NavLink href="/documents/new/Issue">− Выдача сотруднику</NavLink>
-            <NavLink href="/documents/new/Return">↩ Возврат</NavLink>
-            <NavLink href="/documents/new/WriteOff">✕ Списание</NavLink>
-            <NavLink href="/documents/new/Transfer">⇄ Перемещение</NavLink>
+                    <div class="nav-group">Учёт</div>
+                    <NavLink href="/stock">Остатки</NavLink>
+                    <NavLink href="/custody">Подотчёт</NavLink>
+                    <NavLink href="/documents">Документы</NavLink>
+                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
+                        <NavLink href="/documents/new/Receipt">+ Приход</NavLink>
+                        <NavLink href="/documents/new/Issue">− Выдача сотруднику</NavLink>
+                        <NavLink href="/documents/new/Return">↩ Возврат</NavLink>
+                        <NavLink href="/documents/new/WriteOff">✕ Списание</NavLink>
+                        <NavLink href="/documents/new/Transfer">⇄ Перемещение</NavLink>
+                    </AuthorizeView>
 
-            <div class="nav-group">Данные</div>
-            <NavLink href="/items">Номенклатура</NavLink>
-            <NavLink href="/warehouses">Склады и места</NavLink>
-            <NavLink href="/employees">Сотрудники</NavLink>
-            <NavLink href="/references">Справочники</NavLink>
+                    <div class="nav-group">Данные</div>
+                    <NavLink href="/items">Номенклатура</NavLink>
+                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
+                        <NavLink href="/warehouses">Склады и места</NavLink>
+                    </AuthorizeView>
+                    <AuthorizeView Roles="@($"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")" Context="staff">
+                        <NavLink href="/employees">Сотрудники</NavLink>
+                    </AuthorizeView>
+                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
+                        <NavLink href="/references">Справочники</NavLink>
+                    </AuthorizeView>
+
+                    <AuthorizeView Roles="@AppRoles.Admin" Context="admin">
+                        <div class="nav-group">Администрирование</div>
+                        <NavLink href="/admin/users">Пользователи</NavLink>
+                    </AuthorizeView>
+
+                    <div class="nav-user">
+                        <div class="nav-user-name">@context.User.DisplayNameOf()</div>
+                        <div class="nav-user-actions">
+                            <a href="/account/password">Сменить пароль</a>
+                            <form action="/account/logout" method="post">
+                                <AntiforgeryToken />
+                                <button type="submit" class="link-button">Выйти</button>
+                            </form>
+                        </div>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
         </nav>
     </aside>
 
@@ -41,5 +70,18 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private bool menuOpen;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Вошёл с временным паролем — сначала смена пароля.
+        if (AuthState is null)
+            return;
+
+        var user = (await AuthState).User;
+        if (user.Identity?.IsAuthenticated == true && user.MustChangePasswordOf())
+            Nav.NavigateTo("/account/password", forceLoad: true);
+    }
 }

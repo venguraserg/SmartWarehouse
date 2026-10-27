@@ -14,8 +14,8 @@
             <span class="tag tag-neutral">не работает</span>
         }
         <span class="spacer"></span>
-        <a class="btn" href="/employees?edit=@employee.Id">Изменить</a>
-        <a class="btn" href="/employees">К списку</a>
+        <AuthorizeView Roles="@AppRoles.Admin"><a class="btn" href="/employees?edit=@employee.Id">Изменить</a></AuthorizeView>
+        <AuthorizeView Roles="@($"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")"><a class="btn" href="/employees">К списку</a></AuthorizeView>
     </div>
 
     <div class="panel">
@@ -26,6 +26,17 @@
             <dd>@(employee.Position ?? "—")</dd>
             <dt>Подразделение</dt>
             <dd>@(employee.Department ?? "—")</dd>
+            <dt>Руководитель</dt>
+            <dd>
+                @if (employee.ManagerId is int managerId)
+                {
+                    <a href="/employees/@managerId">@employee.ManagerName</a>
+                }
+                else
+                {
+                    @("— (сам утверждает свои акты)")
+                }
+            </dd>
             <dt>Телефон</dt>
             <dd>@(employee.Phone ?? "—")</dd>
         </dl>
@@ -34,15 +45,17 @@
     <div class="page-head" style="margin-top: 1.5rem; margin-bottom: .75rem">
         <h2 style="margin: 0">Числится за сотрудником</h2>
         <span class="spacer"></span>
-        @if (custody.Count > 0)
-        {
-            <a class="btn btn-primary" href="/documents/new/WriteOff?employee=@employee.Id">Списать</a>
-            <a class="btn" href="/documents/new/Return?employee=@employee.Id">Вернуть на склад</a>
-        }
-        @if (employee.IsActive)
-        {
-            <a class="btn" href="/documents/new/Issue?employee=@employee.Id">Выдать</a>
-        }
+        <AuthorizeView Roles="@AppRoles.Warehouse">
+            @if (custody.Count > 0)
+            {
+                <a class="btn btn-primary" href="/documents/new/WriteOff?employee=@employee.Id">Списать</a>
+                <a class="btn" href="/documents/new/Return?employee=@employee.Id">Вернуть на склад</a>
+            }
+            @if (employee.IsActive)
+            {
+                <a class="btn" href="/documents/new/Issue?employee=@employee.Id">Выдать</a>
+            }
+        </AuthorizeView>
     </div>
     <div class="table-wrap">
         <table>

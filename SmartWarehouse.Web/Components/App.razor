@@ -18,7 +18,10 @@
 </html>
 
 @code {
-    // Интерактивный режим на сервере без предварительной отрисовки:
-    // данные с API загружаются один раз, а не дважды.
-    private static readonly IComponentRenderMode PageRenderMode = new InteractiveServerRenderMode(prerender: false);
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    // Обычные страницы — интерактивные (на сервере, без предварительной отрисовки: данные грузятся один раз).
+    // Страницы входа и смены пароля — статические: им нужно записать cookie в ответ.
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? new InteractiveServerRenderMode(prerender: false) : null;
 }

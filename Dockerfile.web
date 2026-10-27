@@ -16,6 +16,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_HTTP_PORTS=8080
+# Папка для ключей шифрования cookie (том webkeys в docker-compose).
+RUN mkdir -p /keys && chown $APP_UID /keys
 EXPOSE 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "SmartWarehouse.Web.dll"]

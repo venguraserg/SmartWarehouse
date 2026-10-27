@@ -6,11 +6,18 @@
 <div class="page-head">
     <h1>Подотчёт</h1>
     <span class="spacer"></span>
-    <a class="btn" href="/documents/new/Issue">− Выдать</a>
-    <a class="btn" href="/documents/new/Return">↩ Вернуть</a>
-    <a class="btn btn-primary" href="/documents/new/WriteOff">Списать</a>
+<AuthorizeView Roles="@AppRoles.Warehouse">
+        <a class="btn" href="/documents/new/Issue">− Выдать</a>
+        <a class="btn" href="/documents/new/Return">↩ Вернуть</a>
+        <a class="btn btn-primary" href="/documents/new/WriteOff">Списать</a>
+    </AuthorizeView>
 </div>
-<p class="muted" style="margin-top: -.5rem">Что выдано со склада и числится за сотрудниками — до списания или возврата.</p>
+<p class="muted" style="margin-top: -.5rem">
+    Что выдано со склада и числится за сотрудниками — до списания или возврата.
+    <AuthorizeView Roles="@AppRoles.Warehouse">
+        <NotAuthorized>Показан ваш подотчёт@(context.User.IsInRole(AppRoles.Manager) ? " и подотчёт ваших подчинённых" : "").</NotAuthorized>
+    </AuthorizeView>
+</p>
 
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
     <input type="search" placeholder="Сотрудник, табельный номер, артикул или наименование" @bind="search" style="max-width: 420px" />
@@ -59,8 +66,10 @@ else
                                     <span class="tag tag-neutral">не работает</span>
                                 }
                                 <span class="spacer"></span>
-                                <a class="btn btn-sm" href="/documents/new/Return?employee=@first.EmployeeId">Вернуть</a>
-                                <a class="btn btn-sm" href="/documents/new/WriteOff?employee=@first.EmployeeId">Списать</a>
+                                <AuthorizeView Roles="@AppRoles.Warehouse">
+                                    <a class="btn btn-sm" href="/documents/new/Return?employee=@first.EmployeeId">Вернуть</a>
+                                    <a class="btn btn-sm" href="/documents/new/WriteOff?employee=@first.EmployeeId">Списать</a>
+                                </AuthorizeView>
                             </div>
                         </td>
                     </tr>

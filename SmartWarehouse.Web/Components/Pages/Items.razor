@@ -6,7 +6,7 @@
 <div class="page-head">
     <h1>Номенклатура</h1>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="/items/new">+ Новая позиция</a>
+<AuthorizeView Roles="@AppRoles.Warehouse"><a class="btn btn-primary" href="/items/new">+ Новая позиция</a></AuthorizeView>
 </div>
 
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>

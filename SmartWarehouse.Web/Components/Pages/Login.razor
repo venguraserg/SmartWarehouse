@@ -1,0 +1,84 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Вход — склад</PageTitle>
+
+<h1>Вход</h1>
+
+@if (Expired == 1)
+{
+    <div class="alert alert-error">Сессия истекла — войдите снова.</div>
+}
+<Alert Error="@error" />
+
+<EditForm Model="Input" FormName="login" OnSubmit="LoginAsync">
+    <div class="field">
+        <label for="login">Логин</label>
+        <InputText id="login" @bind-Value="Input.Login" autocomplete="username" autofocus />
+    </div>
+    <div class="field">
+        <label for="password">Пароль</label>
+        <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="current-password" />
+    </div>
+    <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center">Войти</button>
+</EditForm>
+
+<p class="muted" style="margin-top: 1rem; font-size: .85rem">Нет учётной записи или забыли пароль — обратитесь к администратору.</p>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm] private LoginForm? Input { get; set; }
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private int? Expired { get; set; }
+
+    private string? error;
+
+    protected override void OnInitialized() => Input ??= new LoginForm();
+
+    private async Task LoginAsync()
+    {
+        LoginResponse login;
+        try
+        {
+            login = await Api.LoginAsync(new LoginRequest(Input!.Login ?? "", Input.Password ?? ""));
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            error = "Сервер склада (API) недоступен. Проверьте, что он запущен.";
+            return;
+        }
+
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            AuthClaims.CreatePrincipal(login),
+            new AuthenticationProperties { ExpiresUtc = login.ExpiresAt, IsPersistent = false });
+
+        // Временный пароль — сначала сменить его. Иначе — туда, куда шёл (только внутри сайта).
+        var target = login.User.MustChangePassword
+            ? "/account/password"
+            : IsLocal(ReturnUrl) ? ReturnUrl! : "/";
+        Nav.NavigateTo(target, forceLoad: true);
+    }
+
+    private static bool IsLocal(string? url) =>
+        !string.IsNullOrEmpty(url) && url.StartsWith('/') && !url.StartsWith("//") && !url.StartsWith("/\\")
+        && !url.StartsWith("/login", StringComparison.OrdinalIgnoreCase);
+
+    private sealed class LoginForm
+    {
+        public string? Login { get; set; }
+        public string? Password { get; set; }
+    }
+}
