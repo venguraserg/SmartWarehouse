@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.API.Controllers;
@@ -17,6 +18,14 @@ public class DocumentsController(IStockService stock) : ControllerBase
 
     [HttpGet("{id:long}")]
     public Task<DocumentDto> Get(long id, CancellationToken ct) => stock.GetDocumentAsync(id, ct);
+
+    /// <summary>Акт на списание (PDF) — только для документов списания.</summary>
+    [HttpGet("{id:long}/act")]
+    public async Task<IActionResult> WriteOffAct(long id, [FromServices] IActService acts, CancellationToken ct)
+    {
+        var (pdf, fileName) = await acts.GetWriteOffActAsync(id, ct);
+        return File(pdf, "application/pdf", fileName);
+    }
 
     /// <summary>Создать и провести документ. Проводится целиком или не проводится вовсе.</summary>
     [HttpPost]

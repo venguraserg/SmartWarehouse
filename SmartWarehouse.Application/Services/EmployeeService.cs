@@ -37,14 +37,34 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         return ToDto(employee);
     }
 
-    public async Task<IReadOnlyList<EmployeeIssueDto>> GetIssuesAsync(int id, int take = 200, CancellationToken ct = default)
+    public async Task<IReadOnlyList<EmployeeMovementDto>> GetHistoryAsync(int id, int take = 200, CancellationToken ct = default)
     {
         await FindAsync(id, ct);
-        var lines = await repo.GetIssuesAsync(id, Math.Clamp(take, 1, 1000), ct);
+        var lines = await repo.GetHistoryAsync(id, Math.Clamp(take, 1, 1000), ct);
         return lines
-            .Select(l => new EmployeeIssueDto(
-                l.DocumentId, l.Document.Number, l.OccurredAt, l.ItemId, l.Item.Sku, l.Item.Name,
-                l.Quantity, l.Item.Unit.Code, l.FromLocation?.FullCode, l.Document.EquipmentId))
+            .Select(l =>
+            {
+                var issued = l.ToEmployeeId == id;
+                return new EmployeeMovementDto(
+                    l.DocumentId, l.Document.Number, l.Type, l.OccurredAt, l.ItemId, l.Item.Sku, l.Item.Name,
+                    issued ? l.Quantity : -l.Quantity,
+                    l.Item.Unit.Code,
+                    issued ? l.FromLocation?.FullCode : l.ToLocation?.FullCode,
+                    l.Document.EquipmentId);
+            })
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<CustodyRowDto>> ListCustodyAsync(
+        int? employeeId = null, int? itemId = null, string? search = null, CancellationToken ct = default)
+    {
+        var balances = await repo.ListCustodyAsync(employeeId, itemId, string.IsNullOrWhiteSpace(search) ? null : search.Trim(), ct);
+        return balances
+            .Select(b => new CustodyRowDto(
+                b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
+                b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
+                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), b.Quantity))
+            .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName)
             .ToList();
     }
 

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
+using SmartWarehouse.Infrastructure.Pdf;
 using SmartWarehouse.Infrastructure.Data;
 using SmartWarehouse.Infrastructure.Repositories;
 
@@ -15,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<ICatalogRepository, CatalogRepository>();
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+        services.AddSingleton<IActPdfRenderer, ActPdfRenderer>();
         return services;
     }
 }

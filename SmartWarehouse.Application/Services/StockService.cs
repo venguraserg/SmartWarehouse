@@ -34,11 +34,23 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 throw new NotFoundException($"Оборудование {equipmentId} не найдено.");
         }
 
-        // Сотрудники: кто проводит и кому выдано (в документ записываются и ссылкой, и текстом «Иванов И. П.»).
-        var performer = await GetActiveEmployeeAsync(request.PerformedById, "Кто проводит", ct);
-        var receiver = await GetActiveEmployeeAsync(request.ReceivedById, "Кому выдано", ct);
-        if (receiver is not null && request.Type != MovementType.Issue)
-            throw new DomainException("Получатель указывается только для выдачи.");
+        // Сотрудники (в документ записываются и ссылкой, и текстом «Иванов И. П.»):
+        // кто проводит и подотчётное лицо — кому выдано / с кого списано / кто вернул.
+        var performer = await GetEmployeeAsync(request.PerformedById, "Кто проводит", requireActive: true, ct);
+        var accountable = await GetEmployeeAsync(
+            request.ReceivedById, AccountableLabel(request.Type),
+            requireActive: request.Type == MovementType.Issue, // вернуть или списать можно и с уволенного
+            ct);
+
+        if (UsesAccountable(request.Type))
+        {
+            if (accountable is null)
+                throw new DomainException($"Укажите сотрудника: «{AccountableLabel(request.Type)}».");
+        }
+        else if (accountable is not null)
+        {
+            throw new DomainException("Сотрудник-получатель указывается только для выдачи, списания и возврата.");
+        }
 
         // ---------- 2. Строки: формат ----------
         for (var i = 0; i < lines.Count; i++)
@@ -74,8 +86,11 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         }
 
         // ---------- 4. Расчёт новых остатков (без изменения данных) ----------
+        // Два вида остатков: в ячейках склада и за сотрудниками (подотчёт).
         var stored = new Dictionary<(int ItemId, int LocationId), StockBalance?>();
         var projected = new Dictionary<(int ItemId, int LocationId), decimal>();
+        var storedEmployee = new Dictionary<(int ItemId, int EmployeeId), EmployeeBalance?>();
+        var projectedEmployee = new Dictionary<(int ItemId, int EmployeeId), decimal>();
 
         async Task<decimal> CurrentAsync((int ItemId, int LocationId) key)
         {
@@ -89,6 +104,21 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             return quantity;
         }
 
+        async Task<decimal> CurrentEmployeeAsync((int ItemId, int EmployeeId) key)
+        {
+            if (!projectedEmployee.TryGetValue(key, out var quantity))
+            {
+                var balance = await repo.GetEmployeeBalanceAsync(key.ItemId, key.EmployeeId, ct);
+                storedEmployee[key] = balance;
+                quantity = balance?.Quantity ?? 0;
+                projectedEmployee[key] = quantity;
+            }
+            return quantity;
+        }
+
+        int? fromEmployeeId = request.Type is MovementType.WriteOff or MovementType.Return ? accountable!.Id : null;
+        int? toEmployeeId = request.Type is MovementType.Issue ? accountable!.Id : null;
+
         foreach (var line in lines)
         {
             if (line.FromLocationId is int fromId)
@@ -100,10 +130,25 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 projected[key] = available - line.Quantity;
             }
 
+            if (fromEmployeeId is int fromEmp)
+            {
+                var key = (line.ItemId, fromEmp);
+                var available = await CurrentEmployeeAsync(key);
+                if (available < line.Quantity)
+                    throw new InsufficientStockException(items[line.ItemId].Sku, accountable!.ShortName, available, line.Quantity, isEmployee: true);
+                projectedEmployee[key] = available - line.Quantity;
+            }
+
             if (line.ToLocationId is int toId)
             {
                 var key = (line.ItemId, toId);
                 projected[key] = await CurrentAsync(key) + line.Quantity;
+            }
+
+            if (toEmployeeId is int toEmp)
+            {
+                var key = (line.ItemId, toEmp);
+                projectedEmployee[key] = await CurrentEmployeeAsync(key) + line.Quantity;
             }
         }
 
@@ -117,6 +162,15 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 repo.AddBalance(new StockBalance { ItemId = key.ItemId, LocationId = key.LocationId, Quantity = quantity });
         }
 
+        foreach (var (key, quantity) in projectedEmployee)
+        {
+            var balance = storedEmployee[key];
+            if (balance is not null)
+                balance.Quantity = quantity;
+            else if (quantity > 0)
+                repo.AddEmployeeBalance(new EmployeeBalance { ItemId = key.ItemId, EmployeeId = key.EmployeeId, Quantity = quantity });
+        }
+
         var now = clock.GetUtcNow();
         var document = new StockDocument
         {
@@ -126,8 +180,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             EquipmentId = request.EquipmentId,
             PerformedById = performer?.Id,
             PerformedBy = performer?.ShortName ?? Clean(request.PerformedBy),
-            ReceivedById = receiver?.Id,
-            ReceivedBy = receiver?.ShortName,
+            ReceivedById = accountable?.Id,
+            ReceivedBy = accountable?.ShortName,
             Comment = Clean(request.Comment)
         };
 
@@ -143,6 +197,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 ItemId = line.ItemId,
                 FromLocationId = line.FromLocationId,
                 ToLocationId = line.ToLocationId,
+                FromEmployeeId = fromEmployeeId,
+                ToEmployeeId = toEmployeeId,
                 Quantity = line.Quantity
             });
         }
@@ -253,17 +309,29 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .ToList();
     }
 
-    private async Task<Employee?> GetActiveEmployeeAsync(int? id, string field, CancellationToken ct)
+    private async Task<Employee?> GetEmployeeAsync(int? id, string field, bool requireActive, CancellationToken ct)
     {
         if (id is not int employeeId)
             return null;
 
         var employee = await repo.GetEmployeeAsync(employeeId, ct)
             ?? throw new NotFoundException($"{field}: сотрудник {employeeId} не найден.");
-        if (!employee.IsActive)
+        if (requireActive && !employee.IsActive)
             throw new DomainException($"{field}: сотрудник {employee.ShortName} отмечен как неработающий.");
         return employee;
     }
+
+    /// <summary>Документы, где обязательно подотчётное лицо.</summary>
+    public static bool UsesAccountable(MovementType type) =>
+        type is MovementType.Issue or MovementType.WriteOff or MovementType.Return;
+
+    private static string AccountableLabel(MovementType type) => type switch
+    {
+        MovementType.Issue => "Кому выдано",
+        MovementType.WriteOff => "С кого списать",
+        MovementType.Return => "Кто возвращает",
+        _ => "Сотрудник"
+    };
 
     private async Task EnsureItemExistsAsync(int itemId, CancellationToken ct)
     {
@@ -287,9 +355,18 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 break;
 
             case MovementType.Issue:
-            case MovementType.WriteOff:
                 if (!hasFrom || hasTo)
-                    throw new DomainException($"Строка {n}: для выдачи и списания укажите только место, откуда берётся товар.");
+                    throw new DomainException($"Строка {n}: для выдачи укажите только место, откуда берётся товар.");
+                break;
+
+            case MovementType.WriteOff:
+                if (hasFrom || hasTo)
+                    throw new DomainException($"Строка {n}: при списании место не указывается — списывается с сотрудника.");
+                break;
+
+            case MovementType.Return:
+                if (!hasTo || hasFrom)
+                    throw new DomainException($"Строка {n}: для возврата укажите только место, куда кладётся товар.");
                 break;
 
             case MovementType.Transfer:

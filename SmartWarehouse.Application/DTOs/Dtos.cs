@@ -74,18 +74,36 @@ public record EmployeeDto(
     string FullName,
     string ShortName);
 
-/// <summary>Что выдано сотруднику: строка выдачи.</summary>
-public record EmployeeIssueDto(
+/// <summary>
+/// Движение по подотчёту сотрудника: выдача (количество со знаком «+»),
+/// списание и возврат (со знаком «−»).
+/// </summary>
+/// <param name="Location">Для выдачи — откуда выдано, для возврата — куда вернули.</param>
+public record EmployeeMovementDto(
     long DocumentId,
     string DocumentNumber,
+    MovementType Type,
     DateTimeOffset OccurredAt,
     int ItemId,
     string Sku,
     string ItemName,
     decimal Quantity,
     string UnitCode,
-    string? FromLocation,
+    string? Location,
     int? EquipmentId);
+
+/// <summary>Что числится за сотрудником (подотчёт).</summary>
+public record CustodyRowDto(
+    int EmployeeId,
+    string EmployeeName,
+    string? Position,
+    bool EmployeeIsActive,
+    int ItemId,
+    string Sku,
+    string ItemName,
+    string UnitCode,
+    long? ImageVersion,
+    decimal Quantity);
 
 // ---------- Оборудование ----------
 

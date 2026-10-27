@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Domain.Entities;
-using SmartWarehouse.Domain.Enums;
 using SmartWarehouse.Infrastructure.Data;
 
 namespace SmartWarehouse.Infrastructure.Repositories;
@@ -41,17 +40,43 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
 
     public void Add(Employee employee) => db.Employees.Add(employee);
 
-    public async Task<IReadOnlyList<StockMovement>> GetIssuesAsync(int employeeId, int take, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<StockMovement>> GetHistoryAsync(int employeeId, int take, CancellationToken ct = default) =>
         await db.Movements
             .AsNoTracking()
             .Include(x => x.Document)
             .Include(x => x.Item).ThenInclude(i => i.Unit)
             .Include(x => x.FromLocation)
-            .Where(x => x.Type == MovementType.Issue && x.Document.ReceivedById == employeeId)
+            .Include(x => x.ToLocation)
+            .Where(x => x.FromEmployeeId == employeeId || x.ToEmployeeId == employeeId)
             .OrderByDescending(x => x.OccurredAt)
             .ThenByDescending(x => x.Id)
             .Take(take)
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default)
+    {
+        var query = db.EmployeeBalances
+            .AsNoTracking()
+            .Include(x => x.Employee)
+            .Include(x => x.Item).ThenInclude(i => i.Unit)
+            .Where(x => x.Quantity > 0);
+
+        if (employeeId is not null)
+            query = query.Where(x => x.EmployeeId == employeeId);
+        if (itemId is not null)
+            query = query.Where(x => x.ItemId == itemId);
+        if (search is not null)
+        {
+            var pattern = $"%{search}%";
+            query = query.Where(x =>
+                EF.Functions.ILike(x.Item.Name, pattern)
+                || EF.Functions.ILike(x.Item.Sku, pattern)
+                || EF.Functions.ILike(x.Employee.LastName, pattern)
+                || (x.Employee.PersonnelNumber != null && EF.Functions.ILike(x.Employee.PersonnelNumber, pattern)));
+        }
+
+        return await query.Take(5000).ToListAsync(ct);
+    }
 
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

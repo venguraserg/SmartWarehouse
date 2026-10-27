@@ -12,6 +12,8 @@ internal class FakeStockRepository : IStockRepository
     public List<StorageLocation> Locations { get; } = [];
     public List<Equipment> Equipment { get; } = [];
     public List<Employee> Employees { get; } = [];
+    public List<EmployeeBalance> EmployeeBalances { get; } = [];
+    private readonly List<EmployeeBalance> _pendingEmployeeBalances = [];
     public List<StockBalance> Balances { get; } = [];
     public List<StockDocument> Documents { get; } = [];
     public int SaveCount { get; private set; }
@@ -51,6 +53,11 @@ internal class FakeStockRepository : IStockRepository
     public void AddBalance(StockBalance balance) => _pendingBalances.Add(balance);
 
     public void AddDocument(StockDocument document) => _pendingDocuments.Add(document);
+
+    public Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default) =>
+        Task.FromResult(EmployeeBalances.FirstOrDefault(x => x.ItemId == itemId && x.EmployeeId == employeeId));
+
+    public void AddEmployeeBalance(EmployeeBalance balance) => _pendingEmployeeBalances.Add(balance);
 
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>
         Task.FromResult(Documents.FirstOrDefault(x => x.Id == id));
@@ -121,6 +128,8 @@ internal class FakeStockRepository : IStockRepository
             Documents.Add(document);
         }
 
+        EmployeeBalances.AddRange(_pendingEmployeeBalances);
+        _pendingEmployeeBalances.Clear();
         _pendingBalances.Clear();
         _pendingDocuments.Clear();
         SaveCount++;

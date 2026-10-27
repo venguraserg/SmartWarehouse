@@ -34,6 +34,11 @@ public interface IStockRepository
 
     void AddBalance(StockBalance balance);
 
+    /// <summary>Сколько позиции числится за сотрудником (отслеживаемая сущность) или null.</summary>
+    Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default);
+
+    void AddEmployeeBalance(EmployeeBalance balance);
+
     void AddDocument(StockDocument document);
 
     /// <summary>Документ со строками, позициями, единицами и местами.</summary>
@@ -129,8 +134,14 @@ public interface IEmployeeRepository
 
     void Add(Employee employee);
 
-    /// <summary>Строки выдач сотруднику (с документом, позицией, единицей, местом), новые первыми.</summary>
-    Task<IReadOnlyList<StockMovement>> GetIssuesAsync(int employeeId, int take, CancellationToken ct = default);
+    /// <summary>Движения по подотчёту сотрудника (с документом, позицией, единицей, местами), новые первыми.</summary>
+    Task<IReadOnlyList<StockMovement>> GetHistoryAsync(int employeeId, int take, CancellationToken ct = default);
+
+    /// <summary>
+    /// Ненулевые остатки за сотрудниками (с сотрудником, позицией и единицей).
+    /// Фильтры необязательны: сотрудник, позиция, текст (ФИО, артикул, наименование).
+    /// </summary>
+    Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
 }

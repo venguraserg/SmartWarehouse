@@ -76,7 +76,7 @@ public class EmployeeServiceTests
     {
         await Assert.ThrowsAsync<NotFoundException>(() => _service.GetAsync(5));
         await Assert.ThrowsAsync<NotFoundException>(() => _service.UpdateAsync(5, Request()));
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetIssuesAsync(5));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetHistoryAsync(5));
     }
 }
 
@@ -100,8 +100,11 @@ internal class FakeEmployeeRepository : IEmployeeRepository
 
     public void Add(Employee employee) => _pending.Add(employee);
 
-    public Task<IReadOnlyList<StockMovement>> GetIssuesAsync(int employeeId, int take, CancellationToken ct = default) =>
+    public Task<IReadOnlyList<StockMovement>> GetHistoryAsync(int employeeId, int take, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<StockMovement>>([]);
+
+    public Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<EmployeeBalance>>([]);
 
     public Task SaveChangesAsync(CancellationToken ct = default)
     {

@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.API.Infrastructure;
 using SmartWarehouse.Application;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Infrastructure;
 using SmartWarehouse.Infrastructure.Data;
 
@@ -14,6 +15,8 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
         "Не задана строка подключения ConnectionStrings:Default. См. README, раздел «Запуск».");
 
 builder.Services.AddApplication();
+// Наименование организации / подразделения в шапке актов (необязательно).
+builder.Services.AddSingleton(new DocumentPrintOptions(builder.Configuration["Documents:Organization"]));
 builder.Services.AddInfrastructure(connectionString);
 
 builder.Services.AddControllers()
