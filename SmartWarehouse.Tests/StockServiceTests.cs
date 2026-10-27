@@ -336,4 +336,50 @@ public class StockServiceTests
 
         Assert.Empty((await _service.SearchStockAsync(new StockQuery())).Rows);
     }
+
+    // ---------- Сотрудники в документах ----------
+
+    private void AddEmployees()
+    {
+        _repo.Employees.Add(new Employee { Id = 1, LastName = "Иванов", FirstName = "Иван", MiddleName = "Петрович", Position = "Кладовщик" });
+        _repo.Employees.Add(new Employee { Id = 2, LastName = "Петров", FirstName = "Сергей", Position = "Слесарь" });
+        _repo.Employees.Add(new Employee { Id = 3, LastName = "Сидоров", FirstName = "Олег", IsActive = false });
+    }
+
+    [Fact]
+    public async Task Выдача_записывает_кто_провёл_и_кому_выдано()
+    {
+        AddEmployees();
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+
+        var doc = await _service.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Issue, null, null, "это поле игнорируется", null, [Line(2, from: CellA)],
+            PerformedById: 1, ReceivedById: 2));
+
+        Assert.Equal("Иванов И. П.", doc.PerformedBy);
+        Assert.Equal(1, doc.PerformedById);
+        Assert.Equal("Петров С.", doc.ReceivedBy);
+        Assert.Equal(2, doc.ReceivedById);
+    }
+
+    [Fact]
+    public async Task Получатель_только_для_выдачи()
+    {
+        AddEmployees();
+        await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Receipt, null, null, null, null, [Line(1, to: CellA)], ReceivedById: 2)));
+    }
+
+    [Fact]
+    public async Task Неработающий_или_несуществующий_сотрудник_отклоняется()
+    {
+        AddEmployees();
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+
+        await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Issue, null, null, null, null, [Line(1, from: CellA)], ReceivedById: 3)));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Issue, null, null, null, null, [Line(1, from: CellA)], PerformedById: 99)));
+        Assert.Equal(10, Balance(CellA));
+    }
 }

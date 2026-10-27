@@ -1,0 +1,91 @@
+@page "/employees/{Id:int}"
+@inject ApiClient Api
+
+<PageTitle>@(employee?.ShortName ?? "Сотрудник") — склад</PageTitle>
+
+<Alert Error="@error" />
+
+@if (employee is not null)
+{
+    <div class="page-head">
+        <h1>@employee.FullName</h1>
+        @if (!employee.IsActive)
+        {
+            <span class="tag tag-neutral">не работает</span>
+        }
+        <span class="spacer"></span>
+        <a class="btn" href="/employees?edit=@employee.Id">Изменить</a>
+        <a class="btn" href="/employees">К списку</a>
+    </div>
+
+    <div class="panel">
+        <dl class="props">
+            <dt>Табельный номер</dt>
+            <dd class="mono">@(employee.PersonnelNumber ?? "—")</dd>
+            <dt>Должность</dt>
+            <dd>@(employee.Position ?? "—")</dd>
+            <dt>Подразделение</dt>
+            <dd>@(employee.Department ?? "—")</dd>
+            <dt>Телефон</dt>
+            <dd>@(employee.Phone ?? "—")</dd>
+        </dl>
+    </div>
+
+    <h2>Что выдавалось</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Документ</th>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th>Откуда</th>
+                    <th class="num">Количество</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in issues)
+                {
+                    <tr>
+                        <td>@Ui.Date(i.OccurredAt)</td>
+                        <td class="mono"><a href="/documents/@i.DocumentId">@i.DocumentNumber</a></td>
+                        <td class="mono"><a href="/items/@i.ItemId">@i.Sku</a></td>
+                        <td>@i.ItemName</td>
+                        <td class="mono">@i.FromLocation</td>
+                        <td class="num">@Ui.Qty(i.Quantity) @i.UnitCode</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (issues.Count == 0)
+        {
+            <div class="empty">Сотруднику ничего не выдавалось.</div>
+        }
+    </div>
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private EmployeeDto? employee;
+    private List<EmployeeIssueDto> issues = [];
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            employee = await Api.GetEmployeeAsync(Id);
+            issues = await Api.GetEmployeeIssuesAsync(Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}

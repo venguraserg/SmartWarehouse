@@ -126,6 +126,10 @@ internal class StockDocumentConfiguration : IEntityTypeConfiguration<StockDocume
         b.Property(x => x.Comment).HasMaxLength(1000);
 
         b.HasOne(x => x.Equipment).WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.PerformedByEmployee).WithMany().HasForeignKey(x => x.PerformedById).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.ReceivedByEmployee).WithMany().HasForeignKey(x => x.ReceivedById).OnDelete(DeleteBehavior.Restrict);
+        b.Property(x => x.ReceivedBy).HasMaxLength(128);
+        b.HasIndex(x => x.ReceivedById);
         b.HasMany(x => x.Lines).WithOne(x => x.Document).HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
 
         b.HasIndex(x => new { x.Type, x.OccurredAt });
@@ -146,6 +150,25 @@ internal class StockMovementConfiguration : IEntityTypeConfiguration<StockMoveme
 
         b.HasIndex(x => new { x.DocumentId, x.LineNo }).IsUnique();
         b.HasIndex(x => new { x.ItemId, x.OccurredAt });
+    }
+}
+
+internal class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
+{
+    public void Configure(EntityTypeBuilder<Employee> b)
+    {
+        b.ToTable("employees");
+        b.Ignore(x => x.FullName);
+        b.Ignore(x => x.ShortName);
+        b.Property(x => x.PersonnelNumber).HasMaxLength(32);
+        b.HasIndex(x => x.PersonnelNumber).IsUnique(); // NULL допускается у нескольких сотрудников
+        b.Property(x => x.LastName).HasMaxLength(64).IsRequired();
+        b.Property(x => x.FirstName).HasMaxLength(64).IsRequired();
+        b.Property(x => x.MiddleName).HasMaxLength(64);
+        b.Property(x => x.Position).HasMaxLength(128);
+        b.Property(x => x.Department).HasMaxLength(128);
+        b.Property(x => x.Phone).HasMaxLength(32);
+        b.HasIndex(x => new { x.LastName, x.FirstName });
     }
 }
 

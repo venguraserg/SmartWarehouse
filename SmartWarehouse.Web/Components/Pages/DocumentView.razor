@@ -21,7 +21,30 @@
             <dt>Основание</dt>
             <dd>@(doc.ExternalNumber ?? "—")</dd>
             <dt>Кто провёл</dt>
-            <dd>@(doc.PerformedBy ?? "—")</dd>
+            <dd>
+                @if (doc.PerformedById is int performerId)
+                {
+                    <a href="/employees/@performerId">@doc.PerformedBy</a>
+                }
+                else
+                {
+                    @(doc.PerformedBy ?? "—")
+                }
+            </dd>
+            @if (doc.Type == MovementType.Issue)
+            {
+                <dt>Кому выдано</dt>
+                <dd>
+                    @if (doc.ReceivedById is int receiverId)
+                    {
+                        <a href="/employees/@receiverId">@doc.ReceivedBy</a>
+                    }
+                    else
+                    {
+                        @("—")
+                    }
+                </dd>
+            }
             @if (doc.EquipmentId is int equipmentId)
             {
                 <dt>Оборудование</dt>

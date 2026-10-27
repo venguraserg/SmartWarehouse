@@ -34,6 +34,12 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 throw new NotFoundException($"Оборудование {equipmentId} не найдено.");
         }
 
+        // Сотрудники: кто проводит и кому выдано (в документ записываются и ссылкой, и текстом «Иванов И. П.»).
+        var performer = await GetActiveEmployeeAsync(request.PerformedById, "Кто проводит", ct);
+        var receiver = await GetActiveEmployeeAsync(request.ReceivedById, "Кому выдано", ct);
+        if (receiver is not null && request.Type != MovementType.Issue)
+            throw new DomainException("Получатель указывается только для выдачи.");
+
         // ---------- 2. Строки: формат ----------
         for (var i = 0; i < lines.Count; i++)
             ValidateLineShape(request.Type, lines[i], i + 1);
@@ -118,7 +124,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             OccurredAt = now,
             ExternalNumber = Clean(request.ExternalNumber),
             EquipmentId = request.EquipmentId,
-            PerformedBy = Clean(request.PerformedBy),
+            PerformedById = performer?.Id,
+            PerformedBy = performer?.ShortName ?? Clean(request.PerformedBy),
+            ReceivedById = receiver?.Id,
+            ReceivedBy = receiver?.ShortName,
             Comment = Clean(request.Comment)
         };
 
@@ -167,7 +176,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         return headers
             .Select(h => new DocumentSummaryDto(
                 h.Document.Id, h.Document.Number, h.Document.Type, h.Document.OccurredAt,
-                h.Document.ExternalNumber, h.Document.PerformedBy, h.LineCount))
+                h.Document.ExternalNumber, h.Document.PerformedBy, h.LineCount, h.Document.ReceivedBy))
             .ToList();
     }
 
@@ -188,7 +197,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .Select(m => new MovementDto(
                 m.DocumentId, m.Document.Number, m.Type, m.OccurredAt, m.Quantity,
                 m.FromLocation?.FullCode, m.ToLocation?.FullCode,
-                m.Document.EquipmentId, m.Document.PerformedBy))
+                m.Document.EquipmentId, m.Document.PerformedBy, m.Document.ReceivedBy))
             .ToList();
     }
 
@@ -244,6 +253,18 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .ToList();
     }
 
+    private async Task<Employee?> GetActiveEmployeeAsync(int? id, string field, CancellationToken ct)
+    {
+        if (id is not int employeeId)
+            return null;
+
+        var employee = await repo.GetEmployeeAsync(employeeId, ct)
+            ?? throw new NotFoundException($"{field}: сотрудник {employeeId} не найден.");
+        if (!employee.IsActive)
+            throw new DomainException($"{field}: сотрудник {employee.ShortName} отмечен как неработающий.");
+        return employee;
+    }
+
     private async Task EnsureItemExistsAsync(int itemId, CancellationToken ct)
     {
         if (!await repo.ItemExistsAsync(itemId, ct))
@@ -290,5 +311,6 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
     private static DocumentDto ToDto(StockDocument d, Func<StockMovement, DocumentLineDto> mapLine) => new(
         d.Id, d.Number, d.Type, d.OccurredAt, d.ExternalNumber, d.EquipmentId, d.PerformedBy, d.Comment,
-        d.Lines.OrderBy(l => l.LineNo).Select(mapLine).ToList());
+        d.Lines.OrderBy(l => l.LineNo).Select(mapLine).ToList(),
+        d.PerformedById, d.ReceivedById, d.ReceivedBy);
 }

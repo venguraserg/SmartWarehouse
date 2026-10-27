@@ -28,6 +28,7 @@
 | `StockDocument` | `stock_documents` | Документ: приход, выдача, перемещение, списание, корректировка. Номер `ПР-000015`, `ВЫД-000102`... |
 | `StockMovement` | `stock_movements` | Строка документа и запись журнала движений |
 | `StockBalance` | `stock_balances` | Текущий остаток позиции в месте хранения |
+| `Employee` | `employees` | Сотрудники: табельный номер, ФИО, должность, подразделение, телефон, признак «работает». В документах — кто провёл и кому выдано |
 | `Equipment` | `equipment` | Дерево оборудования: участок → установка → узел |
 
 Единицы `шт`, `компл`, `упак`, `м`, `кг`, `л` создаются автоматически при первом запуске.
@@ -61,6 +62,9 @@
 | PUT | `/api/items/{id}` | Изменить позицию |
 | GET/PUT/DELETE | `/api/items/{id}/image` | Фото позиции (PUT — multipart, поле `file`) |
 | GET/POST | `/api/equipment` | Оборудование |
+| GET/POST | `/api/employees` | Сотрудники (`?search=`, `?includeInactive=true`) |
+| GET/PUT | `/api/employees/{id}` | Сотрудник |
+| GET | `/api/employees/{id}/issues` | Что выдавалось сотруднику |
 | GET | `/api/items/{id}/balances` | Остатки позиции по местам |
 | GET | `/api/items/{id}/movements` | История движений с номерами документов |
 | GET/POST | `/api/warehouses` | Склады |

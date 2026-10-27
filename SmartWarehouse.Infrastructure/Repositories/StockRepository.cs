@@ -35,6 +35,9 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     public Task<bool> EquipmentExistsAsync(int equipmentId, CancellationToken ct = default) =>
         db.Equipment.AnyAsync(x => x.Id == equipmentId, ct);
 
+    public Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default) =>
+        db.Employees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+
     public Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default) =>
         db.Balances.FirstOrDefaultAsync(x => x.ItemId == itemId && x.LocationId == locationId, ct);
 

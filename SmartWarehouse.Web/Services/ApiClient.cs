@@ -42,6 +42,24 @@ public class ApiClient(HttpClient http)
     public Task<EquipmentDto> CreateEquipmentAsync(CreateEquipmentRequest request, CancellationToken ct = default) =>
         SendAsync<EquipmentDto>(HttpMethod.Post, "api/equipment", request, ct);
 
+    // ---------- Сотрудники ----------
+
+    /// <summary>Все сотрудники, включая неработающих (фильтрация и поиск — на странице).</summary>
+    public Task<List<EmployeeDto>> GetEmployeesAsync(bool includeInactive = true, CancellationToken ct = default) =>
+        GetAsync<List<EmployeeDto>>($"api/employees?includeInactive={(includeInactive ? "true" : "false")}", ct);
+
+    public Task<EmployeeDto> GetEmployeeAsync(int id, CancellationToken ct = default) =>
+        GetAsync<EmployeeDto>($"api/employees/{id}", ct);
+
+    public Task<EmployeeDto> CreateEmployeeAsync(SaveEmployeeRequest request, CancellationToken ct = default) =>
+        SendAsync<EmployeeDto>(HttpMethod.Post, "api/employees", request, ct);
+
+    public Task<EmployeeDto> UpdateEmployeeAsync(int id, SaveEmployeeRequest request, CancellationToken ct = default) =>
+        SendAsync<EmployeeDto>(HttpMethod.Put, $"api/employees/{id}", request, ct);
+
+    public Task<List<EmployeeIssueDto>> GetEmployeeIssuesAsync(int id, int take = 200, CancellationToken ct = default) =>
+        GetAsync<List<EmployeeIssueDto>>($"api/employees/{id}/issues?take={take}", ct);
+
     // ---------- Номенклатура ----------
 
     public Task<List<ItemDto>> GetItemsAsync(string? search = null, int? categoryId = null, CancellationToken ct = default)

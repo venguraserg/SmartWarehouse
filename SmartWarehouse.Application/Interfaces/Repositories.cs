@@ -27,6 +27,8 @@ public interface IStockRepository
 
     Task<bool> EquipmentExistsAsync(int equipmentId, CancellationToken ct = default);
 
+    Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default);
+
     /// <summary>Остаток позиции на месте (отслеживаемая сущность) или null, если записи ещё нет.</summary>
     Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default);
 
@@ -110,6 +112,25 @@ public interface ICatalogRepository
     Task<bool> EquipmentCodeExistsAsync(string code, CancellationToken ct = default);
 
     void AddEquipment(Equipment equipment);
+
+    Task SaveChangesAsync(CancellationToken ct = default);
+}
+
+/// <summary>Доступ к данным справочника сотрудников.</summary>
+public interface IEmployeeRepository
+{
+    Task<IReadOnlyList<Employee>> ListAsync(string? search, bool includeInactive, CancellationToken ct = default);
+
+    /// <summary>Сотрудник (отслеживаемая сущность — для изменения).</summary>
+    Task<Employee?> GetAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Занят ли табельный номер другим сотрудником.</summary>
+    Task<bool> PersonnelNumberExistsAsync(string number, int? exceptId, CancellationToken ct = default);
+
+    void Add(Employee employee);
+
+    /// <summary>Строки выдач сотруднику (с документом, позицией, единицей, местом), новые первыми.</summary>
+    Task<IReadOnlyList<StockMovement>> GetIssuesAsync(int employeeId, int take, CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
 }
