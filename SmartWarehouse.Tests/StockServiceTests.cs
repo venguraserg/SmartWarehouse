@@ -50,7 +50,8 @@ public class StockServiceTests
 
     // Для выдачи, списания и возврата сразу указываем сотрудника Worker.
     private static CreateDocumentRequest Doc(MovementType type, params DocumentLineRequest[] lines) =>
-        new(type, null, null, "Тест", null, lines, ReceivedById: StockService.UsesAccountable(type) ? Worker : null);
+        new(type, null, null, "Тест", type == MovementType.WriteOff ? "Замена при ремонте насоса" : null, lines,
+            ReceivedById: StockService.UsesAccountable(type) ? Worker : null);
 
     private Task<DocumentDto> Post(MovementType type, params DocumentLineRequest[] lines) =>
         _service.PostDocumentAsync(Doc(type, lines));
@@ -477,5 +478,21 @@ public class StockServiceTests
 
         var low = Assert.Single(await _service.GetBelowMinimumAsync());
         Assert.Equal(6, low.Total);
+    }
+
+    [Fact]
+    public async Task В_акте_списания_нужно_указать_куда_использовано()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.WriteOff, null, null, null, null, [Line(1)], ReceivedById: Worker)));
+        Assert.Contains("куда использовано", ex.Message);
+
+        // Достаточно указать оборудование.
+        await _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.WriteOff, null, Pump, null, null, [Line(1)], ReceivedById: Worker));
+        Assert.Equal(3, Custody());
     }
 }

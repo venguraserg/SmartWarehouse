@@ -62,9 +62,9 @@ public class ActPdfRenderer : IActPdfRenderer
         if (!string.IsNullOrWhiteSpace(data.EmployeePersonnelNumber)) employee += $", таб. № {data.EmployeePersonnelNumber}";
 
         AddField(section, "Материально ответственное лицо", employee);
-        if (data.Equipment is not null) AddField(section, "Оборудование", data.Equipment);
-        if (!string.IsNullOrWhiteSpace(data.ExternalNumber)) AddField(section, "Основание", data.ExternalNumber!);
-        if (!string.IsNullOrWhiteSpace(data.Comment)) AddField(section, "Причина / примечание", data.Comment!);
+        if (data.Equipment is not null) AddField(section, "Оборудование (куда установлено)", data.Equipment);
+        if (!string.IsNullOrWhiteSpace(data.Comment)) AddField(section, "Куда использовано", data.Comment!);
+        if (!string.IsNullOrWhiteSpace(data.ExternalNumber)) AddField(section, "Основание (наряд, заявка)", data.ExternalNumber!);
 
         var intro = section.AddParagraph(
             "Комиссия в составе лиц, подписавших настоящий акт, установила, что перечисленные ниже материальные " +

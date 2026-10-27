@@ -79,7 +79,7 @@ else
                 @if (UsesEquipment)
                 {
                     <div class="field">
-                        <label for="eq">Оборудование</label>
+                        <label for="eq">@(type == MovementType.WriteOff ? "Оборудование (куда установлено)" : "Оборудование")</label>
                         <select id="eq" @bind="equipmentId">
                             <option value="">— не указано —</option>
                             @foreach (var e in equipment)
@@ -91,9 +91,23 @@ else
                 }
             </div>
             <div class="field" style="margin-bottom: 0">
-                <label for="comment">@(type == MovementType.WriteOff ? "Причина списания" : "Комментарий")</label>
-                <input id="comment" type="text" @bind="comment" maxlength="1000"
-                       placeholder="@(type == MovementType.WriteOff ? "Израсходовано при ремонте, брак, износ…" : null)" />
+                @if (type == MovementType.WriteOff)
+                {
+                    <label for="comment">Куда использовано <span class="req">*</span></label>
+                    <input id="comment" type="text" @bind="comment" @bind:event="oninput" maxlength="1000"
+                           class="@(showErrors && UsageError is not null ? "invalid" : null)"
+                           placeholder="Например: замена подшипника на насосе Н-3 при плановом ремонте" />
+                    @if (showErrors)
+                    {
+                        <FieldError Message="@UsageError" />
+                    }
+                    <div class="field-hint">Укажите оборудование выше или опишите здесь — это попадёт в акт.</div>
+                }
+                else
+                {
+                    <label for="comment">Комментарий</label>
+                    <input id="comment" type="text" @bind="comment" maxlength="1000" />
+                }
             </div>
         </div>
 
@@ -229,12 +243,16 @@ else
             </div>
         }
 
-        @if (showErrors && (LinesWithErrors.Count > 0 || AccountableError is not null))
+        @if (showErrors && (LinesWithErrors.Count > 0 || AccountableError is not null || UsageError is not null))
         {
             <div class="alert alert-error" style="margin-top: 1rem">
                 @if (AccountableError is not null)
                 {
                     <div>@AccountableError</div>
+                }
+                @if (UsageError is not null)
+                {
+                    <div>@UsageError</div>
                 }
                 @if (LinesWithErrors.Count > 0)
                 {
@@ -300,7 +318,7 @@ else
     private string? Hint => type switch
     {
         MovementType.Issue => "Товар уходит из ячейки и числится за сотрудником, пока его не спишут или не вернут.",
-        MovementType.WriteOff => "Списывается то, что числится за сотрудником. После проведения формируется акт на списание (PDF).",
+        MovementType.WriteOff => "Сотрудник отчитывается, куда использовал полученное: позиции списываются с него и выбывают из учёта. После проведения формируется акт (PDF).",
         MovementType.Return => "Неиспользованное возвращается от сотрудника в ячейку склада.",
         MovementType.Adjustment => "Исправление остатков в ячейках по результатам пересчёта (в т.ч. брак, найденный на складе).",
         _ => null
@@ -507,6 +525,12 @@ else
     private decimal CustodyOf(LineModel line) =>
         line.Item is not null && custody.TryGetValue(line.Item.Id, out var q) ? q : 0;
 
+    /// <summary>Акт списания должен отвечать на вопрос «куда пошло».</summary>
+    private string? UsageError =>
+        type == MovementType.WriteOff && equipmentId is null && string.IsNullOrWhiteSpace(comment)
+            ? "Укажите оборудование или опишите, куда использовано."
+            : null;
+
     private string? AccountableError =>
         UsesAccountable && accountableId is null ? $"Укажите сотрудника: «{Ui.AccountableLabel(type!.Value)}»." : null;
 
@@ -569,7 +593,7 @@ else
         error = null;
         showErrors = true;
 
-        if (LinesWithErrors.Count > 0 || AccountableError is not null)
+        if (LinesWithErrors.Count > 0 || AccountableError is not null || UsageError is not null)
             return;
 
         var request = new CreateDocumentRequest(

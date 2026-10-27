@@ -56,7 +56,7 @@
             }
             @if (!string.IsNullOrWhiteSpace(doc.Comment))
             {
-                <dt>Комментарий</dt>
+                <dt>@(doc.Type == MovementType.WriteOff ? "Куда использовано" : "Комментарий")</dt>
                 <dd style="white-space: pre-line">@doc.Comment</dd>
             }
         </dl>

@@ -52,6 +52,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             throw new DomainException("Сотрудник-получатель указывается только для выдачи, списания и возврата.");
         }
 
+        // Акт списания должен отвечать на вопрос «куда пошло»: оборудование или описание.
+        if (request.Type == MovementType.WriteOff && request.EquipmentId is null && string.IsNullOrWhiteSpace(request.Comment))
+            throw new DomainException("Укажите, куда использовано: оборудование или описание (например, «замена подшипника на насосе Н-3»).");
+
         // ---------- 2. Строки: формат ----------
         for (var i = 0; i < lines.Count; i++)
             ValidateLineShape(request.Type, lines[i], i + 1);
