@@ -140,6 +140,18 @@ input.invalid, select.invalid { border-color: var(--danger); }
 
 .loading { color: var(--muted); padding: 1rem 0; }
 
+/* ===== Остатки ===== */
+.filters .field-row { margin-bottom: .25rem; }
+.segmented { display: inline-flex; border: 1px solid #c8ced8; border-radius: var(--radius); overflow: hidden; }
+.segmented button { border: none; background: #fff; padding: .4rem .85rem; font: inherit; font-size: .88rem; cursor: pointer; color: var(--text); }
+.segmented button + button { border-left: 1px solid #c8ced8; }
+.segmented button.active { background: var(--accent); color: #fff; }
+tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; padding-bottom: .45rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chip { display: inline-flex; gap: .35rem; align-items: center; padding: .15rem .5rem; border: 1px solid var(--border); border-radius: 999px; background: #fff; font-size: .82rem; color: var(--text); }
+.chip:hover { border-color: var(--accent); text-decoration: none; }
+.quick-search { display: flex; gap: .5rem; max-width: 520px; margin-bottom: 1.25rem; }
+
 /* ===== Карточка позиции ===== */
 .item-head { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 1.25rem; }
 .item-photo { width: 220px; height: 220px; border: 1px solid var(--border); border-radius: var(--radius); background: #eef0f3; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--muted); }

@@ -156,6 +156,36 @@ public class ApiClient(HttpClient http)
     public Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default) =>
         SendAsync<DocumentDto>(HttpMethod.Post, "api/documents", request, ct);
 
+    public Task<StockSearchResult> SearchStockAsync(StockQuery query, CancellationToken ct = default)
+    {
+        var parts = new List<string>();
+        if (query.WarehouseId is not null) parts.Add($"warehouseId={query.WarehouseId}");
+        if (!string.IsNullOrWhiteSpace(query.Location)) parts.Add($"location={Uri.EscapeDataString(query.Location.Trim())}");
+        if (!string.IsNullOrWhiteSpace(query.Search)) parts.Add($"search={Uri.EscapeDataString(query.Search.Trim())}");
+        if (query.CategoryId is not null) parts.Add($"categoryId={query.CategoryId}");
+        if (query.BelowMinimum) parts.Add("belowMinimum=true");
+
+        return GetAsync<StockSearchResult>(parts.Count == 0 ? "api/stock" : $"api/stock?{string.Join('&', parts)}", ct);
+    }
+
+    /// <summary>Все места всех складов (любого уровня) — для подсказок в фильтре.</summary>
+    public async Task<List<LocationNodeDto>> GetAllLocationsAsync(CancellationToken ct = default)
+    {
+        var result = new List<LocationNodeDto>();
+        foreach (var warehouse in await GetWarehousesAsync(ct))
+            Collect(await GetLocationTreeAsync(warehouse.Id, ct), result);
+        return result.OrderBy(l => l.FullCode).ToList();
+
+        static void Collect(IEnumerable<LocationNodeDto> nodes, List<LocationNodeDto> into)
+        {
+            foreach (var node in nodes)
+            {
+                into.Add(node);
+                Collect(node.Children, into);
+            }
+        }
+    }
+
     public Task<List<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default) =>
         GetAsync<List<LowStockItemDto>>("api/stock/below-minimum", ct);
 

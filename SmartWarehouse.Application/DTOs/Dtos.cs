@@ -149,6 +149,41 @@ public record MovementDto(
 
 // ---------- Остатки ----------
 
+/// <summary>Фильтры просмотра остатков. Все необязательные.</summary>
+/// <param name="WarehouseId">Склад.</param>
+/// <param name="Location">
+/// Код места: показывается само место и всё, что внутри него («СК1-A» — весь стеллаж A).
+/// Можно без кода склада: «A-01» найдёт «СК1-A-01» и «СК2-A-01».
+/// </param>
+/// <param name="Search">Часть наименования или артикула.</param>
+/// <param name="CategoryId">Категория.</param>
+/// <param name="BelowMinimum">Только позиции, у которых общий остаток ниже минимума.</param>
+public record StockQuery(
+    int? WarehouseId = null,
+    string? Location = null,
+    string? Search = null,
+    int? CategoryId = null,
+    bool BelowMinimum = false);
+
+/// <summary>Строка остатков: сколько позиции лежит в конкретном месте.</summary>
+public record StockRowDto(
+    int ItemId,
+    string Sku,
+    string ItemName,
+    string? CategoryName,
+    string UnitCode,
+    long? ImageVersion,
+    decimal MinStock,
+    int LocationId,
+    string LocationCode,
+    string? LocationName,
+    int WarehouseId,
+    string WarehouseCode,
+    decimal Quantity);
+
+/// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
+public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
+
 public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity);
 
 /// <summary>Позиция, остаток которой ниже минимума.</summary>

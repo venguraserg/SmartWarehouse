@@ -31,6 +31,10 @@ public class StockServiceTests
         _repo.Locations.Add(new StorageLocation { Id = CellA, WarehouseId = 1, ParentId = Shelf, Type = LocationType.Cell, Code = "01", FullCode = "СК1-A-01-01" });
         _repo.Locations.Add(new StorageLocation { Id = CellB, WarehouseId = 1, ParentId = Shelf, Type = LocationType.Cell, Code = "02", FullCode = "СК1-A-01-02" });
 
+        var warehouse = new Warehouse { Id = 1, Code = "СК1", Name = "Склад запчастей" };
+        foreach (var location in _repo.Locations)
+            location.Warehouse = warehouse;
+
         _repo.Equipment.Add(new Equipment { Id = Pump, Code = "PUMP-1", Name = "Насос 1" });
 
         _service = new StockService(_repo, new FixedTimeProvider(Now));
@@ -267,5 +271,69 @@ public class StockServiceTests
         var receipts = await _service.ListDocumentsAsync(MovementType.Receipt);
         var receipt = Assert.Single(receipts);
         Assert.Equal(2, receipt.LineCount);
+    }
+
+    // ---------- Просмотр остатков ----------
+
+    private async Task<List<string>> FindAsync(StockQuery query) =>
+        (await _service.SearchStockAsync(query)).Rows.Select(r => $"{r.LocationCode}:{r.Sku}").ToList();
+
+    [Fact]
+    public async Task Остатки_по_месту_включают_вложенные_места()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB, item: Cable));
+
+        Assert.Equal(new[] { "СК1-A-01-01:BRG-6205", "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Location: "ск1-a-01")));
+        Assert.Equal(new[] { "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Location: "СК1-A-01-02")));
+    }
+
+    [Fact]
+    public async Task Место_можно_искать_без_кода_склада_но_только_целыми_частями()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB, item: Cable));
+
+        Assert.Equal(new[] { "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Location: "A-01-02")));
+        Assert.Empty(await FindAsync(new StockQuery(Location: "СК1-A-0"))); // неполная часть кода не совпадает
+    }
+
+    [Fact]
+    public async Task Поиск_остатков_по_названию_артикулу_и_складу()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB, item: Cable));
+
+        Assert.Equal(new[] { "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Search: "кабель")));
+        Assert.Equal(new[] { "СК1-A-01-01:BRG-6205" }, await FindAsync(new StockQuery(Search: "brg")));
+        Assert.Equal(2, (await FindAsync(new StockQuery(WarehouseId: 1))).Count);
+        Assert.Empty(await FindAsync(new StockQuery(WarehouseId: 2)));
+    }
+
+    [Fact]
+    public async Task Только_ниже_минимума()
+    {
+        // Подшипник: минимум 10, лежит 5. Кабель: минимум 0.
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB, item: Cable));
+
+        Assert.Equal(new[] { "СК1-A-01-01:BRG-6205" }, await FindAsync(new StockQuery(BelowMinimum: true)));
+    }
+
+    [Fact]
+    public async Task Строка_остатка_содержит_место_склад_и_единицу()
+    {
+        await Post(MovementType.Receipt, Line(4.5m, to: CellB, item: Cable));
+
+        var row = Assert.Single((await _service.SearchStockAsync(new StockQuery())).Rows);
+        Assert.Equal("СК1", row.WarehouseCode);
+        Assert.Equal("СК1-A-01-02", row.LocationCode);
+        Assert.Equal("м", row.UnitCode);
+        Assert.Equal(4.5m, row.Quantity);
+    }
+
+    [Fact]
+    public async Task Пустые_места_не_показываются()
+    {
+        await Post(MovementType.Receipt, Line(2, to: CellA));
+        await Post(MovementType.Issue, Line(2, from: CellA));
+
+        Assert.Empty((await _service.SearchStockAsync(new StockQuery())).Rows);
     }
 }

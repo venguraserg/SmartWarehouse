@@ -192,6 +192,42 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .ToList();
     }
 
+    /// <summary>Сколько строк остатков отдаётся за один запрос.</summary>
+    public const int MaxStockRows = 2000;
+
+    public async Task<StockSearchResult> SearchStockAsync(StockQuery query, CancellationToken ct = default)
+    {
+        var filter = new StockFilter(
+            query.WarehouseId,
+            LocationCodeMatch.Normalize(query.Location),
+            string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
+            query.CategoryId,
+            query.BelowMinimum);
+
+        // Берём на одну строку больше лимита, чтобы понять, что результат обрезан.
+        var balances = await repo.SearchBalancesAsync(filter, MaxStockRows + 1, ct);
+
+        var rows = balances
+            .Take(MaxStockRows)
+            .Select(b => new StockRowDto(
+                b.ItemId,
+                b.Item.Sku,
+                b.Item.Name,
+                b.Item.Category?.Name,
+                b.Item.Unit.Code,
+                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(),
+                b.Item.MinStock,
+                b.LocationId,
+                b.Location.FullCode,
+                b.Location.Name,
+                b.Location.WarehouseId,
+                b.Location.Warehouse.Code,
+                b.Quantity))
+            .ToList();
+
+        return new StockSearchResult(rows, balances.Count > MaxStockRows);
+    }
+
     public async Task<IReadOnlyList<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default)
     {
         var rows = await repo.GetItemsBelowMinimumAsync(ct);

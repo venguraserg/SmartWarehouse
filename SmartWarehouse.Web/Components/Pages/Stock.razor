@@ -1,0 +1,310 @@
+@page "/stock"
+@using System.Globalization
+@using System.Text
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Остатки — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Остатки на складе</h1>
+    <span class="spacer"></span>
+    @if (result is { Rows.Count: > 0 })
+    {
+        <a class="btn" href="@CsvHref" download="@CsvFileName">Скачать для Excel</a>
+    }
+</div>
+
+<form class="panel filters" @onsubmit="ApplyAsync" @onsubmit:preventDefault>
+    <div class="field-row">
+        <div class="field">
+            <label for="f-search">Наименование или артикул</label>
+            <input id="f-search" type="search" @bind="search" placeholder="подшипник, 6205…" />
+        </div>
+        <div class="field">
+            <label for="f-loc">Место (ячейка, полка, стеллаж)</label>
+            <input id="f-loc" type="search" list="locations-list" @bind="location" placeholder="СК1-A-01 или A-01-03" />
+            <datalist id="locations-list">
+                @foreach (var l in allLocations)
+                {
+                    <option value="@l.FullCode">@Ui.LocType(l.Type)@(string.IsNullOrEmpty(l.Name) ? "" : $" · {l.Name}")</option>
+                }
+            </datalist>
+        </div>
+        <div class="field">
+            <label for="f-wh">Склад</label>
+            <select id="f-wh" @bind="warehouseId">
+                <option value="">Все склады</option>
+                @foreach (var w in warehouses)
+                {
+                    <option value="@w.Id">@w.Code — @w.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-cat">Категория</label>
+            <select id="f-cat" @bind="categoryId">
+                <option value="">Все категории</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="toolbar" style="margin: 0">
+        <label class="checkbox"><input type="checkbox" @bind="belowMinimum" /> только ниже минимума</label>
+        <span class="spacer"></span>
+        <button class="btn" type="button" @onclick="ResetAsync">Сбросить</button>
+        <button class="btn btn-primary" type="submit">Показать</button>
+    </div>
+</form>
+
+<Alert Error="@error" />
+
+@if (result is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="toolbar" style="margin-top: 1rem">
+        <div class="segmented" role="group" aria-label="Вид">
+            <button type="button" class="@(byItem ? null : "active")" @onclick="() => SetViewAsync(false)">По местам</button>
+            <button type="button" class="@(byItem ? "active" : null)" @onclick="() => SetViewAsync(true)">По позициям</button>
+        </div>
+        <span class="spacer"></span>
+        <span class="muted">
+            Позиций: <strong>@result.Rows.Select(r => r.ItemId).Distinct().Count()</strong> ·
+            мест: <strong>@result.Rows.Select(r => r.LocationId).Distinct().Count()</strong>
+        </span>
+    </div>
+
+    @if (result.Truncated)
+    {
+        <div class="alert alert-error">Показаны первые @result.Rows.Count строк. Уточните фильтры, чтобы увидеть всё.</div>
+    }
+
+    @if (result.Rows.Count == 0)
+    {
+        <div class="panel empty">
+            @(HasFilters ? "По заданным фильтрам ничего не найдено." : "Склад пуст — оформите приход.")
+        </div>
+    }
+    else if (!byItem)
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 56px"></th>
+                        <th>Артикул</th>
+                        <th>Наименование</th>
+                        <th>Категория</th>
+                        <th class="num">Количество</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in result.Rows.GroupBy(r => r.LocationId))
+                    {
+                        var first = group.First();
+                        <tr class="group-row">
+                            <td colspan="5">
+                                <a class="mono" href="@StockUrl(location: first.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(first.LocationCode)">@first.LocationCode</a>
+                                @if (!string.IsNullOrEmpty(first.LocationName))
+                                {
+                                    <span class="muted"> · @first.LocationName</span>
+                                }
+                                <span class="muted"> — @group.Count() @Plural(group.Count(), "позиция", "позиции", "позиций")</span>
+                            </td>
+                        </tr>
+                        @foreach (var row in group)
+                        {
+                            <tr>
+                                <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
+                                <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
+                                <td><a href="/items/@row.ItemId">@row.ItemName</a></td>
+                                <td>@row.CategoryName</td>
+                                <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 56px"></th>
+                        <th>Артикул</th>
+                        <th>Наименование</th>
+                        <th class="num">Всего</th>
+                        <th>Где лежит</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in result.Rows.GroupBy(r => r.ItemId).OrderBy(g => g.First().ItemName))
+                    {
+                        var first = group.First();
+                        var total = group.Sum(r => r.Quantity);
+                        <tr>
+                            <td><Thumb ItemId="first.ItemId" ImageVersion="first.ImageVersion" /></td>
+                            <td class="mono"><a href="/items/@first.ItemId">@first.Sku</a></td>
+                            <td>
+                                <a href="/items/@first.ItemId">@first.ItemName</a>
+                                @if (belowMinimum)
+                                {
+                                    <div class="line-hint">минимум @Ui.Qty(first.MinStock) @first.UnitCode</div>
+                                }
+                            </td>
+                            <td class="num"><strong>@Ui.Qty(total) @first.UnitCode</strong></td>
+                            <td>
+                                <div class="chips">
+                                    @foreach (var row in group)
+                                    {
+                                        <a class="chip" href="@StockUrl(location: row.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(row.LocationCode)">
+                                            <span class="mono">@row.LocationCode</span> <strong>@Ui.Qty(row.Quantity)</strong>
+                                        </a>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    // Фильтры приходят из адреса страницы — ссылку на выборку можно сохранить или отправить коллеге.
+    [SupplyParameterFromQuery(Name = "search")] public string? SearchParam { get; set; }
+    [SupplyParameterFromQuery(Name = "location")] public string? LocationParam { get; set; }
+    [SupplyParameterFromQuery(Name = "warehouse")] public int? WarehouseParam { get; set; }
+    [SupplyParameterFromQuery(Name = "category")] public int? CategoryParam { get; set; }
+    [SupplyParameterFromQuery(Name = "low")] public bool? LowParam { get; set; }
+    [SupplyParameterFromQuery(Name = "view")] public string? ViewParam { get; set; }
+
+    private string? search;
+    private string? location;
+    private int? warehouseId;
+    private int? categoryId;
+    private bool belowMinimum;
+    private bool byItem;
+
+    private List<WarehouseDto> warehouses = [];
+    private List<CategoryDto> categories = [];
+    private List<LocationNodeDto> allLocations = [];
+    private StockSearchResult? result;
+    private string? error;
+    private bool referencesLoaded;
+
+    private bool HasFilters =>
+        !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(location)
+        || warehouseId is not null || categoryId is not null || belowMinimum;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        search = SearchParam;
+        location = LocationParam;
+        warehouseId = WarehouseParam;
+        categoryId = CategoryParam;
+        belowMinimum = LowParam ?? false;
+        byItem = ViewParam == "items";
+
+        try
+        {
+            if (!referencesLoaded)
+            {
+                warehouses = await Api.GetWarehousesAsync();
+                categories = await Api.GetCategoriesAsync();
+                allLocations = await Api.GetAllLocationsAsync();
+                referencesLoaded = true;
+            }
+
+            result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum));
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = $"Не удалось загрузить остатки: {ex.Message}";
+        }
+    }
+
+    // Применение фильтров = переход на адрес с параметрами; загрузку делает OnParametersSetAsync.
+    private Task ApplyAsync()
+    {
+        Nav.NavigateTo(StockUrl(), replace: true);
+        return Task.CompletedTask;
+    }
+
+    private Task ResetAsync()
+    {
+        search = location = null;
+        warehouseId = categoryId = null;
+        belowMinimum = false;
+        return ApplyAsync();
+    }
+
+    private Task SetViewAsync(bool items)
+    {
+        byItem = items;
+        return ApplyAsync();
+    }
+
+    private Task FilterByLocationAsync(string code)
+    {
+        location = code;
+        warehouseId = null;
+        return ApplyAsync();
+    }
+
+    private string StockUrl(string? location = null) => Nav.GetUriWithQueryParameters("/stock", new Dictionary<string, object?>
+    {
+        ["search"] = string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+        ["location"] = location ?? (string.IsNullOrWhiteSpace(this.location) ? null : this.location.Trim()),
+        ["warehouse"] = location is null ? warehouseId : null,
+        ["category"] = categoryId,
+        ["low"] = belowMinimum ? true : null,
+        ["view"] = byItem ? "items" : null
+    });
+
+    private static string Plural(int n, string one, string few, string many)
+    {
+        var n100 = n % 100;
+        var n10 = n % 10;
+        if (n100 is >= 11 and <= 14) return many;
+        return n10 switch { 1 => one, >= 2 and <= 4 => few, _ => many };
+    }
+
+    // ---------- Выгрузка для Excel (CSV с разделителем «;», открывается двойным щелчком) ----------
+
+    private string CsvFileName => $"остатки_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv";
+
+    private string CsvHref
+    {
+        get
+        {
+            var ru = CultureInfo.GetCultureInfo("ru-RU");
+            var sb = new StringBuilder("﻿"); // BOM — чтобы Excel понял кодировку
+            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.");
+            foreach (var r in result?.Rows ?? Array.Empty<StockRowDto>())
+            {
+                sb.AppendLine(string.Join(';',
+                    Csv(r.WarehouseCode), Csv(r.LocationCode), Csv(r.LocationName), Csv(r.Sku), Csv(r.ItemName),
+                    Csv(r.CategoryName), r.Quantity.ToString("0.###", ru), Csv(r.UnitCode)));
+            }
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
+        }
+    }
+
+    private static string Csv(string? value) =>
+        string.IsNullOrEmpty(value) ? "" : $"\"{value.Replace("\"", "\"\"")}\"";
+}

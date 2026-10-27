@@ -80,7 +80,7 @@
                         @foreach (var b in balances)
                         {
                             <tr>
-                                <td class="mono">@b.LocationCode</td>
+                                <td class="mono"><a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@b.LocationCode</a></td>
                                 <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
                             </tr>
                         }

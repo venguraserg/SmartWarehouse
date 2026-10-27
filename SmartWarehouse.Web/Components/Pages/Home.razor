@@ -5,6 +5,11 @@
 
 <h1>Обзор</h1>
 
+<form class="quick-search" action="/stock" method="get">
+    <input type="search" name="search" placeholder="Найти на складе: наименование или артикул" aria-label="Поиск на складе" />
+    <button class="btn btn-primary" type="submit">Найти</button>
+</form>
+
 <div class="actions" style="margin-bottom: 1.25rem">
     <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
     <a class="btn" href="/documents/new/Issue">− Выдача</a>
