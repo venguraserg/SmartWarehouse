@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartWarehouse.API.Security;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 
@@ -13,6 +15,7 @@ public class WarehousesController(ILocationService locations) : ControllerBase
     public Task<IReadOnlyList<WarehouseDto>> List(CancellationToken ct) => locations.ListWarehousesAsync(ct);
 
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<WarehouseDto>> Create(CreateWarehouseRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await locations.CreateWarehouseAsync(request, ct));
 
@@ -23,6 +26,7 @@ public class WarehousesController(ILocationService locations) : ControllerBase
 
     /// <summary>Добавить место хранения (parentId = null — верхний уровень склада).</summary>
     [HttpPost("{id:int}/locations")]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<LocationDto>> AddLocation(int id, CreateLocationRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await locations.AddLocationAsync(id, request, ct));
 }

@@ -21,6 +21,11 @@ public class Employee
 
     public string? Phone { get; set; }
 
+    /// <summary>Непосредственный руководитель: утверждает акты на списание этого сотрудника.</summary>
+    public int? ManagerId { get; set; }
+
+    public Employee? Manager { get; set; }
+
     /// <summary>Уволенные / неактивные скрыты из выбора в документах, но остаются в истории.</summary>
     public bool IsActive { get; set; } = true;
 

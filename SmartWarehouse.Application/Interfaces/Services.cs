@@ -74,7 +74,13 @@ public interface IEmployeeService
     Task<IReadOnlyList<EmployeeMovementDto>> GetHistoryAsync(int id, int take = 200, CancellationToken ct = default);
 
     /// <summary>Что числится за сотрудниками. Фильтры: сотрудник, позиция, текст.</summary>
-    Task<IReadOnlyList<CustodyRowDto>> ListCustodyAsync(int? employeeId = null, int? itemId = null, string? search = null, CancellationToken ct = default);
+    /// <param name="onlyEmployeeIds">Ограничение видимости (сотрудник видит только себя, руководитель — себя и подчинённых).</param>
+    Task<IReadOnlyList<CustodyRowDto>> ListCustodyAsync(
+        int? employeeId = null, int? itemId = null, string? search = null,
+        IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default);
+
+    /// <summary>Сам сотрудник и все его подчинённые по цепочке «Руководитель».</summary>
+    Task<IReadOnlyCollection<int>> GetTeamAsync(int employeeId, CancellationToken ct = default);
 }
 
 public interface ILocationService

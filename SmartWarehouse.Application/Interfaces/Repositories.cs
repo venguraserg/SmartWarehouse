@@ -141,7 +141,12 @@ public interface IEmployeeRepository
     /// Ненулевые остатки за сотрудниками (с сотрудником, позицией и единицей).
     /// Фильтры необязательны: сотрудник, позиция, текст (ФИО, артикул, наименование).
     /// </summary>
-    Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default);
+    /// <param name="onlyEmployeeIds">Ограничение видимости: только эти сотрудники (null — все).</param>
+    Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(
+        int? employeeId, int? itemId, string? search, IReadOnlyCollection<int>? onlyEmployeeIds, CancellationToken ct = default);
+
+    /// <summary>Пары «сотрудник → руководитель» всех сотрудников (для обхода иерархии).</summary>
+    Task<IReadOnlyList<(int Id, int? ManagerId)>> ListHierarchyAsync(CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
 }

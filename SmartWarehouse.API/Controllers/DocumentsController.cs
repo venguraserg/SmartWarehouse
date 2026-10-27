@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartWarehouse.API.Security;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
@@ -29,8 +31,13 @@ public class DocumentsController(IStockService stock) : ControllerBase
 
     /// <summary>Создать и провести документ. Проводится целиком или не проводится вовсе.</summary>
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<DocumentDto>> Post(CreateDocumentRequest request, CancellationToken ct)
     {
+        // «Кто проводит» по умолчанию — сотрудник, под чьей учётной записью вошли.
+        if (request.PerformedById is null && string.IsNullOrWhiteSpace(request.PerformedBy) && User.EmployeeId() is int me)
+            request = request with { PerformedById = me };
+
         var document = await stock.PostDocumentAsync(request, ct);
         return CreatedAtAction(nameof(Get), new { id = document.Id }, document);
     }

@@ -59,7 +59,8 @@ public record SaveEmployeeRequest(
     string? Position,
     string? Department,
     string? Phone,
-    bool IsActive = true);
+    bool IsActive = true,
+    int? ManagerId = null);
 
 public record EmployeeDto(
     int Id,
@@ -72,7 +73,9 @@ public record EmployeeDto(
     string? Phone,
     bool IsActive,
     string FullName,
-    string ShortName);
+    string ShortName,
+    int? ManagerId,
+    string? ManagerName);
 
 /// <summary>
 /// Движение по подотчёту сотрудника: выдача (количество со знаком «+»),
@@ -104,6 +107,41 @@ public record CustodyRowDto(
     string UnitCode,
     long? ImageVersion,
     decimal Quantity);
+
+// ---------- Учётные записи ----------
+
+public record LoginRequest(string Login, string Password);
+
+/// <summary>Вошедший пользователь.</summary>
+public record CurrentUserDto(
+    int Id,
+    string Login,
+    string DisplayName,
+    int? EmployeeId,
+    UserRole Roles,
+    bool MustChangePassword);
+
+/// <summary>Ответ на вход: токен для запросов к API и сведения о пользователе.</summary>
+public record LoginResponse(string Token, DateTimeOffset ExpiresAt, CurrentUserDto User);
+
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public record UserDto(
+    int Id,
+    string Login,
+    int? EmployeeId,
+    string? EmployeeName,
+    UserRole Roles,
+    bool IsActive,
+    bool MustChangePassword,
+    DateTimeOffset? LastLoginAt);
+
+/// <param name="TemporaryPassword">Временный пароль — при первом входе пользователь сменит его на свой.</param>
+public record CreateUserRequest(string Login, int? EmployeeId, UserRole Roles, string TemporaryPassword);
+
+public record UpdateUserRequest(int? EmployeeId, UserRole Roles, bool IsActive);
+
+public record ResetPasswordRequest(string TemporaryPassword);
 
 // ---------- Оборудование ----------
 

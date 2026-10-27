@@ -174,6 +174,7 @@ internal class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         b.Property(x => x.Department).HasMaxLength(128);
         b.Property(x => x.Phone).HasMaxLength(32);
         b.HasIndex(x => new { x.LastName, x.FirstName });
+        b.HasOne(x => x.Manager).WithMany().HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -189,6 +190,21 @@ internal class EmployeeBalanceConfiguration : IEntityTypeConfiguration<EmployeeB
 
         // Защита от одновременного списания одного подотчёта (см. StockBalance).
         b.Property<uint>("Version").IsRowVersion();
+    }
+}
+
+internal class UserAccountConfiguration : IEntityTypeConfiguration<UserAccount>
+{
+    public void Configure(EntityTypeBuilder<UserAccount> b)
+    {
+        b.ToTable("users");
+        b.Property(x => x.Login).HasMaxLength(32).IsRequired();
+        b.HasIndex(x => x.Login).IsUnique();
+        b.Property(x => x.PasswordHash).HasMaxLength(256).IsRequired();
+        b.Property(x => x.Roles).HasConversion<int>();
+        b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        // У сотрудника — не больше одной учётной записи.
+        b.HasIndex(x => x.EmployeeId).IsUnique();
     }
 }
 

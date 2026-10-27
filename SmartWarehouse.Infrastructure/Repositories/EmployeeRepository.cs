@@ -9,7 +9,7 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
 {
     public async Task<IReadOnlyList<Employee>> ListAsync(string? search, bool includeInactive, CancellationToken ct = default)
     {
-        var query = db.Employees.AsNoTracking();
+        var query = db.Employees.AsNoTracking().Include(x => x.Manager).AsQueryable();
 
         if (!includeInactive)
             query = query.Where(x => x.IsActive);
@@ -33,7 +33,12 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
     }
 
     public Task<Employee?> GetAsync(int id, CancellationToken ct = default) =>
-        db.Employees.FirstOrDefaultAsync(x => x.Id == id, ct);
+        db.Employees.Include(x => x.Manager).FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public async Task<IReadOnlyList<(int Id, int? ManagerId)>> ListHierarchyAsync(CancellationToken ct = default) =>
+        (await db.Employees.AsNoTracking().Select(x => new { x.Id, x.ManagerId }).ToListAsync(ct))
+            .Select(x => (x.Id, x.ManagerId))
+            .ToList();
 
     public Task<bool> PersonnelNumberExistsAsync(string number, int? exceptId, CancellationToken ct = default) =>
         db.Employees.AnyAsync(x => x.PersonnelNumber == number && x.Id != exceptId, ct);
@@ -53,7 +58,8 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
             .Take(take)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default)
+    public async Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(
+        int? employeeId, int? itemId, string? search, IReadOnlyCollection<int>? onlyEmployeeIds, CancellationToken ct = default)
     {
         var query = db.EmployeeBalances
             .AsNoTracking()
@@ -63,6 +69,11 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
 
         if (employeeId is not null)
             query = query.Where(x => x.EmployeeId == employeeId);
+        if (onlyEmployeeIds is not null)
+        {
+            var allowed = onlyEmployeeIds.ToList();
+            query = query.Where(x => allowed.Contains(x.EmployeeId));
+        }
         if (itemId is not null)
             query = query.Where(x => x.ItemId == itemId);
         if (search is not null)

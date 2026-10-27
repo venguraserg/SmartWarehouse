@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartWarehouse.API.Security;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
@@ -23,6 +25,7 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     public Task<ItemDto> Get(int id, CancellationToken ct) => catalog.GetItemAsync(id, ct);
 
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<ItemDto>> Create(CreateItemRequest request, CancellationToken ct)
     {
         var item = await catalog.CreateItemAsync(request, ct);
@@ -30,6 +33,7 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = Roles.Warehouse)]
     public Task<ItemDto> Update(int id, UpdateItemRequest request, CancellationToken ct) =>
         catalog.UpdateItemAsync(id, request, ct);
 
@@ -43,6 +47,7 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
 
     /// <summary>Загрузить или заменить фото (multipart/form-data, поле «file»; JPEG, PNG или WebP до 5 МБ).</summary>
     [HttpPut("{id:int}/image")]
+    [Authorize(Roles = Roles.Warehouse)]
     [RequestSizeLimit(ImageRules.MaxBytes + 64 * 1024)]
     public async Task<ItemDto> SetImage(int id, IFormFile file, CancellationToken ct)
     {
@@ -55,6 +60,7 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     }
 
     [HttpDelete("{id:int}/image")]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<IActionResult> DeleteImage(int id, CancellationToken ct)
     {
         await catalog.DeleteImageAsync(id, ct);

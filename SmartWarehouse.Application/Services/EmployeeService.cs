@@ -56,9 +56,11 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
     }
 
     public async Task<IReadOnlyList<CustodyRowDto>> ListCustodyAsync(
-        int? employeeId = null, int? itemId = null, string? search = null, CancellationToken ct = default)
+        int? employeeId = null, int? itemId = null, string? search = null,
+        IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default)
     {
-        var balances = await repo.ListCustodyAsync(employeeId, itemId, string.IsNullOrWhiteSpace(search) ? null : search.Trim(), ct);
+        var balances = await repo.ListCustodyAsync(
+            employeeId, itemId, string.IsNullOrWhiteSpace(search) ? null : search.Trim(), onlyEmployeeIds, ct);
         return balances
             .Select(b => new CustodyRowDto(
                 b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
@@ -66,6 +68,24 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
                 b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), b.Quantity))
             .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName)
             .ToList();
+    }
+
+    public async Task<IReadOnlyCollection<int>> GetTeamAsync(int employeeId, CancellationToken ct = default)
+    {
+        var hierarchy = await repo.ListHierarchyAsync(ct);
+        var byManager = hierarchy.Where(h => h.ManagerId is not null).ToLookup(h => h.ManagerId!.Value, h => h.Id);
+
+        var team = new HashSet<int> { employeeId };
+        var queue = new Queue<int>([employeeId]);
+        while (queue.Count > 0)
+        {
+            foreach (var subordinate in byManager[queue.Dequeue()])
+            {
+                if (team.Add(subordinate))
+                    queue.Enqueue(subordinate);
+            }
+        }
+        return team;
     }
 
     private async Task<Employee> FindAsync(int id, CancellationToken ct) =>
@@ -80,6 +100,8 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         if (number is not null && await repo.PersonnelNumberExistsAsync(number, exceptId, ct))
             throw new DomainException($"Табельный номер {number} уже есть у другого сотрудника.");
 
+        var manager = await ValidateManagerAsync(request.ManagerId, exceptId, ct);
+
         employee.PersonnelNumber = number;
         employee.LastName = lastName;
         employee.FirstName = firstName;
@@ -88,6 +110,36 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         employee.Department = Clean(request.Department);
         employee.Phone = Clean(request.Phone);
         employee.IsActive = request.IsActive;
+        employee.ManagerId = manager?.Id;
+        employee.Manager = manager;
+    }
+
+    /// <summary>Руководитель должен существовать и не может быть самим сотрудником или его подчинённым (цикл).</summary>
+    private async Task<Employee?> ValidateManagerAsync(int? managerId, int? employeeId, CancellationToken ct)
+    {
+        if (managerId is not int id)
+            return null;
+        if (id == employeeId)
+            throw new DomainException("Сотрудник не может быть руководителем самому себе.");
+
+        var manager = await repo.GetAsync(id, ct)
+            ?? throw new NotFoundException($"Руководитель {id} не найден.");
+
+        if (employeeId is int self)
+        {
+            // Поднимаемся по цепочке руководителей нового руководителя: если встретим сотрудника — получится цикл.
+            var hierarchy = (await repo.ListHierarchyAsync(ct)).ToDictionary(h => h.Id, h => h.ManagerId);
+            var current = (int?)id;
+            var guard = 0;
+            while (current is int c && guard++ < 1000)
+            {
+                if (c == self)
+                    throw new DomainException($"{manager.ShortName} подчиняется этому сотруднику — получится замкнутая цепочка руководителей.");
+                current = hierarchy.GetValueOrDefault(c);
+            }
+        }
+
+        return manager;
     }
 
     private static string? Clean(string? value) =>
@@ -95,5 +147,5 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
 
     internal static EmployeeDto ToDto(Employee e) => new(
         e.Id, e.PersonnelNumber, e.LastName, e.FirstName, e.MiddleName, e.Position, e.Department, e.Phone,
-        e.IsActive, e.FullName, e.ShortName);
+        e.IsActive, e.FullName, e.ShortName, e.ManagerId, e.Manager?.ShortName);
 }
