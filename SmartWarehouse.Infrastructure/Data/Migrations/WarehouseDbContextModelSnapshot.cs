@@ -98,6 +98,34 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("employees", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.EmployeeBalance", b =>
+                {
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("EmployeeId", "ItemId");
+
+                    b.HasIndex("ItemId");
+
+                    b.ToTable("employee_balances", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_employee_balances_quantity_nonnegative", "\"Quantity\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
                 {
                     b.Property<int>("Id")
@@ -295,6 +323,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<long>("DocumentId")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("FromEmployeeId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("FromLocationId")
                         .HasColumnType("integer");
 
@@ -311,6 +342,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
 
+                    b.Property<int?>("ToEmployeeId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("ToLocationId")
                         .HasColumnType("integer");
 
@@ -321,7 +355,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FromEmployeeId");
+
                     b.HasIndex("FromLocationId");
+
+                    b.HasIndex("ToEmployeeId");
 
                     b.HasIndex("ToLocationId");
 
@@ -440,6 +478,25 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("warehouses", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.EmployeeBalance", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("Item");
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
                 {
                     b.HasOne("SmartWarehouse.Domain.Entities.Equipment", "Parent")
@@ -530,6 +587,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "FromEmployee")
+                        .WithMany()
+                        .HasForeignKey("FromEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartWarehouse.Domain.Entities.StorageLocation", "FromLocation")
                         .WithMany()
                         .HasForeignKey("FromLocationId")
@@ -541,6 +603,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "ToEmployee")
+                        .WithMany()
+                        .HasForeignKey("ToEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartWarehouse.Domain.Entities.StorageLocation", "ToLocation")
                         .WithMany()
                         .HasForeignKey("ToLocationId")
@@ -548,9 +615,13 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     b.Navigation("Document");
 
+                    b.Navigation("FromEmployee");
+
                     b.Navigation("FromLocation");
 
                     b.Navigation("Item");
+
+                    b.Navigation("ToEmployee");
 
                     b.Navigation("ToLocation");
                 });
