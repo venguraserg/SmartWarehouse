@@ -59,6 +59,21 @@ public interface ICatalogService
     Task<EquipmentDto> CreateEquipmentAsync(CreateEquipmentRequest request, CancellationToken ct = default);
 }
 
+public interface IEmployeeService
+{
+    /// <summary>Список сотрудников; поиск по ФИО, табельному номеру, должности, подразделению.</summary>
+    Task<IReadOnlyList<EmployeeDto>> ListAsync(string? search, bool includeInactive, CancellationToken ct = default);
+
+    Task<EmployeeDto> GetAsync(int id, CancellationToken ct = default);
+
+    Task<EmployeeDto> CreateAsync(SaveEmployeeRequest request, CancellationToken ct = default);
+
+    Task<EmployeeDto> UpdateAsync(int id, SaveEmployeeRequest request, CancellationToken ct = default);
+
+    /// <summary>Что выдавалось сотруднику.</summary>
+    Task<IReadOnlyList<EmployeeIssueDto>> GetIssuesAsync(int id, int take = 200, CancellationToken ct = default);
+}
+
 public interface ILocationService
 {
     Task<WarehouseDto> CreateWarehouseAsync(CreateWarehouseRequest request, CancellationToken ct = default);

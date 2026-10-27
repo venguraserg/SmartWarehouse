@@ -11,6 +11,7 @@ internal class FakeStockRepository : IStockRepository
     public List<Item> Items { get; } = [];
     public List<StorageLocation> Locations { get; } = [];
     public List<Equipment> Equipment { get; } = [];
+    public List<Employee> Employees { get; } = [];
     public List<StockBalance> Balances { get; } = [];
     public List<StockDocument> Documents { get; } = [];
     public int SaveCount { get; private set; }
@@ -39,6 +40,9 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<bool> EquipmentExistsAsync(int equipmentId, CancellationToken ct = default) =>
         Task.FromResult(Equipment.Any(x => x.Id == equipmentId));
+
+    public Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default) =>
+        Task.FromResult(Employees.FirstOrDefault(x => x.Id == id));
 
     public Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default) =>
         Task.FromResult(Balances.FirstOrDefault(x => x.ItemId == itemId && x.LocationId == locationId));

@@ -49,6 +49,44 @@ public record UpdateItemRequest(
 
 public record ItemImageDto(byte[] Data, string ContentType);
 
+// ---------- Сотрудники ----------
+
+public record SaveEmployeeRequest(
+    string? PersonnelNumber,
+    string LastName,
+    string FirstName,
+    string? MiddleName,
+    string? Position,
+    string? Department,
+    string? Phone,
+    bool IsActive = true);
+
+public record EmployeeDto(
+    int Id,
+    string? PersonnelNumber,
+    string LastName,
+    string FirstName,
+    string? MiddleName,
+    string? Position,
+    string? Department,
+    string? Phone,
+    bool IsActive,
+    string FullName,
+    string ShortName);
+
+/// <summary>Что выдано сотруднику: строка выдачи.</summary>
+public record EmployeeIssueDto(
+    long DocumentId,
+    string DocumentNumber,
+    DateTimeOffset OccurredAt,
+    int ItemId,
+    string Sku,
+    string ItemName,
+    decimal Quantity,
+    string UnitCode,
+    string? FromLocation,
+    int? EquipmentId);
+
 // ---------- Оборудование ----------
 
 public record CreateEquipmentRequest(int? ParentId, string Code, string Name);
@@ -102,7 +140,9 @@ public record CreateDocumentRequest(
     int? EquipmentId,
     string? PerformedBy,
     string? Comment,
-    IReadOnlyList<DocumentLineRequest> Lines);
+    IReadOnlyList<DocumentLineRequest> Lines,
+    int? PerformedById = null,
+    int? ReceivedById = null);
 
 public record DocumentLineDto(
     int LineNo,
@@ -123,7 +163,10 @@ public record DocumentDto(
     int? EquipmentId,
     string? PerformedBy,
     string? Comment,
-    IReadOnlyList<DocumentLineDto> Lines);
+    IReadOnlyList<DocumentLineDto> Lines,
+    int? PerformedById,
+    int? ReceivedById,
+    string? ReceivedBy);
 
 /// <summary>Документ в списке (без строк).</summary>
 public record DocumentSummaryDto(
@@ -133,7 +176,8 @@ public record DocumentSummaryDto(
     DateTimeOffset OccurredAt,
     string? ExternalNumber,
     string? PerformedBy,
-    int LineCount);
+    int LineCount,
+    string? ReceivedBy);
 
 /// <summary>Строка истории движений по позиции.</summary>
 public record MovementDto(
@@ -145,7 +189,8 @@ public record MovementDto(
     string? FromLocation,
     string? ToLocation,
     int? EquipmentId,
-    string? PerformedBy);
+    string? PerformedBy,
+    string? ReceivedBy);
 
 // ---------- Остатки ----------
 

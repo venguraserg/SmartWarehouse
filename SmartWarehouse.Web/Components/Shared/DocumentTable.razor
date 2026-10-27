@@ -8,6 +8,7 @@
                 <th>Дата</th>
                 <th>Основание</th>
                 <th>Кто провёл</th>
+                <th>Кому выдано</th>
                 <th class="num">Строк</th>
             </tr>
         </thead>
@@ -20,6 +21,7 @@
                     <td>@Ui.Date(doc.OccurredAt)</td>
                     <td>@doc.ExternalNumber</td>
                     <td>@doc.PerformedBy</td>
+                    <td>@doc.ReceivedBy</td>
                     <td class="num">@doc.LineCount</td>
                 </tr>
             }

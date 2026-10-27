@@ -1,0 +1,264 @@
+@page "/employees"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Сотрудники — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Сотрудники</h1>
+    <span class="spacer"></span>
+    <button class="btn btn-primary" type="button" @onclick="StartCreate">+ Сотрудник</button>
+</div>
+
+<Alert Error="@error" Success="@success" />
+
+@if (form is not null)
+{
+    <form class="panel" style="margin-bottom: 1rem" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+        <h2 style="margin-top: 0">@(editingId is null ? "Новый сотрудник" : $"Изменение: {form.LastName} {form.FirstName}")</h2>
+        <div class="field-row">
+            <div class="field">
+                <label for="e-last">Фамилия <span class="req">*</span></label>
+                <input id="e-last" type="text" @bind="form.LastName" @bind:event="oninput" maxlength="64"
+                       class="@(LastNameError is not null ? "invalid" : null)" />
+                <FieldError Message="@LastNameError" />
+            </div>
+            <div class="field">
+                <label for="e-first">Имя <span class="req">*</span></label>
+                <input id="e-first" type="text" @bind="form.FirstName" @bind:event="oninput" maxlength="64"
+                       class="@(FirstNameError is not null ? "invalid" : null)" />
+                <FieldError Message="@FirstNameError" />
+            </div>
+            <div class="field">
+                <label for="e-middle">Отчество</label>
+                <input id="e-middle" type="text" @bind="form.MiddleName" maxlength="64" />
+            </div>
+            <div class="field">
+                <label for="e-num">Табельный номер</label>
+                <input id="e-num" type="text" @bind="form.PersonnelNumber" @bind:event="oninput" maxlength="32"
+                       class="@(NumberError is not null ? "invalid" : null)" />
+                <FieldError Message="@NumberError" />
+            </div>
+        </div>
+        <div class="field-row">
+            <div class="field">
+                <label for="e-pos">Должность</label>
+                <input id="e-pos" type="text" list="positions-list" @bind="form.Position" maxlength="128" placeholder="Слесарь-ремонтник" />
+                <datalist id="positions-list">
+                    @foreach (var p in employees.Select(e => e.Position).OfType<string>().Distinct().Order())
+                    {
+                        <option value="@p"></option>
+                    }
+                </datalist>
+            </div>
+            <div class="field">
+                <label for="e-dep">Подразделение / участок</label>
+                <input id="e-dep" type="text" list="departments-list" @bind="form.Department" maxlength="128" placeholder="Участок розлива" />
+                <datalist id="departments-list">
+                    @foreach (var d in employees.Select(e => e.Department).OfType<string>().Distinct().Order())
+                    {
+                        <option value="@d"></option>
+                    }
+                </datalist>
+            </div>
+            <div class="field">
+                <label for="e-phone">Телефон</label>
+                <input id="e-phone" type="text" @bind="form.Phone" maxlength="32" placeholder="+375 29 …" />
+            </div>
+        </div>
+        @if (editingId is not null)
+        {
+            <div class="field">
+                <label class="checkbox"><input type="checkbox" @bind="form.IsActive" /> Работает (доступен для выбора в документах)</label>
+            </div>
+        }
+        <div class="actions">
+            <button class="btn btn-primary" type="submit" disabled="@(!FormValid || busy)">Сохранить</button>
+            <button class="btn" type="button" @onclick="() => form = null">Отмена</button>
+        </div>
+    </form>
+}
+
+<div class="toolbar">
+    <input type="search" placeholder="Поиск: ФИО, табельный номер, должность, участок" @bind="search" @bind:event="oninput" style="max-width: 420px" />
+    <label class="checkbox"><input type="checkbox" @bind="showInactive" /> показывать неработающих</label>
+</div>
+
+@if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    var visible = Visible.ToList();
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Таб. №</th>
+                    <th>ФИО</th>
+                    <th>Должность</th>
+                    <th>Подразделение</th>
+                    <th>Телефон</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in visible)
+                {
+                    <tr class="@(e.IsActive ? null : "inactive")">
+                        <td class="mono">@e.PersonnelNumber</td>
+                        <td>
+                            <a href="/employees/@e.Id">@e.FullName</a>
+                            @if (!e.IsActive)
+                            {
+                                <span class="tag tag-neutral">не работает</span>
+                            }
+                        </td>
+                        <td>@e.Position</td>
+                        <td>@e.Department</td>
+                        <td>@e.Phone</td>
+                        <td class="num"><button class="btn btn-sm" type="button" @onclick="() => StartEdit(e)">Изменить</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (visible.Count == 0)
+        {
+            <div class="empty">@(employees.Count == 0 ? "Сотрудников пока нет — добавьте первого кнопкой «+ Сотрудник»." : "Никого не найдено.")</div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Открыть форму изменения сразу (переход из карточки сотрудника).</summary>
+    [SupplyParameterFromQuery(Name = "edit")] public int? EditParam { get; set; }
+
+    private List<EmployeeDto> employees = [];
+    private bool loaded;
+    private string? search;
+    private bool showInactive;
+
+    private EmployeeForm? form;
+    private int? editingId;
+    private bool busy;
+    private string? error;
+    private string? success;
+
+    private IEnumerable<EmployeeDto> Visible =>
+        employees
+            .Where(e => showInactive || e.IsActive)
+            .Where(e => string.IsNullOrWhiteSpace(search) || Matches(e, search.Trim()));
+
+    private static bool Matches(EmployeeDto e, string text) =>
+        new[] { e.FullName, e.PersonnelNumber, e.Position, e.Department, e.Phone }
+            .Any(v => v?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+
+    // ---------- Проверки ----------
+
+    private string? LastNameError => form is not null && string.IsNullOrWhiteSpace(form.LastName) ? "Укажите фамилию." : null;
+    private string? FirstNameError => form is not null && string.IsNullOrWhiteSpace(form.FirstName) ? "Укажите имя." : null;
+
+    private string? NumberError =>
+        form is not null && !string.IsNullOrWhiteSpace(form.PersonnelNumber)
+        && employees.FirstOrDefault(e => e.Id != editingId && string.Equals(e.PersonnelNumber, form.PersonnelNumber.Trim(), StringComparison.OrdinalIgnoreCase)) is { } other
+            ? $"Номер уже у сотрудника {other.ShortName}."
+            : null;
+
+    private bool FormValid => form is not null && LastNameError is null && FirstNameError is null && NumberError is null;
+
+    // ---------- Загрузка ----------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+        if (EditParam is int id && employees.FirstOrDefault(e => e.Id == id) is { } employee)
+            StartEdit(employee);
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            employees = await Api.GetEmployeesAsync(includeInactive: true);
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void StartCreate()
+    {
+        editingId = null;
+        error = success = null;
+        form = new EmployeeForm();
+    }
+
+    private void StartEdit(EmployeeDto e)
+    {
+        editingId = e.Id;
+        error = success = null;
+        form = new EmployeeForm
+        {
+            LastName = e.LastName,
+            FirstName = e.FirstName,
+            MiddleName = e.MiddleName,
+            PersonnelNumber = e.PersonnelNumber,
+            Position = e.Position,
+            Department = e.Department,
+            Phone = e.Phone,
+            IsActive = e.IsActive
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (form is null || !FormValid) return;
+
+        busy = true;
+        error = success = null;
+        try
+        {
+            var request = new SaveEmployeeRequest(
+                form.PersonnelNumber, form.LastName, form.FirstName, form.MiddleName,
+                form.Position, form.Department, form.Phone, form.IsActive);
+
+            var saved = editingId is int id
+                ? await Api.UpdateEmployeeAsync(id, request)
+                : await Api.CreateEmployeeAsync(request);
+
+            success = editingId is null ? $"Добавлен: {saved.FullName}" : $"Сохранено: {saved.FullName}";
+            form = null;
+            editingId = null;
+            await LoadAsync();
+
+            if (EditParam is not null)
+                Nav.NavigateTo("/employees", replace: true);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private sealed class EmployeeForm
+    {
+        public string LastName { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string? MiddleName { get; set; }
+        public string? PersonnelNumber { get; set; }
+        public string? Position { get; set; }
+        public string? Department { get; set; }
+        public string? Phone { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

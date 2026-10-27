@@ -31,8 +31,35 @@ else
                 </div>
                 <div class="field">
                     <label for="who">Кто проводит</label>
-                    <input id="who" type="text" @bind="performedBy" maxlength="128" placeholder="Фамилия И.О." />
+                    @if (employees.Count > 0)
+                    {
+                        <select id="who" @bind="performedById">
+                            <option value="">— не указан —</option>
+                            @foreach (var e in employees)
+                            {
+                                <option value="@e.Id">@EmployeeLabel(e)</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input id="who" type="text" @bind="performedBy" maxlength="128" placeholder="Фамилия И.О." />
+                        <div class="field-hint">Заведите <a href="/employees">сотрудников</a>, чтобы выбирать из списка.</div>
+                    }
                 </div>
+                @if (type == MovementType.Issue && employees.Count > 0)
+                {
+                    <div class="field">
+                        <label for="to-whom">Кому выдано</label>
+                        <select id="to-whom" @bind="receivedById">
+                            <option value="">— не указано —</option>
+                            @foreach (var e in employees)
+                            {
+                                <option value="@e.Id">@EmployeeLabel(e)</option>
+                            }
+                        </select>
+                    </div>
+                }
                 @if (UsesEquipment)
                 {
                     <div class="field">
@@ -214,6 +241,9 @@ else
 
     private string? externalNumber;
     private string? performedBy;
+    private int? performedById;
+    private int? receivedById;
+    private List<EmployeeDto> employees = [];
     private string? comment;
     private int? equipmentId;
     private List<LineModel> lines = [new()];
@@ -237,6 +267,9 @@ else
         _ => "Основание"
     };
 
+    private static string EmployeeLabel(EmployeeDto e) =>
+        string.IsNullOrEmpty(e.Position) ? e.ShortName : $"{e.ShortName} — {e.Position}";
+
     private bool UsesEquipment => type is MovementType.Issue or MovementType.WriteOff;
     private bool ShowFromColumn => type is MovementType.Issue or MovementType.WriteOff or MovementType.Transfer or MovementType.Adjustment;
     private bool ShowToColumn => type is MovementType.Receipt or MovementType.Transfer or MovementType.Adjustment;
@@ -256,6 +289,7 @@ else
         lines = [new()];
         externalNumber = comment = null;
         equipmentId = null;
+        receivedById = null;
         error = null;
         showErrors = false;
 
@@ -272,7 +306,11 @@ else
             equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
             fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
 
+            employees = await Api.GetEmployeesAsync(includeInactive: false);
+
             // Кто проводит — как в прошлый раз на этом компьютере.
+            var lastPerformer = await Store.GetIntAsync("doc.performedById");
+            performedById = employees.Any(e => e.Id == lastPerformer) ? lastPerformer : null;
             performedBy ??= await Store.GetAsync("doc.performedBy");
             loaded = true;
         }
@@ -405,13 +443,15 @@ else
             type!.Value,
             externalNumber,
             UsesEquipment ? equipmentId : null,
-            performedBy,
+            performedById is null ? performedBy : null,
             comment,
             lines.Select(l => new DocumentLineRequest(
                 l.Item!.Id,
                 l.Quantity,
                 NeedsFrom(l) ? l.FromId : null,
-                NeedsTo(l) ? l.ToId : null)).ToList());
+                NeedsTo(l) ? l.ToId : null)).ToList(),
+            PerformedById: performedById,
+            ReceivedById: type == MovementType.Issue ? receivedById : null);
 
         saving = true;
         try
@@ -419,6 +459,7 @@ else
             var doc = await Api.PostDocumentAsync(request);
 
             await Store.SetAsync("doc.performedBy", performedBy);
+            await Store.SetAsync("doc.performedById", performedById);
             var lastTo = lines.Where(NeedsTo).Select(l => l.ToId).LastOrDefault(id => id is not null);
             if (lastTo is not null)
                 await Store.SetAsync("doc.lastTo", lastTo);

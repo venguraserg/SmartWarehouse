@@ -105,6 +105,10 @@
                                 <td>
                                     <a class="mono" href="/documents/@m.DocumentId">@m.DocumentNumber</a><br />
                                     <span class="tag @Ui.DocTypeClass(m.Type)">@Ui.DocType(m.Type)</span>
+                                    @if (!string.IsNullOrEmpty(m.ReceivedBy))
+                                    {
+                                        <div class="line-hint">кому: @m.ReceivedBy</div>
+                                    }
                                 </td>
                                 <td>@Ui.Date(m.OccurredAt)</td>
                                 <td class="mono">@(m.FromLocation ?? "—") → @(m.ToLocation ?? "—")</td>

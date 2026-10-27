@@ -26,8 +26,24 @@ public class StockDocument
 
     public Equipment? Equipment { get; set; }
 
-    /// <summary>Кто провёл документ (пока строкой, до появления пользователей).</summary>
+    /// <summary>Кто провёл документ — сотрудник из справочника.</summary>
+    public int? PerformedById { get; set; }
+
+    public Employee? PerformedByEmployee { get; set; }
+
+    /// <summary>
+    /// Кто провёл — текстом, как было на момент проведения («Иванов И. П.»).
+    /// Сохраняется, чтобы история не менялась при правке справочника.
+    /// </summary>
     public string? PerformedBy { get; set; }
+
+    /// <summary>Кому выдано (только для выдачи).</summary>
+    public int? ReceivedById { get; set; }
+
+    public Employee? ReceivedByEmployee { get; set; }
+
+    /// <summary>Кому выдано — текстом на момент проведения.</summary>
+    public string? ReceivedBy { get; set; }
 
     public string? Comment { get; set; }
 
