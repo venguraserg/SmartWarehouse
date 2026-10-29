@@ -372,6 +372,13 @@ else
     {
         // Компонент переиспользуется при переходе между типами — начинаем документ заново.
         type = Enum.TryParse<MovementType>(Kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : null;
+
+        // Списание оформляется актом на списание (с утверждением руководителем).
+        if (type == MovementType.WriteOff)
+        {
+            Nav.NavigateTo(EmployeeParam is int forEmployee ? $"/acts/new?employee={forEmployee}" : "/acts/new", replace: true);
+            return;
+        }
         lines = [new()];
         externalNumber = comment = null;
         equipmentId = null;
@@ -426,7 +433,10 @@ else
         {
             try
             {
-                custody = (await Api.GetCustodyAsync(employeeId: id)).ToDictionary(r => r.ItemId, r => r.Quantity);
+                // Зарезервированное в актах на утверждении вернуть нельзя — считаем только свободное.
+                custody = (await Api.GetCustodyAsync(employeeId: id))
+                    .Where(r => r.Quantity - r.Reserved > 0)
+                    .ToDictionary(r => r.ItemId, r => r.Quantity - r.Reserved);
             }
             catch (Exception ex) when (ex is ApiException or HttpRequestException)
             {

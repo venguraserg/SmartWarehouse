@@ -1,0 +1,140 @@
+@page "/acts"
+@inject ApiClient Api
+
+<PageTitle>Акты на списание — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Акты на списание</h1>
+    <span class="spacer"></span>
+    <a class="btn btn-primary" href="/acts/new">+ Новый акт</a>
+</div>
+<p class="muted" style="margin-top: -.5rem">
+    Сотрудник отчитывается, куда израсходовал полученное, руководитель утверждает — тогда позиции списываются.
+</p>
+
+<div class="toolbar">
+    <div class="segmented">
+        <button type="button" class="@(scope == "approve" ? "active" : null)" @onclick='() => SetScopeAsync("approve")'>
+            Ждут моего утверждения@(toApprove > 0 ? $" ({toApprove})" : "")
+        </button>
+        <button type="button" class="@(scope == "all" ? "active" : null)" @onclick='() => SetScopeAsync("all")'>Все доступные</button>
+    </div>
+    @if (scope == "all")
+    {
+        <select @bind="status" @bind:after="LoadAsync" style="max-width: 200px">
+            <option value="">Любое состояние</option>
+            @foreach (var s in Enum.GetValues<ActStatus>())
+            {
+                <option value="@s">@Ui.ActState(s)</option>
+            }
+        </select>
+    }
+</div>
+
+@if (EmployeeParam is not null && scope == "all")
+{
+    <p class="muted">Показаны акты одного сотрудника. <a href="/acts?scope=all">Показать все</a></p>
+}
+
+<Alert Error="@error" />
+
+@if (acts is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else if (acts.Count == 0)
+{
+    <div class="panel empty">
+        @(scope == "approve" ? "Нет актов, ожидающих вашего утверждения." : "Актов пока нет.")
+    </div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Акт</th>
+                    <th>Состояние</th>
+                    <th>Сотрудник</th>
+                    <th>Период / основание</th>
+                    <th class="num">Строк</th>
+                    <th>Утверждает / утвердил</th>
+                    <th>Изменён</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in acts)
+                {
+                    <tr>
+                        <td class="mono"><a href="/acts/@a.Id">@a.Number</a></td>
+                        <td><span class="tag @Ui.ActStateClass(a.Status)">@Ui.ActState(a.Status)</span></td>
+                        <td><a href="/employees/@a.EmployeeId">@a.EmployeeName</a></td>
+                        <td>
+                            @(string.Join(" · ", new[] { Ui.Period(a.PeriodFrom, a.PeriodTo), a.ExternalNumber }.Where(x => !string.IsNullOrEmpty(x))))
+                        </td>
+                        <td class="num">@a.LineCount</td>
+                        <td>@(a.Status is ActStatus.Approved or ActStatus.Returned ? a.DecidedBy : a.ApproverName)</td>
+                        <td>@Ui.Date(a.UpdatedAt)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "scope")] public string? ScopeParam { get; set; }
+
+    /// <summary>Только акты этого сотрудника (переход из карточки сотрудника).</summary>
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
+
+    private List<ActSummaryDto>? acts;
+    private string scope = "all";
+    private ActStatus? status;
+    private int toApprove;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            toApprove = await Api.GetActsToApproveCountAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+            return;
+        }
+
+        // Есть что утверждать — открываем эту вкладку.
+        scope = ScopeParam is "approve" or "all" ? ScopeParam : toApprove > 0 ? "approve" : "all";
+        await LoadAsync();
+    }
+
+    private async Task SetScopeAsync(string value)
+    {
+        scope = value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            acts = scope == "approve"
+                ? await Api.GetActsAsync(ActScope.ToApprove)
+                : await Api.GetActsAsync(ActScope.Visible, status, EmployeeParam);
+            if (scope == "approve")
+                toApprove = acts.Count;
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}

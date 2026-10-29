@@ -45,10 +45,14 @@
     <div class="page-head" style="margin-top: 1.5rem; margin-bottom: .75rem">
         <h2 style="margin: 0">Числится за сотрудником</h2>
         <span class="spacer"></span>
+        @if (custody.Count > 0 && (isWarehouse || employee.Id == myEmployeeId))
+        {
+            <a class="btn btn-primary" href="/acts/new?employee=@employee.Id">Акт на списание</a>
+        }
+        <a class="btn" href="/acts?scope=all&employee=@employee.Id">Акты сотрудника</a>
         <AuthorizeView Roles="@AppRoles.Warehouse">
             @if (custody.Count > 0)
             {
-                <a class="btn btn-primary" href="/documents/new/WriteOff?employee=@employee.Id">Списать</a>
                 <a class="btn" href="/documents/new/Return?employee=@employee.Id">Вернуть на склад</a>
             }
             @if (employee.IsActive)
@@ -65,6 +69,7 @@
                     <th>Артикул</th>
                     <th>Наименование</th>
                     <th class="num">Количество</th>
+                    <th class="num" title="Сколько дней числится (по самой ранней невозвращённой выдаче)">Числится</th>
                 </tr>
             </thead>
             <tbody>
@@ -74,7 +79,14 @@
                         <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
                         <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
                         <td>@c.ItemName</td>
-                        <td class="num"><strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong></td>
+                        <td class="num">
+                            <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
+                            @if (c.Reserved > 0)
+                            {
+                                <div class="line-hint">из них @Ui.Qty(c.Reserved) — в актах на утверждении</div>
+                            }
+                        </td>
+                        <td class="num"><CustodyAge Since="c.HeldSince" /></td>
                     </tr>
                 }
             </tbody>
@@ -129,6 +141,11 @@ else if (error is null)
 @code {
     [Parameter] public int Id { get; set; }
 
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool isWarehouse;
+    private int? myEmployeeId;
+
     private EmployeeDto? employee;
     private List<CustodyRowDto> custody = [];
     private List<EmployeeMovementDto> history = [];
@@ -136,6 +153,13 @@ else if (error is null)
 
     protected override async Task OnParametersSetAsync()
     {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            isWarehouse = user.IsWarehouseStaff();
+            myEmployeeId = user.EmployeeIdOf();
+        }
+
         try
         {
             employee = await Api.GetEmployeeAsync(Id);

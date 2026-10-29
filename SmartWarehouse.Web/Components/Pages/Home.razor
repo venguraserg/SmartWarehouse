@@ -16,7 +16,7 @@
     <a class="btn" href="/documents/new/Issue">− Выдача</a>
     <a class="btn" href="/documents/new/Return">↩ Возврат</a>
     <a class="btn" href="/documents/new/Transfer">⇄ Перемещение</a>
-    <a class="btn" href="/documents/new/WriteOff">Списание</a>
+    <a class="btn" href="/acts/new">Акт на списание</a>
     <a class="btn" href="/documents/new/Adjustment">Корректировка</a>
 </div>
 </AuthorizeView>
@@ -41,6 +41,13 @@ else
             <div class="stat-value">@recent.Count(d => d.OccurredAt.ToLocalTime().Date == DateTime.Today)</div>
             <div class="stat-label">документов сегодня</div>
         </div>
+        @if (actsToApprove > 0)
+        {
+            <a class="stat stat-link warn" href="/acts?scope=approve">
+                <div class="stat-value">@actsToApprove</div>
+                <div class="stat-label">актов ждут вашего утверждения</div>
+            </a>
+        }
     </div>
 
     <h2>Ниже минимального остатка</h2>
@@ -81,12 +88,14 @@ else
 @code {
     private List<LowStockItemDto>? lowStock;
     private List<DocumentSummaryDto>? recent;
+    private int actsToApprove;
     private string? error;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            actsToApprove = await Api.GetActsToApproveCountAsync();
             lowStock = await Api.GetBelowMinimumAsync();
             recent = await Api.GetDocumentsAsync(take: 50);
         }

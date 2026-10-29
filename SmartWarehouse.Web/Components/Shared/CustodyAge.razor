@@ -1,0 +1,24 @@
+@* Сколько дней числится за сотрудником; давнее (по настройке Custody:AgeWarningDays) подсвечивается. *@
+@inject CustodyOptions Options
+
+@if (Since is DateTimeOffset since)
+{
+    var days = Math.Max(0, (int)Math.Floor((DateTimeOffset.Now - since).TotalDays));
+    var title = $"Числится с {Ui.Day(since)}";
+    if (days >= Options.AgeWarningDays)
+    {
+        <span class="tag tag-warn" title="@title">@days дн.</span>
+    }
+    else
+    {
+        <span class="muted" title="@title">@days дн.</span>
+    }
+}
+else
+{
+    <span class="muted">—</span>
+}
+
+@code {
+    [Parameter] public DateTimeOffset? Since { get; set; }
+}

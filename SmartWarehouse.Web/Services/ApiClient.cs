@@ -259,6 +259,57 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    // ---------- Акты на списание ----------
+
+    public Task<List<ActSummaryDto>> GetActsAsync(ActScope scope = ActScope.Visible, ActStatus? status = null, int? employeeId = null, CancellationToken ct = default)
+    {
+        var parts = new List<string> { $"scope={scope}" };
+        if (status is not null) parts.Add($"status={status}");
+        if (employeeId is not null) parts.Add($"employeeId={employeeId}");
+        return GetAsync<List<ActSummaryDto>>($"api/acts?{string.Join('&', parts)}", ct);
+    }
+
+    public async Task<int> GetActsToApproveCountAsync(CancellationToken ct = default) =>
+        (await GetAsync<CountBody>("api/acts/to-approve/count", ct)).Count;
+
+    public Task<ActDto> GetActAsync(int id, CancellationToken ct = default) =>
+        GetAsync<ActDto>($"api/acts/{id}", ct);
+
+    public Task<ActDto> CreateActAsync(SaveActRequest request, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Post, "api/acts", request, ct);
+
+    public Task<ActDto> UpdateActAsync(int id, SaveActRequest request, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Put, $"api/acts/{id}", request, ct);
+
+    public async Task DeleteActAsync(int id, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Delete, $"api/acts/{id}", ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
+    public Task<ActDto> SubmitActAsync(int id, CancellationToken ct = default) => ActActionAsync(id, "submit", ct);
+
+    public Task<ActDto> RecallActAsync(int id, CancellationToken ct = default) => ActActionAsync(id, "recall", ct);
+
+    public Task<ActDto> ApproveActAsync(int id, CancellationToken ct = default) => ActActionAsync(id, "approve", ct);
+
+    public Task<ActDto> ReturnActAsync(int id, string remark, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Post, $"api/acts/{id}/return", new ReturnActRequest(remark), ct);
+
+    private async Task<ActDto> ActActionAsync(int id, string action, CancellationToken ct)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, $"api/acts/{id}/{action}", ct);
+        return await ReadAsync<ActDto>(response, ct);
+    }
+
+    /// <summary>Акт на списание (PDF).</summary>
+    public async Task<byte[]> GetActPdfAsync(int id, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Get, $"api/acts/{id}/pdf", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     public Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default) =>
         SendAsync<DocumentDto>(HttpMethod.Post, "api/documents", request, ct);
 
@@ -355,4 +406,6 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     private sealed record ProblemBody(string? Title, string? Detail);
 
     private sealed record NextSkuBody(string Sku);
+
+    private sealed record CountBody(int Count);
 }
