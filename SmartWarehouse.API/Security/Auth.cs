@@ -38,13 +38,20 @@ public class JwtOptions
 
     public TimeSpan Lifetime { get; init; } = TimeSpan.FromHours(12);
 
+    /// <summary>Постоянный ключ для разработки: вход не сбрасывается при перезапуске API из Visual Studio.</summary>
+    private const string DevelopmentKey = "SmartWarehouse-development-only-key-do-not-use-in-production";
+
     /// <summary>
-    /// Ключ подписи из настройки Auth:JwtKey (не короче 32 символов). Если не задан — случайный ключ
-    /// на время работы процесса: после перезапуска API всем придётся войти заново (подходит для разработки).
+    /// Ключ подписи из настройки Auth:JwtKey (не короче 32 символов). Если не задан:
+    /// в разработке — постоянный ключ разработки; иначе — случайный ключ на время работы процесса
+    /// (после перезапуска API всем придётся войти заново).
     /// </summary>
-    public static JwtOptions FromConfiguration(IConfiguration config, ILogger logger)
+    public static JwtOptions FromConfiguration(IConfiguration config, bool isDevelopment, ILogger logger)
     {
         var configured = config["Auth:JwtKey"];
+        if (string.IsNullOrWhiteSpace(configured) && isDevelopment)
+            configured = DevelopmentKey;
+
         byte[] keyBytes;
         if (string.IsNullOrWhiteSpace(configured))
         {
