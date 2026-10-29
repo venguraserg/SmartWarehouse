@@ -27,7 +27,7 @@ builder.Services.AddInfrastructure(connectionString);
 // ---------- Вход по токену (JWT) ----------
 using (var loggerFactory = LoggerFactory.Create(b => b.AddConsole()))
 {
-    var jwt = JwtOptions.FromConfiguration(builder.Configuration, loggerFactory.CreateLogger("Auth"));
+    var jwt = JwtOptions.FromConfiguration(builder.Configuration, builder.Environment.IsDevelopment(), loggerFactory.CreateLogger("Auth"));
     builder.Services.AddSingleton(jwt);
 }
 builder.Services.AddSingleton<TokenService>();
