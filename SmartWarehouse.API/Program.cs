@@ -95,7 +95,8 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
 }
 
-app.UseHttpsRedirection();
+// Перенаправления на https нет намеренно: API — внутренняя служба за веб-приложением,
+// а при перенаправлении HttpClient отбрасывает заголовок Authorization (запросы приходят без токена → 401).
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
