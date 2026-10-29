@@ -72,6 +72,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int?>("ManagerId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("MiddleName")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -89,6 +92,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(128)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ManagerId");
 
                     b.HasIndex("PersonnelNumber")
                         .IsUnique();
@@ -448,6 +453,53 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("units", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.UserAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Login")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Roles")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId")
+                        .IsUnique();
+
+                    b.HasIndex("Login")
+                        .IsUnique();
+
+                    b.ToTable("users", (string)null);
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Warehouse", b =>
                 {
                     b.Property<int>("Id")
@@ -476,6 +528,16 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("warehouses", (string)null);
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.Employee", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Manager")
+                        .WithMany()
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Manager");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.EmployeeBalance", b =>
@@ -642,6 +704,16 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Navigation("Parent");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.UserAccount", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
