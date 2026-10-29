@@ -1,0 +1,245 @@
+@page "/acts/{Id:int}"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(act?.Number ?? "Акт") — склад</PageTitle>
+
+<Alert Error="@error" Success="@success" />
+
+@if (act is not null)
+{
+    <div class="page-head">
+        <h1 class="mono">@act.Number</h1>
+        <span class="tag @Ui.ActStateClass(act.Status)">@Ui.ActState(act.Status)</span>
+        <span class="spacer"></span>
+        <a class="btn" href="/act-pdf/@act.Id" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
+        <a class="btn" href="/acts">К списку</a>
+    </div>
+
+    @if (act.Status == ActStatus.Returned && !string.IsNullOrEmpty(act.ReturnRemark))
+    {
+        <div class="alert alert-error">
+            <strong>Возвращён на доработку.</strong> @act.DecidedBy: «@act.ReturnRemark»
+        </div>
+    }
+
+    @* ---------- Действия ---------- *@
+    @if (act.Can.Decide)
+    {
+        <div class="panel" style="margin-bottom: 1rem">
+            <h2 style="margin-top: 0">Ваше решение</h2>
+            <p class="muted" style="margin-top: 0">
+                При утверждении позиции списываются с сотрудника. Если что-то не так — верните акт с замечанием.
+            </p>
+            <div class="field">
+                <label for="remark">Замечание (для возврата)</label>
+                <textarea id="remark" rows="2" @bind="remark" @bind:event="oninput" maxlength="1000"
+                          placeholder="Что нужно исправить"></textarea>
+            </div>
+            <div class="actions">
+                <button class="btn btn-primary" type="button" disabled="@busy" @onclick="ApproveAsync">Утвердить и списать</button>
+                <button class="btn" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(remark))" @onclick="ReturnAsync">Вернуть на доработку</button>
+            </div>
+        </div>
+    }
+
+    @if (act.Can.Edit || act.Can.Recall)
+    {
+        <div class="actions" style="margin-bottom: 1rem">
+            @if (act.Can.Submit)
+            {
+                <button class="btn btn-primary" type="button" disabled="@busy" @onclick="SubmitAsync">
+                    @(SelfApproves ? "Утвердить и списать" : "Отправить на утверждение")
+                </button>
+            }
+            @if (act.Can.Edit)
+            {
+                <a class="btn" href="/acts/@act.Id/edit">Изменить</a>
+                @if (confirmDelete)
+                {
+                    <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить акт</button>
+                    <button class="btn" type="button" @onclick="() => confirmDelete = false">Не удалять</button>
+                }
+                else
+                {
+                    <button class="btn" type="button" @onclick="() => confirmDelete = true">Удалить</button>
+                }
+            }
+            @if (act.Can.Recall)
+            {
+                <button class="btn" type="button" disabled="@busy" @onclick="RecallAsync">Отозвать с утверждения</button>
+            }
+        </div>
+    }
+
+    <div class="panel">
+        <dl class="props">
+            <dt>Сотрудник</dt>
+            <dd>
+                <a href="/employees/@act.EmployeeId">@act.EmployeeName</a>
+                @if (!string.IsNullOrEmpty(act.EmployeePosition))
+                {
+                    <span class="muted">· @act.EmployeePosition</span>
+                }
+            </dd>
+            @if (act.Status == ActStatus.Approved)
+            {
+                <dt>Утвердил</dt>
+                <dd>@act.DecidedBy@(act.DecidedAt is { } approvedAt ? $", {Ui.Date(approvedAt)}" : "")</dd>
+                <dt>Документ списания</dt>
+                <dd>
+                    @if (act.DocumentId is long documentId)
+                    {
+                        <a class="mono" href="/documents/@documentId">@act.DocumentNumber</a>
+                    }
+                </dd>
+            }
+            else
+            {
+                <dt>Утверждает</dt>
+                <dd>@act.ApproverName@(act.ApproverId == act.EmployeeId ? " (руководитель не назначен)" : "")</dd>
+            }
+            @if (Ui.Period(act.PeriodFrom, act.PeriodTo) is { } period)
+            {
+                <dt>Период</dt>
+                <dd>@period</dd>
+            }
+            @if (!string.IsNullOrEmpty(act.ExternalNumber))
+            {
+                <dt>Основание</dt>
+                <dd>@act.ExternalNumber</dd>
+            }
+            @if (!string.IsNullOrEmpty(act.Comment))
+            {
+                <dt>Примечание</dt>
+                <dd style="white-space: pre-line">@act.Comment</dd>
+            }
+            <dt>Составлен</dt>
+            <dd>@Ui.Date(act.CreatedAt)@(string.IsNullOrEmpty(act.CreatedBy) ? "" : $", {act.CreatedBy}")</dd>
+            @if (act.SubmittedAt is { } submittedAt)
+            {
+                <dt>Отправлен на утверждение</dt>
+                <dd>@Ui.Date(submittedAt)</dd>
+            }
+        </dl>
+    </div>
+
+    <h2>Что израсходовано</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th class="num">№</th>
+                    <th>Артикул</th>
+                    <th>Наименование</th>
+                    <th class="num">Количество</th>
+                    <th>Куда использовано</th>
+                    <th>Дата</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in act.Lines)
+                {
+                    <tr>
+                        <td class="num">@l.LineNo</td>
+                        <td class="mono"><a href="/items/@l.ItemId">@l.Sku</a></td>
+                        <td>@l.ItemName</td>
+                        <td class="num">@Ui.Qty(l.Quantity) @l.UnitCode</td>
+                        <td>
+                            @if (l.Equipment is not null)
+                            {
+                                <div>@l.Equipment</div>
+                            }
+                            @if (!string.IsNullOrEmpty(l.Usage))
+                            {
+                                <div class="@(l.Equipment is null ? null : "muted")">@l.Usage</div>
+                            }
+                        </td>
+                        <td>@(l.UsedOn is DateOnly d ? Ui.Day(d) : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ActDto? act;
+    private int? myEmployeeId;
+    private string? remark;
+    private bool busy;
+    private bool confirmDelete;
+    private string? error;
+    private string? success;
+
+    /// <summary>Руководителя нет и это мой акт — отправка сразу утверждает.</summary>
+    private bool SelfApproves => act is not null && act.ApproverId == act.EmployeeId && act.EmployeeId == myEmployeeId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthState is not null)
+            myEmployeeId = (await AuthState).User.EmployeeIdOf();
+
+        try
+        {
+            act = await Api.GetActAsync(Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private Task SubmitAsync() => RunAsync(() => Api.SubmitActAsync(Id),
+        a => a.Status == ActStatus.Approved ? "Акт утверждён, позиции списаны." : $"Отправлен на утверждение: {a.ApproverName}.");
+
+    private Task RecallAsync() => RunAsync(() => Api.RecallActAsync(Id), _ => "Акт отозван — снова черновик.");
+
+    private Task ApproveAsync() => RunAsync(() => Api.ApproveActAsync(Id), a => $"Акт утверждён, позиции списаны документом {a.DocumentNumber}.");
+
+    private Task ReturnAsync() => RunAsync(() => Api.ReturnActAsync(Id, remark ?? ""), _ => "Акт возвращён на доработку.");
+
+    private async Task RunAsync(Func<Task<ActDto>> action, Func<ActDto, string> message)
+    {
+        busy = true;
+        error = success = null;
+        try
+        {
+            act = await action();
+            success = message(act);
+            remark = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            await Api.DeleteActAsync(Id);
+            Nav.NavigateTo("/acts");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+            busy = false;
+        }
+    }
+}

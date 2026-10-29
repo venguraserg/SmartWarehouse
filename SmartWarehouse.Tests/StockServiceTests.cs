@@ -54,7 +54,21 @@ public class StockServiceTests
             ReceivedById: StockService.UsesAccountable(type) ? Worker : null);
 
     private Task<DocumentDto> Post(MovementType type, params DocumentLineRequest[] lines) =>
-        _service.PostDocumentAsync(Doc(type, lines));
+        Send(Doc(type, lines));
+
+    /// <summary>
+    /// Списание напрямую не проводится — только утверждением акта; здесь проверяем само проведение,
+    /// поэтому списание идёт тем же внутренним шагом, что использует утверждение акта.
+    /// </summary>
+    private async Task<DocumentDto> Send(CreateDocumentRequest request)
+    {
+        if (request.Type != MovementType.WriteOff)
+            return await _service.PostDocumentAsync(request);
+
+        var staged = await _service.StageAsync(request, exceptActId: null, CancellationToken.None);
+        await _repo.SaveChangesAsync();
+        return staged.ToDto();
+    }
 
     private decimal Balance(int location, int item = Bearing) =>
         _repo.Balances.FirstOrDefault(b => b.ItemId == item && b.LocationId == location)?.Quantity ?? 0;
@@ -486,13 +500,44 @@ public class StockServiceTests
         await Post(MovementType.Receipt, Line(10, to: CellA));
         await Post(MovementType.Issue, Line(4, from: CellA));
 
-        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+        var ex = await Assert.ThrowsAsync<DomainException>(() => Send(
             new CreateDocumentRequest(MovementType.WriteOff, null, null, null, null, [Line(1)], ReceivedById: Worker)));
         Assert.Contains("куда использовано", ex.Message);
 
         // Достаточно указать оборудование.
-        await _service.PostDocumentAsync(
+        await Send(
             new CreateDocumentRequest(MovementType.WriteOff, null, Pump, null, null, [Line(1)], ReceivedById: Worker));
+        Assert.Equal(3, Custody());
+    }
+
+    [Fact]
+    public async Task Списание_напрямую_документом_запрещено_только_по_акту()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(Doc(MovementType.WriteOff, Line(1))));
+
+        Assert.Contains("актом", ex.Message);
+        Assert.Equal(4, Custody());
+    }
+
+    [Fact]
+    public async Task Зарезервированное_актом_на_утверждении_вернуть_нельзя()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+        _repo.Acts.Add(new WriteOffAct
+        {
+            Id = 7, EmployeeId = Worker, Status = ActStatus.Pending,
+            Lines = { new WriteOffActLine { ItemId = Bearing, Quantity = 3, Usage = "ремонт" } }
+        });
+
+        var ex = await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.Return, Line(2, to: CellB)));
+        Assert.Equal(3, ex.Reserved);
+        Assert.Contains("в актах на утверждении", ex.Message);
+
+        await Post(MovementType.Return, Line(1, to: CellB)); // свободная 1 шт — можно
         Assert.Equal(3, Custody());
     }
 }

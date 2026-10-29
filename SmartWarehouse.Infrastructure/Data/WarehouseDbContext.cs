@@ -18,6 +18,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<EmployeeBalance> EmployeeBalances => Set<EmployeeBalance>();
     public DbSet<UserAccount> Users => Set<UserAccount>();
+    public DbSet<WriteOffAct> WriteOffActs => Set<WriteOffAct>();
+    public DbSet<WriteOffActLine> WriteOffActLines => Set<WriteOffActLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

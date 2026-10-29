@@ -9,7 +9,9 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddSingleton(TimeProvider.System);
-        services.AddScoped<IStockService, StockService>();
+        services.AddScoped<StockService>();
+        services.AddScoped<IStockService>(sp => sp.GetRequiredService<StockService>());
+        services.AddScoped<IWriteOffActService, WriteOffActService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IEmployeeService, EmployeeService>();

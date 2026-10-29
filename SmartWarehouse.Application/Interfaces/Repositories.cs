@@ -15,6 +15,20 @@ public record StockFilter(int? WarehouseId, string? LocationCode, string? Search
 /// <summary>Краткие сведения о месте хранения для проверок при проведении документа.</summary>
 public record LocationInfo(int Id, string FullCode, bool HasChildren);
 
+/// <summary>Выдача позиции сотруднику (строка документа выдачи).</summary>
+public record IssueRecord(int EmployeeId, int ItemId, DateTimeOffset OccurredAt, decimal Quantity);
+
+/// <summary>Сколько позиции за сотрудником в актах на утверждении.</summary>
+public record ReservedRecord(int EmployeeId, int ItemId, decimal Quantity);
+
+/// <summary>Фильтр списка актов на списание.</summary>
+/// <param name="EmployeeIds">Только акты этих сотрудников (null — всех).</param>
+/// <param name="ApproverId">Только акты на утверждении, которые утверждает этот сотрудник.</param>
+public record ActFilter(IReadOnlyCollection<int>? EmployeeIds, int? ApproverId, ActStatus? Status, int? EmployeeId, int Take);
+
+/// <summary>Шапка акта с числом строк — для списков.</summary>
+public record ActHeader(WriteOffAct Act, int LineCount);
+
 /// <summary>Доступ к данным для складских документов и остатков.</summary>
 public interface IStockRepository
 {
@@ -38,6 +52,12 @@ public interface IStockRepository
     Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default);
 
     void AddEmployeeBalance(EmployeeBalance balance);
+
+    /// <summary>
+    /// Сколько позиции за сотрудником зарезервировано актами на утверждении
+    /// (кроме акта <paramref name="exceptActId"/>, который сейчас утверждается).
+    /// </summary>
+    Task<decimal> GetReservedAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
 
     void AddDocument(StockDocument document);
 
@@ -145,6 +165,12 @@ public interface IEmployeeRepository
     Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(
         int? employeeId, int? itemId, string? search, IReadOnlyCollection<int>? onlyEmployeeIds, CancellationToken ct = default);
 
+    /// <summary>Выдачи сотрудникам (для расчёта, с какой даты числится подотчёт). null — всем сотрудникам.</summary>
+    Task<IReadOnlyList<IssueRecord>> ListIssuesAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default);
+
+    /// <summary>Зарезервировано актами на утверждении: по сотруднику и позиции. null — всем сотрудникам.</summary>
+    Task<IReadOnlyList<ReservedRecord>> ListReservedAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default);
+
     /// <summary>Пары «сотрудник → руководитель» всех сотрудников (для обхода иерархии).</summary>
     Task<IReadOnlyList<(int Id, int? ManagerId)>> ListHierarchyAsync(CancellationToken ct = default);
 
@@ -179,5 +205,25 @@ public interface ILocationRepository
 
     void AddLocation(StorageLocation location);
 
+    Task SaveChangesAsync(CancellationToken ct = default);
+}
+
+/// <summary>Доступ к актам на списание.</summary>
+public interface IWriteOffActRepository
+{
+    /// <summary>Акт (отслеживаемый) с сотрудником и его руководителем, строками (позиция, единица, оборудование) и документом.</summary>
+    Task<WriteOffAct?> GetAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Акты по фильтру (с сотрудником и руководителем), новые первыми.</summary>
+    Task<IReadOnlyList<ActHeader>> ListAsync(ActFilter filter, CancellationToken ct = default);
+
+    /// <summary>Сколько актов ждут утверждения этим сотрудником.</summary>
+    Task<int> CountToApproveAsync(int approverId, CancellationToken ct = default);
+
+    void Add(WriteOffAct act);
+
+    void Remove(WriteOffAct act);
+
+    /// <summary>Сохраняет все изменения (акт и проведённый документ) одной транзакцией.</summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }

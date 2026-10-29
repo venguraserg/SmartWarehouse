@@ -18,7 +18,7 @@ public class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<
             NotFoundException => (StatusCodes.Status404NotFound, "Не найдено"),
             InsufficientStockException => (StatusCodes.Status409Conflict, "Недостаточно остатка"),
             DomainException => (StatusCodes.Status400BadRequest, "Недопустимая операция"),
-            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Остаток изменён другим пользователем"),
+            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Данные изменены другим пользователем"),
             DbUpdateException => (StatusCodes.Status409Conflict, "Конфликт данных"),
             _ => (0, string.Empty)
         };
@@ -28,7 +28,7 @@ public class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<
 
         var detail = exception switch
         {
-            DbUpdateConcurrencyException => "Повторите операцию: остаток успел измениться.",
+            DbUpdateConcurrencyException => "Повторите операцию: данные (остаток или документ) успели измениться — обновите страницу.",
             DbUpdateException => "Запись нарушает ограничение базы данных (например, дубликат кода).",
             _ => exception.Message
         };

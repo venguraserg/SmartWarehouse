@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Тесты проверяют и внутренние шаги проведения (StockService.StageAsync). -->
+    <InternalsVisibleTo Include="SmartWarehouse.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SmartWarehouse.Domain\SmartWarehouse.Domain.csproj" />
   </ItemGroup>
 

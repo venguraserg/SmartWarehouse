@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Domain.Entities;
+using SmartWarehouse.Domain.Enums;
 using SmartWarehouse.Infrastructure.Data;
 
 namespace SmartWarehouse.Infrastructure.Repositories;
@@ -87,6 +88,36 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
         }
 
         return await query.Take(5000).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<IssueRecord>> ListIssuesAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default)
+    {
+        var query = db.Movements.AsNoTracking().Where(x => x.Type == MovementType.Issue && x.ToEmployeeId != null);
+        if (employeeIds is not null)
+        {
+            var ids = employeeIds.ToList();
+            query = query.Where(x => ids.Contains(x.ToEmployeeId!.Value));
+        }
+        return await query
+            .Select(x => new IssueRecord(x.ToEmployeeId!.Value, x.ItemId, x.OccurredAt, x.Quantity))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<ReservedRecord>> ListReservedAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default)
+    {
+        var query = db.WriteOffActLines.AsNoTracking().Where(l => l.Act.Status == ActStatus.Pending);
+        if (employeeIds is not null)
+        {
+            var ids = employeeIds.ToList();
+            query = query.Where(l => ids.Contains(l.Act.EmployeeId));
+        }
+        var rows = await query
+            .Select(l => new { l.Act.EmployeeId, l.ItemId, l.Quantity })
+            .ToListAsync(ct);
+        return rows
+            .GroupBy(x => (x.EmployeeId, x.ItemId))
+            .Select(g => new ReservedRecord(g.Key.EmployeeId, g.Key.ItemId, g.Sum(x => x.Quantity)))
+            .ToList();
     }
 
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
