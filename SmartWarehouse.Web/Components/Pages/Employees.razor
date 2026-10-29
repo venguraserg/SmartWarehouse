@@ -1,4 +1,5 @@
 @page "/employees"
+@attribute [Authorize(Roles = $"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")]
 @inject ApiClient Api
 @inject NavigationManager Nav
 
@@ -7,7 +8,9 @@
 <div class="page-head">
     <h1>Сотрудники</h1>
     <span class="spacer"></span>
-    <button class="btn btn-primary" type="button" @onclick="StartCreate">+ Сотрудник</button>
+    <AuthorizeView Roles="@AppRoles.Admin">
+        <button class="btn btn-primary" type="button" @onclick="StartCreate">+ Сотрудник</button>
+    </AuthorizeView>
 </div>
 
 <Alert Error="@error" Success="@success" />
@@ -62,6 +65,17 @@
                 </datalist>
             </div>
             <div class="field">
+                <label for="e-manager">Руководитель</label>
+                <select id="e-manager" @bind="form.ManagerId">
+                    <option value="">— нет (сам утверждает свои акты) —</option>
+                    @foreach (var m in employees.Where(e => e.IsActive && e.Id != editingId).OrderBy(e => e.FullName))
+                    {
+                        <option value="@m.Id">@m.ShortName@(string.IsNullOrEmpty(m.Position) ? "" : $" — {m.Position}")</option>
+                    }
+                </select>
+                <div class="field-hint">Утверждает акты на списание этого сотрудника.</div>
+            </div>
+            <div class="field">
                 <label for="e-phone">Телефон</label>
                 <input id="e-phone" type="text" @bind="form.Phone" maxlength="32" placeholder="+375 29 …" />
             </div>
@@ -102,6 +116,7 @@ else
                     <th>ФИО</th>
                     <th>Должность</th>
                     <th>Подразделение</th>
+                    <th>Руководитель</th>
                     <th>Телефон</th>
                     <th></th>
                 </tr>
@@ -120,8 +135,13 @@ else
                         </td>
                         <td>@e.Position</td>
                         <td>@e.Department</td>
+                        <td>@e.ManagerName</td>
                         <td>@e.Phone</td>
-                        <td class="num"><button class="btn btn-sm" type="button" @onclick="() => StartEdit(e)">Изменить</button></td>
+                        <td class="num">
+                            <AuthorizeView Roles="@AppRoles.Admin" Context="admin">
+                                <button class="btn btn-sm" type="button" @onclick="() => StartEdit(e)">Изменить</button>
+                            </AuthorizeView>
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -212,7 +232,8 @@ else
             Position = e.Position,
             Department = e.Department,
             Phone = e.Phone,
-            IsActive = e.IsActive
+            IsActive = e.IsActive,
+            ManagerId = e.ManagerId
         };
     }
 
@@ -226,7 +247,7 @@ else
         {
             var request = new SaveEmployeeRequest(
                 form.PersonnelNumber, form.LastName, form.FirstName, form.MiddleName,
-                form.Position, form.Department, form.Phone, form.IsActive);
+                form.Position, form.Department, form.Phone, form.IsActive, form.ManagerId);
 
             var saved = editingId is int id
                 ? await Api.UpdateEmployeeAsync(id, request)
@@ -260,5 +281,6 @@ else
         public string? Department { get; set; }
         public string? Phone { get; set; }
         public bool IsActive { get; set; } = true;
+        public int? ManagerId { get; set; }
     }
 }

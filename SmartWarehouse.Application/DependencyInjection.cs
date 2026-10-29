@@ -14,6 +14,9 @@ public static class DependencyInjection
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IActService, ActService>();
+        services.AddScoped<AccountService>();
+        services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AccountService>());
+        services.AddScoped<IUserService>(sp => sp.GetRequiredService<AccountService>());
         return services;
     }
 }

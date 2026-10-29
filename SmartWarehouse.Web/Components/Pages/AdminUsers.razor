@@ -1,0 +1,337 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = AppRoles.Admin)]
+@inject ApiClient Api
+
+<PageTitle>Пользователи — склад</PageTitle>
+
+<div class="page-head">
+    <h1>Пользователи</h1>
+    <span class="spacer"></span>
+    <button class="btn btn-primary" type="button" @onclick="StartCreate">+ Пользователь</button>
+</div>
+
+<Alert Error="@error" Success="@success" />
+
+@if (form is not null)
+{
+    <form class="panel" style="margin-bottom: 1rem; max-width: 760px" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+        <h2 style="margin-top: 0">@(editingId is null ? "Новый пользователь" : $"Изменение: {form.Login}")</h2>
+
+        <div class="field-row">
+            <div class="field">
+                <label for="u-login">Логин <span class="req">*</span></label>
+                @if (editingId is null)
+                {
+                    <input id="u-login" type="text" @bind="form.Login" @bind:event="oninput" maxlength="32"
+                           class="@(LoginError is not null ? "invalid" : null)" placeholder="ivanov" autocomplete="off" />
+                    <FieldError Message="@LoginError" />
+                    <div class="field-hint">Латинские буквы, цифры, точка, дефис.</div>
+                }
+                else
+                {
+                    <input id="u-login" type="text" value="@form.Login" disabled />
+                }
+            </div>
+            <div class="field">
+                <label for="u-employee">Сотрудник</label>
+                <select id="u-employee" @bind="form.EmployeeId">
+                    <option value="">— не привязан —</option>
+                    @foreach (var e in FreeEmployees)
+                    {
+                        <option value="@e.Id">@e.ShortName@(string.IsNullOrEmpty(e.Position) ? "" : $" — {e.Position}")</option>
+                    }
+                </select>
+                <FieldError Message="@EmployeeError" />
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Роли <span class="req">*</span></label>
+            <div class="role-list">
+                @foreach (var role in RoleChoices)
+                {
+                    <label class="checkbox" style="margin-right: 1rem">
+                        <input type="checkbox" checked="@form.Roles.HasFlag(role)" @onchange="e => ToggleRole(role, e)" />
+                        @AppRoles.Title(role)
+                    </label>
+                }
+            </div>
+            <FieldError Message="@RolesError" />
+            <div class="field-hint">
+                Сотрудник — свой подотчёт и акты; руководитель — ещё и подчинённые, утверждение актов;
+                кладовщик — складские операции и справочники; администратор — всё и пользователи.
+            </div>
+        </div>
+
+        @if (editingId is null)
+        {
+            <div class="field" style="max-width: 320px">
+                <label for="u-pass">Временный пароль <span class="req">*</span></label>
+                <div class="input-with-btn">
+                    <input id="u-pass" type="text" @bind="form.Password" @bind:event="oninput" maxlength="64" autocomplete="off"
+                           class="@(PasswordError is not null ? "invalid" : null)" />
+                    <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => form.Password = GeneratePassword()">↻</button>
+                </div>
+                <FieldError Message="@PasswordError" />
+                <div class="field-hint">Передайте его пользователю — при первом входе он сменит пароль на свой.</div>
+            </div>
+        }
+        else
+        {
+            <div class="field">
+                <label class="checkbox"><input type="checkbox" @bind="form.IsActive" /> Учётная запись активна (может входить)</label>
+            </div>
+        }
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit" disabled="@(!FormValid || busy)">Сохранить</button>
+            <button class="btn" type="button" @onclick="() => form = null">Отмена</button>
+        </div>
+    </form>
+}
+
+@if (resetFor is not null)
+{
+    <div class="panel" style="margin-bottom: 1rem; max-width: 520px">
+        <h2 style="margin-top: 0">Сброс пароля: @resetFor.Login</h2>
+        <div class="field">
+            <label for="reset-pass">Новый временный пароль</label>
+            <div class="input-with-btn">
+                <input id="reset-pass" type="text" @bind="resetPassword" @bind:event="oninput" maxlength="64" autocomplete="off" />
+                <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => resetPassword = GeneratePassword()">↻</button>
+            </div>
+            <div class="field-hint">При входе пользователь должен будет сменить его на свой.</div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary" type="button" @onclick="ResetAsync" disabled="@(busy || (resetPassword?.Length ?? 0) < 6)">Сбросить</button>
+            <button class="btn" type="button" @onclick="() => resetFor = null">Отмена</button>
+        </div>
+    </div>
+}
+
+@if (users is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Сотрудник</th>
+                    <th>Роли</th>
+                    <th>Последний вход</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in users)
+                {
+                    <tr class="@(u.IsActive ? null : "inactive")">
+                        <td class="mono">
+                            @u.Login
+                            @if (!u.IsActive)
+                            {
+                                <span class="tag tag-neutral">заблокирован</span>
+                            }
+                            @if (u.MustChangePassword)
+                            {
+                                <span class="tag tag-warn">временный пароль</span>
+                            }
+                        </td>
+                        <td>
+                            @if (u.EmployeeId is int employeeId)
+                            {
+                                <a href="/employees/@employeeId">@u.EmployeeName</a>
+                            }
+                        </td>
+                        <td>@RolesText(u.Roles)</td>
+                        <td>@(u.LastLoginAt is { } at ? Ui.Date(at) : "—")</td>
+                        <td class="num" style="white-space: nowrap">
+                            <button class="btn btn-sm" type="button" @onclick="() => StartEdit(u)">Изменить</button>
+                            <button class="btn btn-sm" type="button" @onclick="() => StartReset(u)">Сбросить пароль</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private static readonly UserRole[] RoleChoices = [UserRole.Employee, UserRole.Manager, UserRole.Storekeeper, UserRole.Admin];
+
+    private List<UserDto>? users;
+    private List<EmployeeDto> employees = [];
+
+    private UserForm? form;
+    private int? editingId;
+    private UserDto? resetFor;
+    private string? resetPassword;
+
+    private bool busy;
+    private string? error;
+    private string? success;
+
+    /// <summary>Сотрудники без учётной записи (и текущий привязанный при изменении).</summary>
+    private IEnumerable<EmployeeDto> FreeEmployees =>
+        employees
+            .Where(e => e.IsActive || e.Id == form?.EmployeeId)
+            .Where(e => users is null || !users.Any(u => u.EmployeeId == e.Id && u.Id != editingId))
+            .OrderBy(e => e.FullName);
+
+    // ---------- Проверки (те же правила, что на сервере) ----------
+
+    private string? LoginError =>
+        form is null || editingId is not null ? null
+        : string.IsNullOrWhiteSpace(form.Login) ? "Укажите логин."
+        : !System.Text.RegularExpressions.Regex.IsMatch(form.Login.Trim().ToLowerInvariant(), "^[a-z0-9._-]{3,32}$")
+            ? "3–32 символа: латинские буквы, цифры, точка, дефис, подчёркивание."
+        : users?.Any(u => u.Login == form.Login.Trim().ToLowerInvariant()) == true ? "Такой логин уже есть."
+        : null;
+
+    private string? RolesError => form is not null && form.Roles == UserRole.None ? "Выберите хотя бы одну роль." : null;
+
+    private string? EmployeeError =>
+        form is not null && form.EmployeeId is null && (form.Roles & (UserRole.Employee | UserRole.Manager)) != 0
+            ? "Для ролей «Сотрудник» и «Руководитель» выберите сотрудника."
+            : null;
+
+    private string? PasswordError =>
+        form is null || editingId is not null ? null
+        : (form.Password?.Length ?? 0) < 6 ? "Не короче 6 символов."
+        : string.Equals(form.Password, form.Login?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Не должен совпадать с логином."
+        : null;
+
+    private bool FormValid => form is not null && LoginError is null && RolesError is null && EmployeeError is null && PasswordError is null;
+
+    // ---------- Загрузка ----------
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            users = await Api.GetUsersAsync();
+            employees = await Api.GetEmployeesAsync(includeInactive: true);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void StartCreate()
+    {
+        editingId = null;
+        resetFor = null;
+        error = success = null;
+        form = new UserForm { Roles = UserRole.Employee, Password = GeneratePassword() };
+    }
+
+    private void StartEdit(UserDto u)
+    {
+        editingId = u.Id;
+        resetFor = null;
+        error = success = null;
+        form = new UserForm { Login = u.Login, EmployeeId = u.EmployeeId, Roles = u.Roles, IsActive = u.IsActive };
+    }
+
+    private void StartReset(UserDto u)
+    {
+        form = null;
+        error = success = null;
+        resetFor = u;
+        resetPassword = GeneratePassword();
+    }
+
+    private void ToggleRole(UserRole role, ChangeEventArgs e)
+    {
+        if (form is null) return;
+        form.Roles = e.Value is true ? form.Roles | role : form.Roles & ~role;
+    }
+
+    // ---------- Сохранение ----------
+
+    private async Task SaveAsync()
+    {
+        if (form is null || !FormValid) return;
+
+        busy = true;
+        error = success = null;
+        try
+        {
+            if (editingId is int id)
+            {
+                var saved = await Api.UpdateUserAsync(id, new UpdateUserRequest(form.EmployeeId, form.Roles, form.IsActive));
+                success = $"Сохранено: {saved.Login}.";
+            }
+            else
+            {
+                var created = await Api.CreateUserAsync(new CreateUserRequest(form.Login!.Trim(), form.EmployeeId, form.Roles, form.Password!));
+                success = $"Создан пользователь {created.Login}. Временный пароль: {form.Password} — передайте его пользователю.";
+            }
+            form = null;
+            editingId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        if (resetFor is null || string.IsNullOrEmpty(resetPassword)) return;
+
+        busy = true;
+        error = success = null;
+        try
+        {
+            await Api.ResetUserPasswordAsync(resetFor.Id, new ResetPasswordRequest(resetPassword));
+            success = $"Пароль пользователя {resetFor.Login} сброшен. Временный пароль: {resetPassword} — передайте его пользователю.";
+            resetFor = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string RolesText(UserRole roles) =>
+        string.Join(", ", RoleChoices.Where(r => roles.HasFlag(r)).Select(AppRoles.Title));
+
+    /// <summary>Временный пароль: 8 символов без похожих букв и цифр (0/O, 1/l).</summary>
+    private static string GeneratePassword()
+    {
+        const string chars = "abcdefghjkmnpqrstuvwxyz23456789";
+        return new string(Enumerable.Range(0, 8)
+            .Select(_ => chars[System.Security.Cryptography.RandomNumberGenerator.GetInt32(chars.Length)])
+            .ToArray());
+    }
+
+    private sealed class UserForm
+    {
+        public string? Login { get; set; }
+        public int? EmployeeId { get; set; }
+        public UserRole Roles { get; set; }
+        public string? Password { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

@@ -10,6 +10,7 @@
     <button class="btn btn-primary" type="submit">Найти</button>
 </form>
 
+<AuthorizeView Roles="@AppRoles.Warehouse">
 <div class="actions" style="margin-bottom: 1.25rem">
     <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
     <a class="btn" href="/documents/new/Issue">− Выдача</a>
@@ -18,6 +19,7 @@
     <a class="btn" href="/documents/new/WriteOff">Списание</a>
     <a class="btn" href="/documents/new/Adjustment">Корректировка</a>
 </div>
+</AuthorizeView>
 
 <Alert Error="@error" />
 

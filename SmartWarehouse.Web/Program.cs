@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using SmartWarehouse.Web.Components;
 using SmartWarehouse.Web.Services;
 
@@ -8,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 var apiBaseUrl = builder.Configuration["Api:BaseUrl"]
     ?? throw new InvalidOperationException("Не задан адрес API (Api:BaseUrl).");
 
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient<ApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
@@ -15,6 +19,31 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 });
 
 builder.Services.AddScoped<BrowserStore>();
+
+// ---------- Вход: зашифрованная cookie с токеном API ----------
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "sw.auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/access-denied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = false; // срок как у токена API
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+
+// Ключи шифрования cookie: на сервере храним в папке (DataProtection:KeysPath),
+// иначе после перезапуска контейнера всем пришлось бы входить заново.
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath))
+{
+    builder.Services.AddDataProtection()
+        .SetApplicationName("SmartWarehouse.Web")
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+}
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -26,6 +55,8 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/error", createScopeForErrors: true);
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
@@ -34,7 +65,7 @@ app.MapGet("/item-image/{id:int}", async (int id, ApiClient api, CancellationTok
 {
     var image = await api.GetItemImageAsync(id, ct);
     return image is null ? Results.NotFound() : Results.File(image.Data, image.ContentType);
-});
+}).RequireAuthorization();
 
 // Акт на списание открывается в браузере как PDF (печать или «Сохранить как PDF»).
 app.MapGet("/document-act/{id:long}", async (long id, ApiClient api, CancellationToken ct) =>
@@ -48,6 +79,20 @@ app.MapGet("/document-act/{id:long}", async (long id, ApiClient api, Cancellatio
     {
         return Results.Text(ex.Message, "text/plain; charset=utf-8", statusCode: (int)ex.Status);
     }
+}).RequireAuthorization();
+
+// Выход.
+app.MapPost("/account/logout", async (HttpContext context) =>
+{
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.LocalRedirect("/login");
+});
+
+// Сессия истекла (API ответил 401) — выходим и показываем страницу входа с пояснением.
+app.MapGet("/account/logout-expired", async (HttpContext context) =>
+{
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.LocalRedirect("/login?expired=1");
 });
 
 app.MapRazorComponents<App>()

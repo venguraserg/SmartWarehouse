@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartWarehouse.API.Security;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 
@@ -13,6 +15,7 @@ public class CategoriesController(ICatalogService catalog) : ControllerBase
     public Task<IReadOnlyList<CategoryDto>> List(CancellationToken ct) => catalog.ListCategoriesAsync(ct);
 
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<CategoryDto>> Create(CreateCategoryRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await catalog.CreateCategoryAsync(request, ct));
 }
@@ -26,6 +29,7 @@ public class UnitsController(ICatalogService catalog) : ControllerBase
     public Task<IReadOnlyList<UnitDto>> List(CancellationToken ct) => catalog.ListUnitsAsync(ct);
 
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<UnitDto>> Create(CreateUnitRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await catalog.CreateUnitAsync(request, ct));
 }
@@ -39,6 +43,7 @@ public class EquipmentController(ICatalogService catalog) : ControllerBase
     public Task<IReadOnlyList<EquipmentDto>> List(CancellationToken ct) => catalog.ListEquipmentAsync(ct);
 
     [HttpPost]
+    [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<EquipmentDto>> Create(CreateEquipmentRequest request, CancellationToken ct) =>
         StatusCode(StatusCodes.Status201Created, await catalog.CreateEquipmentAsync(request, ct));
 }

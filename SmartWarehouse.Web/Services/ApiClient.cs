@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Domain.Enums;
 
@@ -14,9 +16,77 @@ public class ApiException(string message, HttpStatusCode status) : Exception(mes
     public HttpStatusCode Status { get; } = status;
 }
 
-/// <summary>Типизированный клиент REST API склада.</summary>
-public class ApiClient(HttpClient http)
+/// <summary>
+/// Типизированный клиент REST API склада. К каждому запросу добавляется токен вошедшего пользователя
+/// (хранится в cookie входа). Ответ 401 — сессия истекла: отправляем на страницу входа.
+/// </summary>
+public class ApiClient(HttpClient http, IServiceProvider services)
 {
+    private string? token;
+    private bool tokenResolved;
+
+    /// <summary>
+    /// Токен текущего пользователя. В интерактивной странице — из состояния входа Blazor,
+    /// в обычном HTTP-запросе (фото, акт, страница входа) — из HttpContext.
+    /// </summary>
+    private async Task<string?> TokenAsync()
+    {
+        if (tokenResolved)
+            return token;
+
+        try
+        {
+            if (services.GetService<AuthenticationStateProvider>() is { } provider)
+                token = (await provider.GetAuthenticationStateAsync()).User.FindFirst(AuthClaims.AccessToken)?.Value;
+        }
+        catch (InvalidOperationException)
+        {
+            // вне компонента Blazor состояние входа недоступно — берём из HttpContext ниже
+        }
+
+        token ??= services.GetService<IHttpContextAccessor>()?.HttpContext?.User.FindFirst(AuthClaims.AccessToken)?.Value;
+        tokenResolved = true;
+        return token;
+    }
+
+    /// <summary>Отправка запроса с токеном.</summary>
+    private async Task<HttpResponseMessage> SendRawAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        if (await TokenAsync() is { } bearer)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        return await http.SendAsync(request, ct);
+    }
+
+    private Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string url, CancellationToken ct, HttpContent? content = null) =>
+        SendRawAsync(new HttpRequestMessage(method, url) { Content = content }, ct);
+
+    // ---------- Вход и учётные записи ----------
+
+    /// <summary>Вход (без токена). Неверные данные — ApiException с текстом от сервера.</summary>
+    public Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default) =>
+        SendAsync<LoginResponse>(HttpMethod.Post, "api/auth/login", request, ct);
+
+    public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, "api/auth/change-password", ct, JsonContent.Create(request, options: Json));
+        await EnsureSuccessAsync(response, ct);
+    }
+
+    public Task<List<UserDto>> GetUsersAsync(CancellationToken ct = default) =>
+        GetAsync<List<UserDto>>("api/users", ct);
+
+    public Task<UserDto> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default) =>
+        SendAsync<UserDto>(HttpMethod.Post, "api/users", request, ct);
+
+    public Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, CancellationToken ct = default) =>
+        SendAsync<UserDto>(HttpMethod.Put, $"api/users/{id}", request, ct);
+
+    public async Task ResetUserPasswordAsync(int id, ResetPasswordRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, $"api/users/{id}/reset-password", ct, JsonContent.Create(request, options: Json));
+        await EnsureSuccessAsync(response, ct);
+    }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() }
@@ -109,20 +179,20 @@ public class ApiClient(HttpClient http)
             : new MediaTypeHeaderValue("application/octet-stream");
         content.Add(file, "file", fileName);
 
-        using var response = await http.PutAsync($"api/items/{itemId}/image", content, ct);
+        using var response = await SendRawAsync(HttpMethod.Put, $"api/items/{itemId}/image", ct, content);
         return await ReadAsync<ItemDto>(response, ct);
     }
 
     public async Task DeleteItemImageAsync(int itemId, CancellationToken ct = default)
     {
-        using var response = await http.DeleteAsync($"api/items/{itemId}/image", ct);
+        using var response = await SendRawAsync(HttpMethod.Delete, $"api/items/{itemId}/image", ct);
         await EnsureSuccessAsync(response, ct);
     }
 
     /// <summary>Фото позиции или null, если его нет.</summary>
     public async Task<ItemImageDto?> GetItemImageAsync(int itemId, CancellationToken ct = default)
     {
-        using var response = await http.GetAsync($"api/items/{itemId}/image", ct);
+        using var response = await SendRawAsync(HttpMethod.Get, $"api/items/{itemId}/image", ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
 
@@ -184,7 +254,7 @@ public class ApiClient(HttpClient http)
     /// <summary>Акт на списание (PDF).</summary>
     public async Task<byte[]> GetWriteOffActAsync(long documentId, CancellationToken ct = default)
     {
-        using var response = await http.GetAsync($"api/documents/{documentId}/act", ct);
+        using var response = await SendRawAsync(HttpMethod.Get, $"api/documents/{documentId}/act", ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
@@ -229,18 +299,18 @@ public class ApiClient(HttpClient http)
 
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)
     {
-        using var response = await http.GetAsync(url, ct);
+        using var response = await SendRawAsync(HttpMethod.Get, url, ct);
         return await ReadAsync<T>(response, ct);
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string url, object body, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, url) { Content = JsonContent.Create(body, options: Json) };
-        using var response = await http.SendAsync(request, ct);
+        using var response = await SendRawAsync(request, ct);
         return await ReadAsync<T>(response, ct);
     }
 
-    private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
+    private async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<T>(Json, ct)
@@ -248,10 +318,25 @@ public class ApiClient(HttpClient http)
     }
 
     /// <summary>При ошибке читает ProblemDetails из ответа API и бросает исключение с понятным текстом.</summary>
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)
             return;
+
+        // Сессия истекла (или токен стал недействителен после перезапуска API) — на страницу входа.
+        var isLogin = response.RequestMessage?.RequestUri?.AbsolutePath.EndsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase) == true;
+        if (response.StatusCode == HttpStatusCode.Unauthorized && token is not null && !isLogin)
+        {
+            try
+            {
+                services.GetService<NavigationManager>()?.NavigateTo("/account/logout-expired", forceLoad: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // вне интерактивной страницы перенаправить нельзя — покажем сообщение
+            }
+            throw new ApiException("Сессия истекла — войдите снова.", response.StatusCode);
+        }
 
         string? message = null;
         try

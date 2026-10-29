@@ -3,6 +3,12 @@ namespace SmartWarehouse.Domain.Exceptions;
 /// <summary>Нарушение бизнес-правила (ошибка в данных запроса, недопустимая операция).</summary>
 public class DomainException(string message) : Exception(message);
 
+/// <summary>Неверный логин или пароль, заблокированная учётная запись.</summary>
+public class AuthenticationFailedException(string message) : DomainException(message);
+
+/// <summary>Недостаточно прав для операции.</summary>
+public class ForbiddenException(string message) : DomainException(message);
+
 /// <summary>Запрошенный объект не найден.</summary>
 public class NotFoundException(string message) : DomainException(message);
 

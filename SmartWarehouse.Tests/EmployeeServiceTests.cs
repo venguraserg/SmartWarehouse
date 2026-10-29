@@ -78,6 +78,44 @@ public class EmployeeServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => _service.UpdateAsync(5, Request()));
         await Assert.ThrowsAsync<NotFoundException>(() => _service.GetHistoryAsync(5));
     }
+    // ---------- Руководитель ----------
+
+    [Fact]
+    public async Task Руководитель_назначается_и_отображается()
+    {
+        var boss = await _service.CreateAsync(Request(last: "Начальников", middle: null));
+        var worker = await _service.CreateAsync(Request(last: "Слесарев") with { ManagerId = boss.Id });
+
+        Assert.Equal(boss.Id, worker.ManagerId);
+        Assert.Equal("Начальников И.", worker.ManagerName);
+    }
+
+    [Fact]
+    public async Task Руководитель_не_может_быть_собой_или_подчинённым()
+    {
+        var boss = await _service.CreateAsync(Request(last: "Начальников"));
+        var master = await _service.CreateAsync(Request(last: "Мастеров") with { ManagerId = boss.Id });
+        var worker = await _service.CreateAsync(Request(last: "Слесарев") with { ManagerId = master.Id });
+
+        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateAsync(boss.Id, Request(last: "Начальников") with { ManagerId = boss.Id }));
+        // Начальнику нельзя назначить руководителем его подчинённого (через цепочку).
+        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateAsync(boss.Id, Request(last: "Начальников") with { ManagerId = worker.Id }));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateAsync(Request(last: "Новиков") with { ManagerId = 999 }));
+    }
+
+    [Fact]
+    public async Task Команда_руководителя_включает_всех_подчинённых_по_цепочке()
+    {
+        var boss = await _service.CreateAsync(Request(last: "Начальников"));
+        var master = await _service.CreateAsync(Request(last: "Мастеров") with { ManagerId = boss.Id });
+        var worker = await _service.CreateAsync(Request(last: "Слесарев") with { ManagerId = master.Id });
+        var other = await _service.CreateAsync(Request(last: "Посторонний"));
+
+        var team = await _service.GetTeamAsync(boss.Id);
+        Assert.Equal(new[] { boss.Id, master.Id, worker.Id }.Order(), team.Order());
+        Assert.DoesNotContain(other.Id, team);
+        Assert.Equal(new[] { worker.Id }, await _service.GetTeamAsync(worker.Id));
+    }
 }
 
 /// <summary>Справочник сотрудников в памяти.</summary>
@@ -103,8 +141,12 @@ internal class FakeEmployeeRepository : IEmployeeRepository
     public Task<IReadOnlyList<StockMovement>> GetHistoryAsync(int employeeId, int take, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<StockMovement>>([]);
 
-    public Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(int? employeeId, int? itemId, string? search, CancellationToken ct = default) =>
+    public Task<IReadOnlyList<EmployeeBalance>> ListCustodyAsync(
+        int? employeeId, int? itemId, string? search, IReadOnlyCollection<int>? onlyEmployeeIds, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<EmployeeBalance>>([]);
+
+    public Task<IReadOnlyList<(int Id, int? ManagerId)>> ListHierarchyAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<(int Id, int? ManagerId)>>(Employees.Select(e => (e.Id, e.ManagerId)).ToList());
 
     public Task SaveChangesAsync(CancellationToken ct = default)
     {

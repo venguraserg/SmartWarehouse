@@ -6,6 +6,7 @@
 <div class="page-head">
     <h1>Документы</h1>
     <span class="spacer"></span>
+    <AuthorizeView Roles="@AppRoles.Warehouse">
     <div class="actions">
         <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
         <a class="btn" href="/documents/new/Issue">Выдача</a>
@@ -14,6 +15,7 @@
         <a class="btn" href="/documents/new/WriteOff">Списание</a>
         <a class="btn" href="/documents/new/Adjustment">Корректировка</a>
     </div>
+    </AuthorizeView>
 </div>
 
 <div class="toolbar">

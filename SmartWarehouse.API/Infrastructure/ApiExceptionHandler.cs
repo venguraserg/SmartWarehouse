@@ -13,6 +13,8 @@ public class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<
     {
         var (status, title) = exception switch
         {
+            AuthenticationFailedException => (StatusCodes.Status401Unauthorized, "Вход не выполнен"),
+            ForbiddenException => (StatusCodes.Status403Forbidden, "Нет доступа"),
             NotFoundException => (StatusCodes.Status404NotFound, "Не найдено"),
             InsufficientStockException => (StatusCodes.Status409Conflict, "Недостаточно остатка"),
             DomainException => (StatusCodes.Status400BadRequest, "Недопустимая операция"),

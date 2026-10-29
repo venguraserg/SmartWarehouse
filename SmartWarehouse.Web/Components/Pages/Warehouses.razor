@@ -1,4 +1,5 @@
 @page "/warehouses"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
 @inject ApiClient Api
 
 <PageTitle>Склады и места — склад</PageTitle>
