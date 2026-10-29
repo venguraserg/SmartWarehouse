@@ -198,7 +198,8 @@ public class WriteOffActServiceTests
 
         Assert.Equal(ActStatus.Returned, returned.Status);
         Assert.Equal("Укажите оборудование", returned.ReturnRemark);
-        Assert.True(returned.Can.Edit);
+        Assert.False(returned.Can.Edit);                                  // руководитель сам не правит
+        Assert.True((await _service.GetAsync(act.Id, AsFitter)).Can.Edit); // а сотрудник — может
         Assert.Equal(0, await _stock.GetReservedAsync(Bearing, Fitter, null));
 
         // Исправил и отправил снова.
