@@ -1,0 +1,13 @@
+# Обратный прокси с HTTPS перед веб-приложением.
+# tls internal — сертификат от внутреннего центра сертификации Caddy (для локальной сети без домена).
+# Если у предприятия есть свой сертификат — замените строку tls на:  tls /certs/server.crt /certs/server.key
+{$SITE_ADDRESS} {
+    tls internal
+    encode gzip
+    reverse_proxy web:8080
+}
+
+# По http — перенаправление на https.
+http://{$SITE_ADDRESS} {
+    redir https://{host}{uri} permanent
+}
