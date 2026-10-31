@@ -222,3 +222,47 @@ internal class EquipmentConfiguration : IEntityTypeConfiguration<Equipment>
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+internal class WriteOffActConfiguration : IEntityTypeConfiguration<WriteOffAct>
+{
+    public void Configure(EntityTypeBuilder<WriteOffAct> b)
+    {
+        b.ToTable("write_off_acts");
+        b.Ignore(x => x.Number);
+        b.Ignore(x => x.IsEditable);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.ExternalNumber).HasMaxLength(100);
+        b.Property(x => x.Comment).HasMaxLength(1000);
+        b.Property(x => x.CreatedBy).HasMaxLength(128);
+        b.Property(x => x.DecidedBy).HasMaxLength(128);
+        b.Property(x => x.DecidedByPosition).HasMaxLength(128);
+        b.Property(x => x.ReturnRemark).HasMaxLength(1000);
+
+        b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.DecidedByEmployee).WithMany().HasForeignKey(x => x.DecidedById).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Document).WithOne(x => x.Act).HasForeignKey<WriteOffAct>(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.DocumentId).IsUnique();
+        b.HasIndex(x => new { x.EmployeeId, x.Status });
+        b.HasIndex(x => x.Status);
+
+        // Строки удаляются вместе с актом (и при замене строк в черновике).
+        b.HasMany(x => x.Lines).WithOne(x => x.Act).HasForeignKey(x => x.ActId).OnDelete(DeleteBehavior.Cascade);
+
+        // Защита от одновременного утверждения одного акта дважды.
+        b.Property<uint>("Version").IsRowVersion();
+    }
+}
+
+internal class WriteOffActLineConfiguration : IEntityTypeConfiguration<WriteOffActLine>
+{
+    public void Configure(EntityTypeBuilder<WriteOffActLine> b)
+    {
+        b.ToTable("write_off_act_lines", t => t.HasCheckConstraint("ck_write_off_act_lines_quantity_positive", "\"Quantity\" > 0"));
+        b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
+        b.Property(x => x.Usage).HasMaxLength(500);
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Equipment).WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.ActId, x.LineNo }).IsUnique();
+        b.HasIndex(x => x.ItemId);
+    }
+}

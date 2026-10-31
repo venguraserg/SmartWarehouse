@@ -2,11 +2,12 @@ using System.Globalization;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
+using PdfSharp.Drawing;
 using SmartWarehouse.Application.Services;
 
 namespace SmartWarehouse.Infrastructure.Pdf;
 
-/// <summary>Акт на списание в свободной форме (A4, PDF).</summary>
+/// <summary>Акт на списание (A4, PDF): строки с «куда использовано», отметка утверждения, подписи комиссии.</summary>
 public class ActPdfRenderer : IActPdfRenderer
 {
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
@@ -39,9 +40,7 @@ public class ActPdfRenderer : IActPdfRenderer
             org.Format.SpaceAfter = Unit.FromPoint(12);
         }
 
-        var approve = section.AddParagraph("УТВЕРЖДАЮ\nНачальник отдела\n\n______________ / ______________\n«____» ______________ 20___ г.");
-        approve.Format.Alignment = ParagraphAlignment.Right;
-        approve.Format.SpaceAfter = Unit.FromPoint(18);
+        AddApproval(section, data.Approval);
 
         var title = section.AddParagraph($"АКТ № {data.Number}");
         title.Format.Alignment = ParagraphAlignment.Center;
@@ -62,9 +61,9 @@ public class ActPdfRenderer : IActPdfRenderer
         if (!string.IsNullOrWhiteSpace(data.EmployeePersonnelNumber)) employee += $", таб. № {data.EmployeePersonnelNumber}";
 
         AddField(section, "Материально ответственное лицо", employee);
-        if (data.Equipment is not null) AddField(section, "Оборудование (куда установлено)", data.Equipment);
-        if (!string.IsNullOrWhiteSpace(data.Comment)) AddField(section, "Куда использовано", data.Comment!);
+        if (!string.IsNullOrWhiteSpace(data.Period)) AddField(section, "Период", data.Period!);
         if (!string.IsNullOrWhiteSpace(data.ExternalNumber)) AddField(section, "Основание (наряд, заявка)", data.ExternalNumber!);
+        if (!string.IsNullOrWhiteSpace(data.Comment)) AddField(section, "Примечание", data.Comment!);
 
         var intro = section.AddParagraph(
             "Комиссия в составе лиц, подписавших настоящий акт, установила, что перечисленные ниже материальные " +
@@ -73,22 +72,23 @@ public class ActPdfRenderer : IActPdfRenderer
         intro.Format.SpaceAfter = Unit.FromPoint(8);
         intro.Format.Alignment = ParagraphAlignment.Justify;
 
-        // ---------- Таблица ----------
+        // ---------- Таблица (ширина текста 17 см) ----------
         var table = section.AddTable();
         table.Borders.Width = 0.5;
-        table.Format.Font.Size = 9.5;
-        table.AddColumn(Unit.FromCentimeter(1.0)).Format.Alignment = ParagraphAlignment.Center;
-        table.AddColumn(Unit.FromCentimeter(3.2));
-        table.AddColumn(Unit.FromCentimeter(8.3));
-        table.AddColumn(Unit.FromCentimeter(1.6)).Format.Alignment = ParagraphAlignment.Center;
-        table.AddColumn(Unit.FromCentimeter(2.9)).Format.Alignment = ParagraphAlignment.Right;
+        table.Format.Font.Size = 9;
+        table.AddColumn(Unit.FromCentimeter(0.8)).Format.Alignment = ParagraphAlignment.Center;
+        table.AddColumn(Unit.FromCentimeter(2.4));
+        table.AddColumn(Unit.FromCentimeter(5.4));
+        table.AddColumn(Unit.FromCentimeter(1.2)).Format.Alignment = ParagraphAlignment.Center;
+        table.AddColumn(Unit.FromCentimeter(1.8)).Format.Alignment = ParagraphAlignment.Right;
+        table.AddColumn(Unit.FromCentimeter(5.4));
 
         var header = table.AddRow();
         header.HeadingFormat = true; // повторяется на каждой странице
         header.Format.Font.Bold = true;
         header.Shading.Color = Colors.LightGray;
         header.VerticalAlignment = VerticalAlignment.Center;
-        string[] headers = ["№", "Артикул", "Наименование", "Ед. изм.", "Количество"];
+        string[] headers = ["№", "Артикул", "Наименование", "Ед. изм.", "Кол-во", "Куда использовано"];
         for (var i = 0; i < headers.Length; i++)
         {
             header.Cells[i].AddParagraph(headers[i]);
@@ -104,10 +104,13 @@ public class ActPdfRenderer : IActPdfRenderer
             row.Cells[2].AddParagraph(line.ItemName);
             row.Cells[3].AddParagraph(line.UnitCode);
             row.Cells[4].AddParagraph(line.Quantity.ToString("#,0.###", Ru));
+            row.Cells[5].AddParagraph(line.Usage ?? "");
         }
 
         var total = section.AddParagraph($"Всего наименований: {data.Lines.Count}");
         total.Format.SpaceBefore = Unit.FromPoint(6);
+        if (data.DocumentNumber is not null)
+            total.AddText($". Списание проведено документом {data.DocumentNumber}.");
         total.Format.SpaceAfter = Unit.FromPoint(24);
 
         // ---------- Подписи ----------
@@ -117,23 +120,65 @@ public class ActPdfRenderer : IActPdfRenderer
         signatures.AddColumn(Unit.FromCentimeter(6.5));
 
         AddSignature(signatures, "Материально ответственное лицо", data.EmployeeFullName);
-        AddSignature(signatures, "Кладовщик", data.PerformedBy ?? "");
+        AddSignature(signatures, "Председатель комиссии", "");
         AddSignature(signatures, "Члены комиссии:", "");
         AddSignature(signatures, "", "");
         AddSignature(signatures, "", "");
 
         // ---------- Подвал ----------
         var footer = section.Footers.Primary.AddParagraph(
-            $"Сформировано в SmartWarehouse {DateTime.Now.ToString("dd.MM.yyyy HH:mm", Ru)} · документ {data.Number}");
+            $"Сформировано в SmartWarehouse {DateTime.Now.ToString("dd.MM.yyyy HH:mm", Ru)} · акт {data.Number}");
         footer.Format.Font.Size = 7.5;
         footer.Format.Font.Color = Colors.Gray;
 
         var renderer = new PdfDocumentRenderer { Document = document };
         renderer.RenderDocument();
 
+        if (!string.IsNullOrWhiteSpace(data.Watermark))
+            DrawWatermark(renderer.PdfDocument, data.Watermark!);
+
         using var output = new MemoryStream();
         renderer.PdfDocument.Save(output, false);
         return output.ToArray();
+    }
+
+    /// <summary>«УТВЕРЖДАЮ» справа: заполнено, если акт утверждён в программе, иначе — строки для подписи.</summary>
+    private static void AddApproval(Section section, ActApprovalData? approval)
+    {
+        var text = approval is null
+            ? "УТВЕРЖДАЮ\nРуководитель\n\n______________ / ______________\n«____» ______________ 20___ г."
+            : $"УТВЕРЖДАЮ\n{approval.Position ?? "Руководитель"}\n\n______________ / {approval.Name}\n" +
+              $"{approval.At.ToLocalTime().ToString("dd.MM.yyyy", Ru)}";
+
+        var last = section.AddParagraph(text);
+        last.Format.Alignment = ParagraphAlignment.Right;
+
+        if (approval is not null)
+        {
+            var mark = section.AddParagraph(
+                $"Утверждено в SmartWarehouse {approval.At.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ru)}");
+            mark.Format.Alignment = ParagraphAlignment.Right;
+            mark.Format.Font.Size = 8;
+            mark.Format.Font.Color = Colors.Gray;
+            last = mark;
+        }
+
+        last.Format.SpaceAfter = Unit.FromPoint(18);
+    }
+
+    /// <summary>Крупная полупрозрачная надпись по диагонали каждой страницы — под текстом акта.</summary>
+    private static void DrawWatermark(PdfSharp.Pdf.PdfDocument pdf, string text)
+    {
+        var font = new XFont(EmbeddedFontResolver.Family, 72, XFontStyleEx.Bold);
+        var brush = new XSolidBrush(XColor.FromArgb(45, 200, 30, 30));
+
+        foreach (var page in pdf.Pages)
+        {
+            using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Prepend);
+            var center = new XPoint(page.Width.Point / 2, page.Height.Point / 2);
+            gfx.RotateAtTransform(-45, center);
+            gfx.DrawString(text, font, brush, center, XStringFormats.Center);
+        }
     }
 
     private static void AddField(Section section, string label, string value)

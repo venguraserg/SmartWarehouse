@@ -49,6 +49,37 @@ public static class Ui
 
     public static string Date(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ru);
 
+    public static string Day(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy", Ru);
+
+    public static string Day(DateOnly value) => value.ToString("dd.MM.yyyy", Ru);
+
+    /// <summary>Период акта: «01.10.2026 – 31.10.2026», «с 01.10.2026», пусто.</summary>
+    public static string? Period(DateOnly? from, DateOnly? to) => (from, to) switch
+    {
+        (DateOnly f, DateOnly t) when f == t => Day(f),
+        (DateOnly f, DateOnly t) => $"{Day(f)} – {Day(t)}",
+        (DateOnly f, null) => $"с {Day(f)}",
+        (null, DateOnly t) => $"по {Day(t)}",
+        _ => null
+    };
+
+    public static string ActState(ActStatus status) => status switch
+    {
+        ActStatus.Draft => "Черновик",
+        ActStatus.Pending => "На утверждении",
+        ActStatus.Approved => "Утверждён",
+        ActStatus.Returned => "Возвращён",
+        _ => status.ToString()
+    };
+
+    public static string ActStateClass(ActStatus status) => status switch
+    {
+        ActStatus.Pending => "tag-warn",
+        ActStatus.Approved => "tag-in",
+        ActStatus.Returned => "tag-out",
+        _ => "tag-neutral"
+    };
+
     /// <summary>Адрес фото позиции (через веб-приложение); версия сбрасывает кеш браузера после замены.</summary>
     public static string? ImageUrl(int itemId, long? version) =>
         version is null ? null : $"/item-image/{itemId}?v={version}";

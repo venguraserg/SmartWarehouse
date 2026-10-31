@@ -145,6 +145,12 @@ internal class FakeEmployeeRepository : IEmployeeRepository
         int? employeeId, int? itemId, string? search, IReadOnlyCollection<int>? onlyEmployeeIds, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<EmployeeBalance>>([]);
 
+    public Task<IReadOnlyList<IssueRecord>> ListIssuesAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<IssueRecord>>([]);
+
+    public Task<IReadOnlyList<ReservedRecord>> ListReservedAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ReservedRecord>>([]);
+
     public Task<IReadOnlyList<(int Id, int? ManagerId)>> ListHierarchyAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<(int Id, int? ManagerId)>>(Employees.Select(e => (e.Id, e.ManagerId)).ToList());
 

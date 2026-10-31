@@ -50,12 +50,21 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public void AddDocument(StockDocument document) => db.Documents.Add(document);
 
+    public async Task<decimal> GetReservedAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
+        await db.WriteOffActLines
+            .Where(l => l.ItemId == itemId
+                && l.Act.EmployeeId == employeeId
+                && l.Act.Status == ActStatus.Pending
+                && (exceptActId == null || l.ActId != exceptActId))
+            .SumAsync(l => (decimal?)l.Quantity, ct) ?? 0;
+
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>
         db.Documents
             .AsNoTracking()
             .Include(x => x.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Lines).ThenInclude(l => l.FromLocation)
             .Include(x => x.Lines).ThenInclude(l => l.ToLocation)
+            .Include(x => x.Act)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 

@@ -16,6 +16,7 @@ internal class FakeStockRepository : IStockRepository
     private readonly List<EmployeeBalance> _pendingEmployeeBalances = [];
     public List<StockBalance> Balances { get; } = [];
     public List<StockDocument> Documents { get; } = [];
+    public List<WriteOffAct> Acts { get; } = [];
     public int SaveCount { get; private set; }
 
     private readonly List<StockBalance> _pendingBalances = [];
@@ -58,6 +59,13 @@ internal class FakeStockRepository : IStockRepository
         Task.FromResult(EmployeeBalances.FirstOrDefault(x => x.ItemId == itemId && x.EmployeeId == employeeId));
 
     public void AddEmployeeBalance(EmployeeBalance balance) => _pendingEmployeeBalances.Add(balance);
+
+    public Task<decimal> GetReservedAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
+        Task.FromResult(Acts
+            .Where(a => a.EmployeeId == employeeId && a.Status == ActStatus.Pending && a.Id != exceptActId)
+            .SelectMany(a => a.Lines)
+            .Where(l => l.ItemId == itemId)
+            .Sum(l => l.Quantity));
 
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>
         Task.FromResult(Documents.FirstOrDefault(x => x.Id == id));

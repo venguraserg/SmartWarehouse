@@ -61,18 +61,33 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
     {
         var balances = await repo.ListCustodyAsync(
             employeeId, itemId, string.IsNullOrWhiteSpace(search) ? null : search.Trim(), onlyEmployeeIds, ct);
+
+        // Давность подотчёта и резерв в актах на утверждении — по тем же сотрудникам.
+        var employeeIds = balances.Select(b => b.EmployeeId).Distinct().ToList();
+        IReadOnlyList<IssueRecord> issues = employeeIds.Count == 0 ? [] : await repo.ListIssuesAsync(employeeIds, ct);
+        IReadOnlyList<ReservedRecord> reserved = employeeIds.Count == 0 ? [] : await repo.ListReservedAsync(employeeIds, ct);
+        var issuesByKey = issues.ToLookup(i => (i.EmployeeId, i.ItemId));
+        var reservedByKey = reserved
+            .GroupBy(r => (r.EmployeeId, r.ItemId))
+            .ToDictionary(g => g.Key, g => g.Sum(r => r.Quantity));
+
         return balances
             .Select(b => new CustodyRowDto(
                 b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
                 b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
-                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), b.Quantity))
+                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), b.Quantity,
+                HeldSince(b.Quantity, issuesByKey[(b.EmployeeId, b.ItemId)]),
+                reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId))))
             .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName)
             .ToList();
     }
 
-    public async Task<IReadOnlyCollection<int>> GetTeamAsync(int employeeId, CancellationToken ct = default)
+    public async Task<IReadOnlyCollection<int>> GetTeamAsync(int employeeId, CancellationToken ct = default) =>
+        Team(await repo.ListHierarchyAsync(ct), employeeId);
+
+    /// <summary>Сам сотрудник и все его подчинённые по цепочке «Руководитель».</summary>
+    internal static HashSet<int> Team(IReadOnlyList<(int Id, int? ManagerId)> hierarchy, int employeeId)
     {
-        var hierarchy = await repo.ListHierarchyAsync(ct);
         var byManager = hierarchy.Where(h => h.ManagerId is not null).ToLookup(h => h.ManagerId!.Value, h => h.Id);
 
         var team = new HashSet<int> { employeeId };
@@ -86,6 +101,24 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
             }
         }
         return team;
+    }
+
+    /// <summary>
+    /// С какой даты числится остаток: выдачи списываются по принципу «первой выдана — первой израсходована»,
+    /// поэтому остаток — это последние выдачи; дата самой ранней из них и есть ответ.
+    /// </summary>
+    internal static DateTimeOffset? HeldSince(decimal quantity, IEnumerable<IssueRecord> issues)
+    {
+        DateTimeOffset? since = null;
+        var remaining = quantity;
+        foreach (var issue in issues.OrderByDescending(i => i.OccurredAt))
+        {
+            since = issue.OccurredAt;
+            remaining -= issue.Quantity;
+            if (remaining <= 0)
+                break;
+        }
+        return since;
     }
 
     private async Task<Employee> FindAsync(int id, CancellationToken ct) =>

@@ -51,6 +51,9 @@ public class StockDocument
 
     public ICollection<StockMovement> Lines { get; set; } = new List<StockMovement>();
 
+    /// <summary>Акт на списание, по которому проведён документ (для списаний по акту).</summary>
+    public WriteOffAct? Act { get; set; }
+
     public static string FormatNumber(MovementType type, long id)
     {
         var prefix = type switch

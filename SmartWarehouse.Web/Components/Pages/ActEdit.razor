@@ -1,0 +1,502 @@
+@page "/acts/new"
+@page "/acts/{Id:int}/edit"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(Id is null ? "Новый акт на списание" : $"Акт {act?.Number}") — склад</PageTitle>
+
+<h1>@(Id is null ? "Новый акт на списание" : $"Акт {act?.Number}")</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Отчёт о том, куда израсходовано полученное со склада. Можно на одну работу или сводный за период.
+    После утверждения руководителем позиции списываются.
+</p>
+
+<Alert Error="@error" />
+
+@if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else if (act is not null && !act.Can.Edit)
+{
+    <div class="panel">
+        Этот акт сейчас изменить нельзя (@Ui.ActState(act.Status).ToLowerInvariant()).
+        <a href="/acts/@act.Id">Открыть акт</a>
+    </div>
+}
+else if (!isWarehouse && myEmployeeId is null)
+{
+    <div class="panel">Ваша учётная запись не привязана к сотруднику — обратитесь к администратору.</div>
+}
+else
+{
+    @if (act?.Status == ActStatus.Returned && !string.IsNullOrEmpty(act.ReturnRemark))
+    {
+        <div class="alert alert-error">
+            <strong>Возвращён на доработку</strong> (@act.DecidedBy, @(act.DecidedAt is { } at ? Ui.Date(at) : "")): @act.ReturnRemark
+        </div>
+    }
+
+    <form @onsubmit="() => SaveAsync(submit: false)" @onsubmit:preventDefault>
+        <div class="panel">
+            <div class="field-row">
+                <div class="field">
+                    <label for="employee">Сотрудник (с кого списать) <span class="req">*</span></label>
+                    @if (isWarehouse && Id is null)
+                    {
+                        <select id="employee" @bind="employeeId" @bind:after="OnEmployeeChangedAsync">
+                            <option value="">— выберите —</option>
+                            @foreach (var e in EmployeeChoices)
+                            {
+                                <option value="@e.Id">@e.ShortName@(string.IsNullOrEmpty(e.Position) ? "" : $" — {e.Position}")@(e.IsActive ? "" : " (не работает)")</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input id="employee" type="text" value="@(SelectedEmployee?.ShortName ?? act?.EmployeeName)" disabled />
+                    }
+                    @if (SelectedEmployee is { } chosen)
+                    {
+                        <div class="field-hint">
+                            Утверждает: @(chosen.ManagerName ?? $"{chosen.ShortName} (руководитель не назначен — утверждает сам)")
+                        </div>
+                    }
+                </div>
+                <div class="field">
+                    <label for="ext">Основание (наряд, заявка)</label>
+                    <input id="ext" type="text" @bind="externalNumber" maxlength="100" />
+                </div>
+                <div class="field">
+                    <label>Период (для сводного акта)</label>
+                    <div class="input-with-btn">
+                        <input type="date" @bind="periodFrom" title="С" />
+                        <input type="date" @bind="periodTo" title="По" />
+                    </div>
+                    @if (PeriodError is not null)
+                    {
+                        <FieldError Message="@PeriodError" />
+                    }
+                </div>
+            </div>
+
+            <div class="field-row">
+                <div class="field">
+                    <label for="def-eq">Оборудование — для всех строк</label>
+                    <select id="def-eq" @bind="defaultEquipmentId">
+                        <option value="">— не указано —</option>
+                        @foreach (var e in equipment)
+                        {
+                            <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field" style="grid-column: span 2">
+                    <label for="def-usage">Куда использовано — для всех строк</label>
+                    <input id="def-usage" type="text" @bind="defaultUsage" @bind:event="oninput" maxlength="500"
+                           placeholder="Например: замена подшипников насоса Н-3 при плановом ремонте" />
+                </div>
+            </div>
+            <div class="field-hint" style="margin-top: -.5rem">
+                Для акта на одну работу достаточно заполнить здесь. В сводном акте укажите «куда» в каждой строке —
+                строки без своего описания возьмут эти значения.
+            </div>
+
+            <div class="field" style="margin: .75rem 0 0">
+                <label for="comment">Примечание</label>
+                <input id="comment" type="text" @bind="comment" maxlength="1000" />
+            </div>
+        </div>
+
+        <h2>Что израсходовано</h2>
+
+        @if (employeeId is null)
+        {
+            <div class="panel empty">Выберите сотрудника.</div>
+        }
+        else if (custody.Count == 0 && lines.All(l => l.ItemId is null))
+        {
+            <div class="panel empty">За сотрудником нет свободных позиций (всё списано, возвращено или уже в актах на утверждении).</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="lines">
+                    <thead>
+                        <tr>
+                            <th class="num">№</th>
+                            <th style="min-width: 240px">Позиция (из подотчёта)</th>
+                            <th style="width: 120px">Количество</th>
+                            <th style="min-width: 180px">Оборудование</th>
+                            <th style="min-width: 220px">Куда использовано</th>
+                            <th style="width: 140px">Дата</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < lines.Count; i++)
+                        {
+                            var line = lines[i];
+                            var n = i + 1;
+                            var lineError = LineError(line);
+                            <tr>
+                                <td class="num">@n</td>
+                                <td>
+                                    <select @bind="line.ItemId" @bind:after="() => OnItemChanged(line)"
+                                            class="@(showErrors && lineError is not null ? "invalid" : null)">
+                                        <option value="">— выберите —</option>
+                                        @foreach (var c in CustodyChoices(line))
+                                        {
+                                            <option value="@c.ItemId">@c.Sku · @c.ItemName</option>
+                                        }
+                                    </select>
+                                    @if (Row(line) is { } row)
+                                    {
+                                        <div class="line-hint">
+                                            Свободно: @Ui.Qty(Free(row)) @row.UnitCode
+                                            @if (row.Reserved > 0)
+                                            {
+                                                <span>(ещё @Ui.Qty(row.Reserved) — в актах на утверждении)</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (lineError is not null && (showErrors || line.ItemId is not null))
+                                    {
+                                        <FieldError Message="@lineError" />
+                                    }
+                                </td>
+                                <td>
+                                    <input type="number" min="0" step="any" @bind="line.Quantity" />
+                                    @if (Row(line) is { } r)
+                                    {
+                                        <div class="line-hint">@r.UnitCode</div>
+                                    }
+                                </td>
+                                <td>
+                                    <select @bind="line.EquipmentId">
+                                        <option value="">@(defaultEquipmentId is null ? "— не указано —" : "как для всех")</option>
+                                        @foreach (var e in equipment)
+                                        {
+                                            <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" @bind="line.Usage" @bind:event="oninput" maxlength="500"
+                                           placeholder="@(string.IsNullOrWhiteSpace(defaultUsage) ? "куда / на какую работу" : defaultUsage)" />
+                                </td>
+                                <td>
+                                    <input type="date" @bind="line.UsedOn" />
+                                </td>
+                                <td>
+                                    <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)">✕</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="actions" style="margin-top: .75rem">
+                <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+                @if (custody.Count > 0)
+                {
+                    <button class="btn" type="button" @onclick="FillAll">Заполнить всем свободным</button>
+                }
+            </div>
+        }
+
+        @if (showErrors && FormErrors.Count > 0)
+        {
+            <div class="alert alert-error" style="margin-top: 1rem">
+                @foreach (var e in FormErrors)
+                {
+                    <div>@e</div>
+                }
+            </div>
+        }
+
+        <div class="actions" style="margin-top: 1.5rem">
+            <button class="btn btn-primary" type="button" disabled="@saving" @onclick="() => SaveAsync(submit: true)">
+                @(SelfApproves ? "Сохранить и списать" : "Сохранить и отправить на утверждение")
+            </button>
+            <button class="btn" type="submit" disabled="@saving">Сохранить черновик</button>
+            <a class="btn" href="@(Id is int id ? $"/acts/{id}" : "/acts")">Отмена</a>
+        </div>
+        <p class="muted">
+            @if (SelfApproves)
+            {
+                @("Руководитель не назначен — вы утверждаете свои акты сами: позиции спишутся сразу.")
+            }
+            else
+            {
+                @("На утверждении позиции резервируются: их нельзя вернуть на склад или включить в другой акт, пока руководитель не решит.")
+            }
+        </p>
+    </form>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    /// <summary>Сотрудник подставляется сразу (переход «Списать» из подотчёта или карточки сотрудника).</summary>
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ActDto? act;
+    private int? savedId;
+    private bool loaded;
+    private bool saving;
+    private bool showErrors;
+    private string? error;
+
+    private bool isWarehouse;
+    private int? myEmployeeId;
+
+    private List<EmployeeDto> employees = [];
+    private HashSet<int> custodyHolders = [];
+    private List<(EquipmentDto Item, int Depth)> equipment = [];
+    private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
+
+    private int? employeeId;
+    private string? externalNumber;
+    private DateOnly? periodFrom;
+    private DateOnly? periodTo;
+    private string? comment;
+    private int? defaultEquipmentId;
+    private string? defaultUsage;
+    private List<LineModel> lines = [new()];
+
+    /// <summary>Что числится за сотрудником (с резервом в актах на утверждении).</summary>
+    private List<CustodyRowDto> custody = [];
+
+    private EmployeeDto? SelectedEmployee => employees.FirstOrDefault(e => e.Id == employeeId);
+
+    /// <summary>Кладовщик выбирает из тех, за кем что-то числится (и работающих).</summary>
+    private IEnumerable<EmployeeDto> EmployeeChoices =>
+        employees.Where(e => custodyHolders.Contains(e.Id) || e.Id == employeeId).OrderBy(e => e.FullName);
+
+    /// <summary>Сотрудник без руководителя, сам себе составляющий акт, утверждает его сразу.</summary>
+    private bool SelfApproves => SelectedEmployee is { ManagerId: null } e && e.Id == myEmployeeId;
+
+    // ---------- Загрузка ----------
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthState is null ? null : (await AuthState).User;
+        isWarehouse = user?.IsWarehouseStaff() == true;
+        myEmployeeId = user?.EmployeeIdOf();
+
+        try
+        {
+            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+
+            if (isWarehouse)
+            {
+                employees = await Api.GetEmployeesAsync(includeInactive: true);
+                custodyHolders = (await Api.GetCustodyAsync()).Select(r => r.EmployeeId).ToHashSet();
+            }
+            else if (myEmployeeId is int me)
+            {
+                employees = [await Api.GetEmployeeAsync(me)];
+            }
+
+            if (Id is int id)
+            {
+                act = await Api.GetActAsync(id);
+                if (employees.All(e => e.Id != act.EmployeeId))
+                    employees.Add(await Api.GetEmployeeAsync(act.EmployeeId));
+
+                employeeId = act.EmployeeId;
+                externalNumber = act.ExternalNumber;
+                periodFrom = act.PeriodFrom;
+                periodTo = act.PeriodTo;
+                comment = act.Comment;
+                lines = act.Lines
+                    .Select(l => new LineModel { ItemId = l.ItemId, Quantity = l.Quantity, EquipmentId = l.EquipmentId, Usage = l.Usage, UsedOn = l.UsedOn })
+                    .ToList();
+            }
+            else
+            {
+                employeeId = isWarehouse
+                    ? (EmployeeParam is int requested && employees.Any(e => e.Id == requested) ? requested : null)
+                    : myEmployeeId;
+            }
+
+            await LoadCustodyAsync(keepLines: Id is not null);
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private Task OnEmployeeChangedAsync() => LoadCustodyAsync(keepLines: false);
+
+    private async Task LoadCustodyAsync(bool keepLines)
+    {
+        custody = [];
+        if (!keepLines)
+            lines = [new()];
+        if (employeeId is not int id)
+            return;
+
+        try
+        {
+            custody = await Api.GetCustodyAsync(employeeId: id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    // ---------- Строки ----------
+
+    private CustodyRowDto? Row(LineModel line) => custody.FirstOrDefault(c => c.ItemId == line.ItemId);
+
+    /// <summary>Свободно для акта: числится минус зарезервированное другими актами на утверждении.</summary>
+    private static decimal Free(CustodyRowDto row) => Math.Max(0, row.Quantity - row.Reserved);
+
+    private IEnumerable<CustodyRowDto> CustodyChoices(LineModel line) =>
+        custody.Where(c => Free(c) > 0 || c.ItemId == line.ItemId).OrderBy(c => c.ItemName);
+
+    private void OnItemChanged(LineModel line)
+    {
+        // По умолчанию — всё свободное по позиции (за вычетом других строк акта).
+        if (Row(line) is { } row && line.Quantity <= 1)
+        {
+            var other = lines.Where(l => !ReferenceEquals(l, line) && l.ItemId == line.ItemId).Sum(l => l.Quantity);
+            var left = Free(row) - other;
+            if (left > 0)
+                line.Quantity = left;
+        }
+    }
+
+    private void AddLine() => lines.Add(new LineModel());
+
+    private void RemoveLine(LineModel line)
+    {
+        if (lines.Count > 1)
+            lines.Remove(line);
+    }
+
+    private void FillAll()
+    {
+        lines = custody
+            .Where(c => Free(c) > 0)
+            .OrderBy(c => c.ItemName)
+            .Select(c => new LineModel { ItemId = c.ItemId, Quantity = Free(c) })
+            .ToList();
+        if (lines.Count == 0)
+            lines.Add(new LineModel());
+    }
+
+    // ---------- Проверки (те же, что на сервере) ----------
+
+    private string? PeriodError =>
+        periodFrom is DateOnly f && periodTo is DateOnly t && f > t ? "Начало периода позже окончания." : null;
+
+    private string? LineError(LineModel line)
+    {
+        if (line.ItemId is null)
+            return "Выберите позицию.";
+        var row = Row(line);
+        if (row is null)
+            return "Эта позиция за сотрудником не числится.";
+        if (line.Quantity <= 0)
+            return "Количество должно быть больше нуля.";
+        if (fractionalByUnit.TryGetValue(row.UnitCode, out var fractional) && !fractional && line.Quantity != decimal.Truncate(line.Quantity))
+            return $"«{row.UnitCode}» — только целое количество.";
+
+        var total = lines.Where(l => l.ItemId == line.ItemId).Sum(l => l.Quantity);
+        if (total > Free(row))
+            return $"Свободно только {Ui.Qty(Free(row))} {row.UnitCode} (по всем строкам с этой позицией).";
+
+        if (line.EquipmentId is null && defaultEquipmentId is null
+            && string.IsNullOrWhiteSpace(line.Usage) && string.IsNullOrWhiteSpace(defaultUsage))
+            return "Укажите, куда использовано: оборудование или описание.";
+
+        if (line.UsedOn is DateOnly used && (used < periodFrom || used > periodTo))
+            return "Дата вне периода акта.";
+
+        return null;
+    }
+
+    private List<string> FormErrors
+    {
+        get
+        {
+            var errors = new List<string>();
+            if (employeeId is null)
+                errors.Add("Выберите сотрудника.");
+            if (PeriodError is not null)
+                errors.Add(PeriodError);
+            var bad = lines.Select((l, i) => (l, n: i + 1)).Where(x => LineError(x.l) is not null).Select(x => x.n).ToList();
+            if (bad.Count > 0)
+                errors.Add($"Проверьте строки: {string.Join(", ", bad)}.");
+            return errors;
+        }
+    }
+
+    // ---------- Сохранение ----------
+
+    private async Task SaveAsync(bool submit)
+    {
+        error = null;
+        showErrors = true;
+        if (FormErrors.Count > 0)
+            return;
+
+        var request = new SaveActRequest(
+            employeeId!.Value,
+            periodFrom,
+            periodTo,
+            externalNumber,
+            comment,
+            lines.Select(l => new ActLineRequest(
+                l.ItemId!.Value,
+                l.Quantity,
+                l.EquipmentId ?? (string.IsNullOrWhiteSpace(l.Usage) ? defaultEquipmentId : null),
+                string.IsNullOrWhiteSpace(l.Usage) ? defaultUsage : l.Usage,
+                l.UsedOn)).ToList());
+
+        saving = true;
+        try
+        {
+            // Если акт уже создан, а отправка не удалась, — повторное нажатие не создаёт второй акт.
+            var saved = (savedId ?? Id) is int id
+                ? await Api.UpdateActAsync(id, request)
+                : await Api.CreateActAsync(request);
+            savedId = saved.Id;
+
+            if (submit)
+                saved = await Api.SubmitActAsync(saved.Id);
+
+            Nav.NavigateTo($"/acts/{saved.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private sealed class LineModel
+    {
+        public int? ItemId { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public int? EquipmentId { get; set; }
+        public string? Usage { get; set; }
+        public DateOnly? UsedOn { get; set; }
+    }
+}

@@ -16,6 +16,38 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
     public async Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default)
     {
+        // Списание — только по утверждённому акту на списание (см. WriteOffActService).
+        if (request.Type == MovementType.WriteOff)
+            throw new DomainException("Списание оформляется актом на списание: сотрудник составляет акт, руководитель утверждает — тогда позиции списываются.");
+
+        var staged = await StageAsync(request, exceptActId: null, ct);
+        await repo.SaveChangesAsync(ct);
+        return staged.ToDto();
+    }
+
+    /// <summary>Подготовленный к сохранению документ: остатки изменены, документ добавлен, но не сохранён.</summary>
+    internal sealed record StagedDocument(
+        StockDocument Document,
+        IReadOnlyDictionary<int, Item> Items,
+        IReadOnlyDictionary<int, LocationInfo> Locations)
+    {
+        public DocumentDto ToDto() => StockService.ToDto(Document, line =>
+        {
+            var item = Items[line.ItemId];
+            return new DocumentLineDto(
+                line.LineNo, item.Id, item.Sku, item.Name, item.Unit.Code, line.Quantity,
+                line.FromLocationId is int f ? Locations[f].FullCode : null,
+                line.ToLocationId is int t ? Locations[t].FullCode : null);
+        });
+    }
+
+    /// <summary>
+    /// Проверяет документ и готовит изменения остатков, не сохраняя их: сохранение — у вызывающего
+    /// (так акт на списание и его документ сохраняются одной транзакцией).
+    /// </summary>
+    /// <param name="exceptActId">Утверждаемый акт: его резерв не мешает списанию.</param>
+    internal async Task<StagedDocument> StageAsync(CreateDocumentRequest request, int? exceptActId, CancellationToken ct)
+    {
         // ---------- 1. Шапка ----------
         if (!Enum.IsDefined(request.Type))
             throw new DomainException($"Неизвестный тип документа: {request.Type}.");
@@ -95,6 +127,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         var projected = new Dictionary<(int ItemId, int LocationId), decimal>();
         var storedEmployee = new Dictionary<(int ItemId, int EmployeeId), EmployeeBalance?>();
         var projectedEmployee = new Dictionary<(int ItemId, int EmployeeId), decimal>();
+        var reserved = new Dictionary<(int ItemId, int EmployeeId), decimal>();
 
         async Task<decimal> CurrentAsync((int ItemId, int LocationId) key)
         {
@@ -136,11 +169,15 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
             if (fromEmployeeId is int fromEmp)
             {
+                // Зарезервированное в актах на утверждении вернуть или списать другим документом нельзя.
                 var key = (line.ItemId, fromEmp);
-                var available = await CurrentEmployeeAsync(key);
-                if (available < line.Quantity)
-                    throw new InsufficientStockException(items[line.ItemId].Sku, accountable!.ShortName, available, line.Quantity, isEmployee: true);
-                projectedEmployee[key] = available - line.Quantity;
+                var current = await CurrentEmployeeAsync(key);
+                if (!reserved.TryGetValue(key, out var held))
+                    reserved[key] = held = await repo.GetReservedAsync(line.ItemId, fromEmp, exceptActId, ct);
+                if (current - held < line.Quantity)
+                    throw new InsufficientStockException(
+                        items[line.ItemId].Sku, accountable!.ShortName, Math.Max(0, current - held), line.Quantity, isEmployee: true, reserved: held);
+                projectedEmployee[key] = current - line.Quantity;
             }
 
             if (line.ToLocationId is int toId)
@@ -208,16 +245,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         }
 
         repo.AddDocument(document);
-        await repo.SaveChangesAsync(ct);
-
-        return ToDto(document, line =>
-        {
-            var item = items[line.ItemId];
-            return new DocumentLineDto(
-                line.LineNo, item.Id, item.Sku, item.Name, item.Unit.Code, line.Quantity,
-                line.FromLocationId is int f ? locations[f].FullCode : null,
-                line.ToLocationId is int t ? locations[t].FullCode : null);
-        });
+        return new StagedDocument(document, items, locations);
     }
 
     public async Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default)
@@ -393,5 +421,6 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
     private static DocumentDto ToDto(StockDocument d, Func<StockMovement, DocumentLineDto> mapLine) => new(
         d.Id, d.Number, d.Type, d.OccurredAt, d.ExternalNumber, d.EquipmentId, d.PerformedBy, d.Comment,
         d.Lines.OrderBy(l => l.LineNo).Select(mapLine).ToList(),
-        d.PerformedById, d.ReceivedById, d.ReceivedBy);
+        d.PerformedById, d.ReceivedById, d.ReceivedBy,
+        d.Act?.Id, d.Act?.Number);
 }

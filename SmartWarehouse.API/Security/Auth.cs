@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using SmartWarehouse.Application.DTOs;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.API.Security;
@@ -111,6 +112,13 @@ public static class CurrentUserExtensions
 
     public static int? EmployeeId(this ClaimsPrincipal user) =>
         int.TryParse(user.FindFirstValue(AppClaims.EmployeeId), out var id) ? id : null;
+
+    /// <summary>Кто работает с актами на списание.</summary>
+    public static ActActor ToActActor(this ClaimsPrincipal user) => new(
+        user.EmployeeId(),
+        user.FindFirstValue(AppClaims.DisplayName) ?? user.Identity?.Name,
+        user.SeesAllCustody(),
+        user.IsInRole(Roles.Manager));
 
     /// <summary>Видит весь подотчёт: кладовщик и администратор.</summary>
     public static bool SeesAllCustody(this ClaimsPrincipal user) =>

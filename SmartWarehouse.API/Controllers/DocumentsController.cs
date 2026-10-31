@@ -8,7 +8,7 @@ using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.API.Controllers;
 
-/// <summary>Складские документы: приход, выдача, перемещение, списание, корректировка.</summary>
+/// <summary>Складские документы: приход, выдача, возврат, перемещение, корректировка; списание — по актам.</summary>
 [ApiController]
 [Route("api/documents")]
 public class DocumentsController(IStockService stock) : ControllerBase
@@ -25,11 +25,14 @@ public class DocumentsController(IStockService stock) : ControllerBase
     [HttpGet("{id:long}/act")]
     public async Task<IActionResult> WriteOffAct(long id, [FromServices] IActService acts, CancellationToken ct)
     {
-        var (pdf, fileName) = await acts.GetWriteOffActAsync(id, ct);
+        var (pdf, fileName) = await acts.GetWriteOffActAsync(id, User.ToActActor(), ct);
         return File(pdf, "application/pdf", fileName);
     }
 
-    /// <summary>Создать и провести документ. Проводится целиком или не проводится вовсе.</summary>
+    /// <summary>
+    /// Создать и провести документ. Проводится целиком или не проводится вовсе.
+    /// Списание так не проводится — только утверждением акта на списание (api/acts).
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = Roles.Warehouse)]
     public async Task<ActionResult<DocumentDto>> Post(CreateDocumentRequest request, CancellationToken ct)

@@ -106,7 +106,9 @@ public record CustodyRowDto(
     string ItemName,
     string UnitCode,
     long? ImageVersion,
-    decimal Quantity);
+    decimal Quantity,
+    DateTimeOffset? HeldSince = null,
+    decimal Reserved = 0);
 
 // ---------- Учётные записи ----------
 
@@ -222,7 +224,9 @@ public record DocumentDto(
     IReadOnlyList<DocumentLineDto> Lines,
     int? PerformedById,
     int? ReceivedById,
-    string? ReceivedBy);
+    string? ReceivedBy,
+    int? ActId = null,
+    string? ActNumber = null);
 
 /// <summary>Документ в списке (без строк).</summary>
 public record DocumentSummaryDto(
@@ -297,3 +301,89 @@ public record LowStockItemDto(
     decimal Total,
     decimal MinStock,
     decimal ToOrder);
+
+// ---------- Акты на списание ----------
+
+/// <summary>Строка акта: что, сколько и куда использовано (оборудование и/или описание).</summary>
+public record ActLineRequest(int ItemId, decimal Quantity, int? EquipmentId, string? Usage, DateOnly? UsedOn = null);
+
+/// <summary>Создание или изменение акта (черновика).</summary>
+/// <param name="PeriodFrom">Период сводного акта — необязательно.</param>
+public record SaveActRequest(
+    int EmployeeId,
+    DateOnly? PeriodFrom,
+    DateOnly? PeriodTo,
+    string? ExternalNumber,
+    string? Comment,
+    IReadOnlyList<ActLineRequest> Lines);
+
+public record ActLineDto(
+    int LineNo,
+    int ItemId,
+    string Sku,
+    string ItemName,
+    string UnitCode,
+    decimal Quantity,
+    int? EquipmentId,
+    string? Equipment,
+    string? Usage,
+    DateOnly? UsedOn);
+
+/// <summary>Что текущий пользователь может сделать с актом.</summary>
+public record ActPermissions(bool Edit, bool Submit, bool Recall, bool Decide);
+
+public record ActDto(
+    int Id,
+    string Number,
+    ActStatus Status,
+    int EmployeeId,
+    string EmployeeName,
+    string? EmployeePosition,
+    DateOnly? PeriodFrom,
+    DateOnly? PeriodTo,
+    string? ExternalNumber,
+    string? Comment,
+    DateTimeOffset CreatedAt,
+    string? CreatedBy,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? SubmittedAt,
+    int ApproverId,
+    string ApproverName,
+    int? DecidedById,
+    string? DecidedBy,
+    string? DecidedByPosition,
+    DateTimeOffset? DecidedAt,
+    string? ReturnRemark,
+    long? DocumentId,
+    string? DocumentNumber,
+    IReadOnlyList<ActLineDto> Lines,
+    ActPermissions Can);
+
+/// <summary>Акт в списке (без строк).</summary>
+public record ActSummaryDto(
+    int Id,
+    string Number,
+    ActStatus Status,
+    int EmployeeId,
+    string EmployeeName,
+    DateOnly? PeriodFrom,
+    DateOnly? PeriodTo,
+    string? ExternalNumber,
+    int LineCount,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? SubmittedAt,
+    string ApproverName,
+    string? DecidedBy,
+    DateTimeOffset? DecidedAt);
+
+/// <summary>Какие акты показать.</summary>
+public enum ActScope
+{
+    /// <summary>Все, которые пользователь может видеть (свои, подчинённых; кладовщику — все).</summary>
+    Visible,
+
+    /// <summary>Ждут утверждения текущим пользователем.</summary>
+    ToApprove
+}
+
+public record ReturnActRequest(string Remark);

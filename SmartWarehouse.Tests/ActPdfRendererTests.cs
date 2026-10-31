@@ -8,19 +8,22 @@ namespace SmartWarehouse.Tests;
 public class ActPdfRendererTests
 {
     private static WriteOffActData Data(int lines) => new(
-        "СП-000012",
+        "АС-000012",
         new DateTimeOffset(2026, 10, 27, 9, 30, 0, TimeSpan.Zero),
         "Отдел эксплуатации технологического оборудования",
         "Петров Сергей Иванович",
         "Слесарь-ремонтник",
         "0123",
-        "L1-P1 — Насос центробежный",
+        "с 01.10.2026 по 27.10.2026",
         "Наряд № 45",
-        "Замена при плановом ремонте",
-        "Иванов И. П.",
+        "Плановый ремонт линии 1",
         Enumerable.Range(1, lines)
-            .Select(i => new DocumentLineDto(i, i, $"ЗЧ-{i:D6}", $"Подшипник 6205-2RS, позиция {i}", "шт", i, null, null))
-            .ToList());
+            .Select(i => new WriteOffActLineData(i, $"ЗЧ-{i:D6}", $"Подшипник 6205-2RS, позиция {i}", "шт", i,
+                $"L1-P1 — Насос центробежный; замена подшипника; {i:D2}.10.2026"))
+            .ToList(),
+        new ActApprovalData("Сидоров Олег Петрович", "Начальник участка", new DateTimeOffset(2026, 10, 28, 8, 0, 0, TimeSpan.Zero)),
+        null,
+        "СП-000031");
 
     [Fact]
     public void Акт_строится_в_PDF()
@@ -45,8 +48,23 @@ public class ActPdfRendererTests
     [Fact]
     public void Без_организации_и_необязательных_полей()
     {
-        var data = Data(1) with { Organization = null, Equipment = null, ExternalNumber = null, Comment = null, PerformedBy = null, EmployeePosition = null, EmployeePersonnelNumber = null };
+        var data = Data(1) with
+        {
+            Organization = null, Period = null, ExternalNumber = null, Comment = null, EmployeePosition = null,
+            EmployeePersonnelNumber = null, Approval = null, DocumentNumber = null,
+            Lines = [new WriteOffActLineData(1, "ЗЧ-1", "Ремень", "шт", 1, null)]
+        };
         var pdf = new ActPdfRenderer().RenderWriteOffAct(data);
         Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+    }
+
+    [Fact]
+    public void Черновик_с_надписью_строится()
+    {
+        var data = Data(40) with { Approval = null, Watermark = "ЧЕРНОВИК", DocumentNumber = null };
+        var pdf = new ActPdfRenderer().RenderWriteOffAct(data);
+
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+        Assert.True(pdf.Length > new ActPdfRenderer().RenderWriteOffAct(data with { Watermark = null }).Length);
     }
 }

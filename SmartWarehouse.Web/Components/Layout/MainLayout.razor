@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
+@inject ApiClient Api
 
 <div class="app">
     <aside class="sidebar">
@@ -18,12 +19,18 @@
                     <div class="nav-group">Учёт</div>
                     <NavLink href="/stock">Остатки</NavLink>
                     <NavLink href="/custody">Подотчёт</NavLink>
+                    <NavLink href="/acts">
+                        Акты на списание
+                        @if (actsToApprove > 0)
+                        {
+                            <span class="nav-badge" title="Ждут вашего утверждения">@actsToApprove</span>
+                        }
+                    </NavLink>
                     <NavLink href="/documents">Документы</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
                         <NavLink href="/documents/new/Receipt">+ Приход</NavLink>
                         <NavLink href="/documents/new/Issue">− Выдача сотруднику</NavLink>
                         <NavLink href="/documents/new/Return">↩ Возврат</NavLink>
-                        <NavLink href="/documents/new/WriteOff">✕ Списание</NavLink>
                         <NavLink href="/documents/new/Transfer">⇄ Перемещение</NavLink>
                     </AuthorizeView>
 
@@ -73,6 +80,7 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool menuOpen;
+    private int actsToApprove;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -81,7 +89,25 @@
             return;
 
         var user = (await AuthState).User;
-        if (user.Identity?.IsAuthenticated == true && user.MustChangePasswordOf())
+        if (user.Identity?.IsAuthenticated != true)
+            return;
+        if (user.MustChangePasswordOf())
+        {
             Nav.NavigateTo("/account/password", forceLoad: true);
+            return;
+        }
+
+        // Значок «ждут утверждения» обновляется при каждом переходе по страницам.
+        if (user.EmployeeIdOf() is not null)
+        {
+            try
+            {
+                actsToApprove = await Api.GetActsToApproveCountAsync();
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                actsToApprove = 0; // меню не должно ломаться из-за недоступного API
+            }
+        }
     }
 }

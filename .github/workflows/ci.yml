@@ -22,7 +22,7 @@ jobs:
         run: dotnet build SmartWarehouse.slnx --no-restore -c Release
 
       - name: Тесты
-        run: dotnet test SmartWarehouse.slnx --no-build -c Release --logger "console;verbosity=normal"
+        run: dotnet test SmartWarehouse.slnx --no-build -c Release --logger "console;verbosity=normal" --logger GitHubActions
 
   docker:
     runs-on: ubuntu-latest

@@ -20,6 +20,9 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 
 builder.Services.AddScoped<BrowserStore>();
 
+// Подсветка давнего подотчёта (Custody:AgeWarningDays, по умолчанию 30 дней).
+builder.Services.AddSingleton(builder.Configuration.GetSection("Custody").Get<CustodyOptions>() ?? new CustodyOptions());
+
 // ---------- Вход: зашифрованная cookie с токеном API ----------
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -73,6 +76,20 @@ app.MapGet("/document-act/{id:long}", async (long id, ApiClient api, Cancellatio
     try
     {
         var pdf = await api.GetWriteOffActAsync(id, ct);
+        return Results.File(pdf, "application/pdf");
+    }
+    catch (ApiException ex)
+    {
+        return Results.Text(ex.Message, "text/plain; charset=utf-8", statusCode: (int)ex.Status);
+    }
+}).RequireAuthorization();
+
+// Акт на списание по номеру акта (черновик — с надписью «ЧЕРНОВИК»).
+app.MapGet("/act-pdf/{id:int}", async (int id, ApiClient api, CancellationToken ct) =>
+{
+    try
+    {
+        var pdf = await api.GetActPdfAsync(id, ct);
         return Results.File(pdf, "application/pdf");
     }
     catch (ApiException ex)
