@@ -157,6 +157,34 @@ public class CatalogServiceTests
         await Assert.ThrowsAsync<DomainException>(() => _service.CreateEquipmentAsync(new CreateEquipmentRequest(null, "L1", "Дубль")));
         await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateEquipmentAsync(new CreateEquipmentRequest(999, "X", "Нет родителя")));
     }
+
+    // ---------- Штрих-код ----------
+
+    [Fact]
+    public async Task Штрих_код_необязателен_но_уникален()
+    {
+        var first = await _service.CreateItemAsync(new CreateItemRequest("BRG-1", "Подшипник", null, 1, 0, null, null, " 4607001234567 "));
+        Assert.Equal("4607001234567", first.Barcode);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            _service.CreateItemAsync(new CreateItemRequest("BRG-2", "Подшипник 2", null, 1, 0, null, null, "4607001234567")));
+        Assert.Contains("уже указан", ex.Message);
+
+        var noBarcode = await _service.CreateItemAsync(new CreateItemRequest("BRG-3", "Ремень", null, 1, 0, null, null));
+        Assert.Null(noBarcode.Barcode);
+    }
+
+    [Fact]
+    public async Task Штрих_код_можно_сменить_и_убрать()
+    {
+        var item = await _service.CreateItemAsync(new CreateItemRequest("BRG-1", "Подшипник", null, 1, 0, null, null, "111"));
+
+        var same = await _service.UpdateItemAsync(item.Id, new UpdateItemRequest("Подшипник", null, 1, 0, null, null, true, "111"));
+        Assert.Equal("111", same.Barcode); // свой же код — не конфликт
+
+        var cleared = await _service.UpdateItemAsync(item.Id, new UpdateItemRequest("Подшипник", null, 1, 0, null, null, true, "  "));
+        Assert.Null(cleared.Barcode);
+    }
 }
 
 /// <summary>Репозиторий справочников в памяти.</summary>
@@ -208,6 +236,18 @@ internal class FakeCatalogRepository : ICatalogRepository
 
     public Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default) =>
         Task.FromResult(Items.Any(x => x.Sku == sku));
+
+    public Task<bool> BarcodeExistsAsync(string barcode, int? exceptItemId, CancellationToken ct = default) =>
+        Task.FromResult(Items.Any(x => x.Barcode == barcode && x.Id != exceptItemId));
+
+    public Task<Item?> FindItemByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var item = Items.FirstOrDefault(x => string.Equals(x.Sku, code, StringComparison.OrdinalIgnoreCase))
+            ?? Items.FirstOrDefault(x => x.Barcode == code);
+        if (item is not null)
+            item.Unit = Units.First(u => u.Id == item.UnitId);
+        return Task.FromResult(item);
+    }
 
     public Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<Item>>(Items.ToList());

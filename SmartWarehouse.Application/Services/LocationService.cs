@@ -111,7 +111,8 @@ public class LocationService(ILocationRepository repo) : ILocationService
 
         var balances = await repo.GetLocationContentAsync(locationId, ct);
         return balances
-            .Select(b => new LocationContentDto(b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code, b.Quantity))
+            .Select(b => new LocationContentDto(b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code, b.Quantity,
+                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds()))
             .OrderBy(x => x.Name)
             .ToList();
     }

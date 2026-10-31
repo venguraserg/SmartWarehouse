@@ -1,0 +1,262 @@
+@page "/labels"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IConfiguration Config
+
+<PageTitle>Наклейки QR — склад</PageTitle>
+
+<h1>Наклейки с QR-кодами</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Печать на листы A4 с самоклеящимися наклейками. QR-код открывает страницу ячейки или позиции
+    обычной камерой телефона; его же распознаёт сканер в приложении.
+</p>
+
+<Alert Error="@error" />
+
+@if (LinkBase is { } link && IsLocalHost(link))
+{
+    <div class="alert alert-error">
+        В QR-коды попадёт адрес <span class="mono">@link</span> — телефоны его не откроют.
+        Откройте сайт по адресу, который видят телефоны (IP или имя сервера), или задайте <span class="mono">App:PublicUrl</span>
+        в настройках веб-приложения. Сканер внутри приложения такие наклейки всё равно распознает.
+    </div>
+}
+else if (LinkBase is { } shown)
+{
+    <p class="muted">Ссылки в QR-кодах: <span class="mono">@shown</span>/l/… и /i/…</p>
+}
+
+<div class="toolbar">
+    <div class="segmented">
+        <button type="button" class="@(kind == LabelKind.Location ? "active" : null)" @onclick="() => SetKindAsync(LabelKind.Location)">Места хранения</button>
+        <button type="button" class="@(kind == LabelKind.Item ? "active" : null)" @onclick="() => SetKindAsync(LabelKind.Item)">Номенклатура</button>
+    </div>
+</div>
+
+<div class="panel" style="margin-bottom: 1rem">
+    <div class="field-row">
+        <div class="field">
+            <label for="layout">Лист</label>
+            <select id="layout" @bind="layout">
+                @foreach (var l in layouts)
+                {
+                    <option value="@l.Id">@l.Title</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="skip">Пропустить наклеек в начале</label>
+            <input id="skip" type="number" min="0" max="@(PerSheet - 1)" @bind="skip" />
+            <div class="field-hint">Если лист уже частично использован.</div>
+        </div>
+        <div class="field">
+            <label for="copies">Копий каждой</label>
+            <input id="copies" type="number" min="1" max="50" @bind="copies" />
+        </div>
+    </div>
+</div>
+
+@if (kind == LabelKind.Location)
+{
+    <div class="toolbar">
+        <select @bind="warehouseId" @bind:after="LoadLocationsAsync" style="max-width: 260px">
+            @foreach (var w in warehouses)
+            {
+                <option value="@w.Id">@w.Code — @w.Name</option>
+            }
+        </select>
+        <input type="search" placeholder="Фильтр по коду: A-01" @bind="filter" @bind:event="oninput" style="max-width: 220px" />
+        <label class="checkbox"><input type="checkbox" @bind="onlyLeaves" /> только ячейки (конечные места)</label>
+    </div>
+}
+else
+{
+    <form class="toolbar" @onsubmit="LoadItemsAsync" @onsubmit:preventDefault>
+        <input type="search" placeholder="Артикул, наименование или штрих-код" @bind="filter" style="max-width: 360px" />
+        <button class="btn" type="submit">Найти</button>
+    </form>
+}
+
+@if (rows is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="toolbar">
+        <button class="btn btn-sm" type="button" @onclick="SelectAllVisible" disabled="@(Visible.Count == 0)">Выбрать все показанные (@Visible.Count)</button>
+        <button class="btn btn-sm" type="button" @onclick="() => chosen.Clear()" disabled="@(chosen.Count == 0)">Снять выбор</button>
+        <span class="spacer"></span>
+        <span class="muted">Выбрано: @chosen.Count · наклеек: @(chosen.Count * Math.Max(1, copies)) · листов: @Sheets</span>
+        @if (chosen.Count > 0)
+        {
+            <a class="btn btn-primary" href="@PdfUrl" target="_blank" rel="noopener">Сформировать PDF</a>
+        }
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px"></th>
+                    <th>Код</th>
+                    <th>Наименование</th>
+                    <th>@(kind == LabelKind.Location ? "Тип" : "Штрих-код")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Visible)
+                {
+                    <tr @onclick="() => Toggle(r.Id)" style="cursor: pointer">
+                        <td><input type="checkbox" checked="@chosen.Contains(r.Id)" @onclick:stopPropagation @onchange="() => Toggle(r.Id)" /></td>
+                        <td class="mono" style="padding-left: @Indent(r.Depth)">@r.Code</td>
+                        <td>@r.Name</td>
+                        <td class="muted">@r.Note</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (Visible.Count == 0)
+        {
+            <div class="empty">@(kind == LabelKind.Location ? "Мест хранения нет — создайте их в разделе «Склады и места»." : "Ничего не найдено.")</div>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "warehouse")] public int? WarehouseParam { get; set; }
+
+    private LabelKind kind = LabelKind.Location;
+    private List<LabelLayoutDto> layouts = [];
+    private string layout = "3x8";
+    private int skip;
+    private int copies = 1;
+
+    private List<WarehouseDto> warehouses = [];
+    private int? warehouseId;
+    private bool onlyLeaves = true;
+    private string? filter;
+
+    private List<Row>? rows;
+    private readonly HashSet<int> chosen = [];
+    private string? error;
+
+    /// <summary>Адрес, который попадёт в ссылки QR-кодов (как в /labels.pdf).</summary>
+    private string? LinkBase =>
+        string.IsNullOrWhiteSpace(Config["App:PublicUrl"]) ? Nav.BaseUri.TrimEnd('/') : Config["App:PublicUrl"]!.TrimEnd('/');
+
+    private static bool IsLocalHost(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.IsLoopback || uri.Host == "localhost");
+
+    private int PerSheet => layouts.FirstOrDefault(l => l.Id == layout) is { } l ? l.Columns * l.Rows : 24;
+
+    private int Sheets => chosen.Count == 0 ? 0 : (Math.Clamp(skip, 0, PerSheet - 1) + chosen.Count * Math.Max(1, copies) + PerSheet - 1) / PerSheet;
+
+    private List<Row> Visible =>
+        (rows ?? new List<Row>())
+            .Where(r => kind != LabelKind.Location || !onlyLeaves || r.IsLeaf)
+            .Where(r => kind != LabelKind.Location || string.IsNullOrWhiteSpace(filter)
+                        || r.Code.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private string PdfUrl =>
+        $"/labels.pdf?kind={kind}&layout={Uri.EscapeDataString(layout)}&skip={Math.Clamp(skip, 0, PerSheet - 1)}" +
+        $"&copies={Math.Clamp(copies, 1, 50)}&ids={string.Join(',', chosen.OrderBy(x => x))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            layouts = await Api.GetLabelLayoutsAsync();
+            warehouses = await Api.GetWarehousesAsync();
+            warehouseId = warehouses.Any(w => w.Id == WarehouseParam) ? WarehouseParam : warehouses.FirstOrDefault()?.Id;
+            await LoadLocationsAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task SetKindAsync(LabelKind value)
+    {
+        if (kind == value)
+            return;
+        kind = value;
+        chosen.Clear();
+        filter = null;
+        rows = null;
+        if (kind == LabelKind.Location)
+            await LoadLocationsAsync();
+        else
+            await LoadItemsAsync();
+    }
+
+    private async Task LoadLocationsAsync()
+    {
+        chosen.Clear();
+        if (warehouseId is not int id)
+        {
+            rows = [];
+            return;
+        }
+        try
+        {
+            var result = new List<Row>();
+            Flatten(await Api.GetLocationTreeAsync(id), 0, result);
+            rows = result;
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+
+        static void Flatten(IEnumerable<LocationNodeDto> nodes, int depth, List<Row> into)
+        {
+            foreach (var n in nodes.OrderBy(n => n.Code))
+            {
+                into.Add(new Row(n.Id, n.FullCode, n.Name, Ui.LocType(n.Type), depth, n.Children.Count == 0));
+                Flatten(n.Children, depth + 1, into);
+            }
+        }
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        try
+        {
+            rows = (await Api.GetItemsAsync(search: filter))
+                .Where(i => i.IsActive)
+                .Select(i => new Row(i.Id, i.Sku, i.Name, i.Barcode, 0, true))
+                .ToList();
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void Toggle(int id)
+    {
+        if (!chosen.Remove(id))
+            chosen.Add(id);
+    }
+
+    private void SelectAllVisible()
+    {
+        foreach (var r in Visible)
+            chosen.Add(r.Id);
+    }
+
+    /// <summary>Отступ уровня дерева (CSS не зависит от языковых настроек сервера).</summary>
+    private static string Indent(int depth) =>
+        (depth * 1.1 + .6).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "rem";
+
+    private sealed record Row(int Id, string Code, string? Name, string? Note, int Depth, bool IsLeaf);
+}

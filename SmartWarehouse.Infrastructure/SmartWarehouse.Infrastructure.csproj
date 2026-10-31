@@ -11,6 +11,8 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <!-- PDF-акты: MigraDoc/PDFsharp, лицензия MIT. -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.1.1" />
+    <!-- QR-коды для наклеек (MIT). -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <!-- Хеширование паролей (PBKDF2 с солью) из ASP.NET Core Identity. -->
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.0" />
     <!-- Исправленная версия вместо транзитивной с уязвимостями (GHSA-846f-f764-76mx, GHSA-2fmv-rv2c-59x7). -->

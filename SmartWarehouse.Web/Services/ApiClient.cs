@@ -259,6 +259,23 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    // ---------- Сканирование и наклейки ----------
+
+    /// <summary>Что за код: место хранения или позиция (ссылка с наклейки, код, артикул, штрих-код).</summary>
+    public Task<ScanResultDto> ScanAsync(string code, CancellationToken ct = default) =>
+        GetAsync<ScanResultDto>($"api/scan?code={Uri.EscapeDataString(code)}", ct);
+
+    public Task<List<LabelLayoutDto>> GetLabelLayoutsAsync(CancellationToken ct = default) =>
+        GetAsync<List<LabelLayoutDto>>("api/labels/layouts", ct);
+
+    /// <summary>PDF с наклейками.</summary>
+    public async Task<byte[]> GetLabelsPdfAsync(LabelRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, "api/labels", ct, JsonContent.Create(request, options: Json));
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ---------- Акты на списание ----------
 
     public Task<List<ActSummaryDto>> GetActsAsync(ActScope scope = ActScope.Visible, ActStatus? status = null, int? employeeId = null, CancellationToken ct = default)

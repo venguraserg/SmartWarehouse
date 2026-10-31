@@ -1,0 +1,38 @@
+@page "/i/{Code}"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+@* Сюда ведёт QR-наклейка позиции: открываем карточку (где лежит, сколько, у кого). *@
+
+<PageTitle>@Code — склад</PageTitle>
+
+<Alert Error="@error" />
+
+@if (error is null)
+{
+    <p class="loading">Поиск позиции…</p>
+}
+else
+{
+    <div class="actions"><a class="btn" href="/scan">📷 Сканировать снова</a></div>
+}
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        error = null;
+        try
+        {
+            var found = await Api.ScanAsync(Code);
+            Nav.NavigateTo(found.Kind == ScanKind.Item ? $"/items/{found.Id}" : $"/l/{Uri.EscapeDataString(found.Code)}", replace: true);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+}
