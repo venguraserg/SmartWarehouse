@@ -79,7 +79,9 @@ public class LabelPdfRenderer : ILabelPdfRenderer
 
         // QR-код по центру по высоте.
         // Поток и изображение не закрываем: PDFsharp может читать их до сохранения документа.
-        var image = XImage.FromStream(new MemoryStream(QrPng(label.Payload)));
+        // PDFsharp читает внутренний буфер потока — он должен быть доступен (publiclyVisible).
+        var png = QrPng(label.Payload);
+        var image = XImage.FromStream(new MemoryStream(png, 0, png.Length, writable: false, publiclyVisible: true));
         image.Interpolate = false; // чёткие края модулей — лучше читается
         gfx.DrawImage(image, Mm(xMm + padding), Mm(yMm + (layout.HeightMm - qrMm) / 2), Mm(qrMm), Mm(qrMm));
 
