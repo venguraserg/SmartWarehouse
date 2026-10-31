@@ -1,6 +1,8 @@
 @page "/labels"
 @attribute [Authorize(Roles = AppRoles.Warehouse)]
 @inject ApiClient Api
+@inject NavigationManager Nav
+@inject IConfiguration Config
 
 <PageTitle>Наклейки QR — склад</PageTitle>
 
@@ -11,6 +13,19 @@
 </p>
 
 <Alert Error="@error" />
+
+@if (LinkBase is { } link && IsLocalHost(link))
+{
+    <div class="alert alert-error">
+        В QR-коды попадёт адрес <span class="mono">@link</span> — телефоны его не откроют.
+        Откройте сайт по адресу, который видят телефоны (IP или имя сервера), или задайте <span class="mono">App:PublicUrl</span>
+        в настройках веб-приложения. Сканер внутри приложения такие наклейки всё равно распознает.
+    </div>
+}
+else if (LinkBase is { } shown)
+{
+    <p class="muted">Ссылки в QR-кодах: <span class="mono">@shown</span>/l/… и /i/…</p>
+}
 
 <div class="toolbar">
     <div class="segmented">
@@ -129,6 +144,13 @@ else
     private List<Row>? rows;
     private readonly HashSet<int> chosen = [];
     private string? error;
+
+    /// <summary>Адрес, который попадёт в ссылки QR-кодов (как в /labels.pdf).</summary>
+    private string? LinkBase =>
+        string.IsNullOrWhiteSpace(Config["App:PublicUrl"]) ? Nav.BaseUri.TrimEnd('/') : Config["App:PublicUrl"]!.TrimEnd('/');
+
+    private static bool IsLocalHost(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.IsLoopback || uri.Host == "localhost");
 
     private int PerSheet => layouts.FirstOrDefault(l => l.Id == layout) is { } l ? l.Columns * l.Rows : 24;
 
