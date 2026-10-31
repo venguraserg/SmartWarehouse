@@ -77,13 +77,8 @@ public class LabelPdfRenderer : ILabelPdfRenderer
         var qrMm = Math.Min(layout.HeightMm - 2 * padding, layout.WidthMm * 0.45);
         var gap = 2.0;
 
-        // QR-код по центру по высоте.
-        // Поток и изображение не закрываем: PDFsharp может читать их до сохранения документа.
-        // PDFsharp читает внутренний буфер потока — он должен быть доступен (publiclyVisible).
-        var png = QrPng(label.Payload);
-        var image = XImage.FromStream(new MemoryStream(png, 0, png.Length, writable: false, publiclyVisible: true));
-        image.Interpolate = false; // чёткие края модулей — лучше читается
-        gfx.DrawImage(image, Mm(xMm + padding), Mm(yMm + (layout.HeightMm - qrMm) / 2), Mm(qrMm), Mm(qrMm));
+        // QR-код по центру по высоте — векторными квадратами (чёткая печать при любом масштабе).
+        DrawQr(gfx, label.Payload, Mm(xMm + padding), Mm(yMm + (layout.HeightMm - qrMm) / 2), Mm(qrMm));
 
         // Текст справа от QR.
         var textX = xMm + padding + qrMm + gap;
@@ -117,12 +112,36 @@ public class LabelPdfRenderer : ILabelPdfRenderer
                 new XRect(Mm(textX), Mm(textBottom) - noteHeight, Mm(textWidth), noteHeight), XStringFormats.TopLeft);
     }
 
-    /// <summary>QR-код в PNG (средний уровень коррекции — выдерживает потёртость наклейки).</summary>
-    internal static byte[] QrPng(string payload)
+    /// <summary>
+    /// Рисует QR-код (средний уровень коррекции — выдерживает потёртость наклейки).
+    /// Соседние тёмные модули строки объединяются в один прямоугольник.
+    /// </summary>
+    internal static void DrawQr(XGraphics gfx, string payload, double x, double y, double size)
     {
         using var generator = new QRCodeGenerator();
         using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M);
-        return new PngByteQRCode(data).GetGraphic(8);
+        var matrix = data.ModuleMatrix; // уже с белой рамкой (quiet zone)
+        var count = matrix.Count;
+        var module = size / count;
+
+        for (var row = 0; row < count; row++)
+        {
+            var bits = matrix[row];
+            var col = 0;
+            while (col < count)
+            {
+                if (!bits[col])
+                {
+                    col++;
+                    continue;
+                }
+                var start = col;
+                while (col < count && bits[col])
+                    col++;
+                // Небольшой нахлёст убирает светлые щели между модулями при печати.
+                gfx.DrawRectangle(XBrushes.Black, x + start * module, y + row * module, (col - start) * module + 0.05, module + 0.05);
+            }
+        }
     }
 
     private static double Mm(double value) => XUnit.FromMillimeter(value).Point;
