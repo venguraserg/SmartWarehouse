@@ -98,6 +98,37 @@ app.MapGet("/act-pdf/{id:int}", async (int id, ApiClient api, CancellationToken 
     }
 }).RequireAuthorization();
 
+// Наклейки с QR-кодами (PDF). В QR — ссылка на это веб-приложение: App:PublicUrl из настроек,
+// а если не задан — адрес, по которому открыт сайт (за прокси https — см. ASPNETCORE_FORWARDEDHEADERS_ENABLED).
+app.MapGet("/labels.pdf", async (HttpContext context, ApiClient api, IConfiguration config, CancellationToken ct) =>
+{
+    var q = context.Request.Query;
+    var kind = Enum.TryParse<SmartWarehouse.Application.DTOs.LabelKind>(q["kind"], ignoreCase: true, out var k) ? k : SmartWarehouse.Application.DTOs.LabelKind.Location;
+    var ids = (q["ids"].ToString() ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(s => int.TryParse(s, out var id) ? id : 0)
+        .Where(id => id > 0)
+        .ToList();
+    var publicUrl = config["App:PublicUrl"];
+    var baseUrl = string.IsNullOrWhiteSpace(publicUrl)
+        ? $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}"
+        : publicUrl;
+
+    try
+    {
+        var pdf = await api.GetLabelsPdfAsync(new SmartWarehouse.Application.DTOs.LabelRequest(
+            kind, ids, q["layout"],
+            int.TryParse(q["skip"], out var skip) ? skip : 0,
+            baseUrl,
+            int.TryParse(q["copies"], out var copies) ? copies : 1), ct);
+        return Results.File(pdf, "application/pdf");
+    }
+    catch (ApiException ex)
+    {
+        return Results.Text(ex.Message, "text/plain; charset=utf-8", statusCode: (int)ex.Status);
+    }
+}).RequireAuthorization();
+
 // Выход.
 app.MapPost("/account/logout", async (HttpContext context) =>
 {

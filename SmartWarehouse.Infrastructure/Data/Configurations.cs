@@ -40,6 +40,8 @@ internal class ItemConfiguration : IEntityTypeConfiguration<Item>
         b.ToTable("items");
         b.Property(x => x.Sku).HasMaxLength(64).IsRequired();
         b.HasIndex(x => x.Sku).IsUnique();
+        b.Property(x => x.Barcode).HasMaxLength(64);
+        b.HasIndex(x => x.Barcode).IsUnique(); // NULL допускается у многих позиций
         b.Property(x => x.Name).HasMaxLength(256).IsRequired();
         b.Property(x => x.MinStock).HasPrecision(Precision.Total, Precision.Scale);
         b.Property(x => x.MaxStock).HasPrecision(Precision.Total, Precision.Scale);

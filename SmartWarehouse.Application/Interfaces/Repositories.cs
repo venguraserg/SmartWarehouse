@@ -110,6 +110,12 @@ public interface ICatalogRepository
 
     Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default);
 
+    /// <summary>Занят ли штрих-код другой позицией.</summary>
+    Task<bool> BarcodeExistsAsync(string barcode, int? exceptItemId, CancellationToken ct = default);
+
+    /// <summary>Позиция (с единицей) по артикулу без учёта регистра или по штрих-коду.</summary>
+    Task<Item?> FindItemByCodeAsync(string code, CancellationToken ct = default);
+
     Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default);
 
     void AddItem(Item item);
@@ -191,6 +197,9 @@ public interface ILocationRepository
     Task<StorageLocation?> GetLocationAsync(int id, CancellationToken ct = default);
 
     Task<StorageLocation?> GetLocationByFullCodeAsync(string fullCode, CancellationToken ct = default);
+
+    /// <summary>Места по идентификаторам (со складом).</summary>
+    Task<IReadOnlyList<StorageLocation>> GetLocationsAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default);
 
     /// <summary>Все места склада одним списком (дерево собирает сервис).</summary>
     Task<IReadOnlyList<StorageLocation>> ListLocationsAsync(int warehouseId, CancellationToken ct = default);

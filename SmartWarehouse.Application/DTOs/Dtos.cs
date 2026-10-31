@@ -21,7 +21,8 @@ public record CreateItemRequest(
     int UnitId,
     decimal MinStock,
     decimal? MaxStock,
-    string? Description);
+    string? Description,
+    string? Barcode = null);
 
 public record ItemDto(
     int Id,
@@ -35,7 +36,8 @@ public record ItemDto(
     decimal? MaxStock,
     string? Description,
     bool IsActive,
-    long? ImageVersion);
+    long? ImageVersion,
+    string? Barcode = null);
 
 /// <summary>Изменение позиции. Артикул не меняется; единицу можно сменить, только пока по позиции не было движений.</summary>
 public record UpdateItemRequest(
@@ -45,7 +47,8 @@ public record UpdateItemRequest(
     decimal MinStock,
     decimal? MaxStock,
     string? Description,
-    bool IsActive);
+    bool IsActive,
+    string? Barcode = null);
 
 public record ItemImageDto(byte[] Data, string ContentType);
 
@@ -181,7 +184,7 @@ public record LocationNodeDto(
     IReadOnlyList<LocationNodeDto> Children);
 
 /// <summary>Что лежит в месте хранения (например, после сканирования QR ячейки).</summary>
-public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity);
+public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity, long? ImageVersion = null);
 
 // ---------- Документы и движения ----------
 
@@ -387,3 +390,28 @@ public enum ActScope
 }
 
 public record ReturnActRequest(string Remark);
+
+// ---------- Сканирование и наклейки ----------
+
+public enum ScanKind
+{
+    Location,
+    Item
+}
+
+/// <summary>Что нашлось по отсканированному коду: место хранения или позиция.</summary>
+public record ScanResultDto(ScanKind Kind, string Code, int Id, string Title, string? Subtitle);
+
+public enum LabelKind
+{
+    Location,
+    Item
+}
+
+/// <summary>Наклейки с QR-кодами на лист A4.</summary>
+/// <param name="Layout">Раскладка листа (см. GET api/labels/layouts), например «3x8».</param>
+/// <param name="Skip">Сколько наклеек пропустить в начале листа (лист уже частично использован).</param>
+/// <param name="BaseUrl">Адрес веб-приложения: QR-код содержит ссылку, которую открывает камера телефона.</param>
+public record LabelRequest(LabelKind Kind, IReadOnlyList<int> Ids, string? Layout, int Skip = 0, string? BaseUrl = null, int Copies = 1);
+
+public record LabelLayoutDto(string Id, string Title, int Columns, int Rows, double WidthMm, double HeightMm);

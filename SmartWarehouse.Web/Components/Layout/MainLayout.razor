@@ -14,6 +14,7 @@
         <nav class="nav @(menuOpen ? "open" : null)" @onclick="() => menuOpen = false">
             <AuthorizeView>
                 <Authorized>
+                    <NavLink href="/scan" class="nav-scan">📷 Сканировать</NavLink>
                     <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
 
                     <div class="nav-group">Учёт</div>
@@ -44,6 +45,7 @@
                     </AuthorizeView>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
                         <NavLink href="/references">Справочники</NavLink>
+                        <NavLink href="/labels">Наклейки QR</NavLink>
                     </AuthorizeView>
 
                     <AuthorizeView Roles="@AppRoles.Admin" Context="admin">

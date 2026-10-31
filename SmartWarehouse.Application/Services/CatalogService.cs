@@ -70,6 +70,8 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         if (await repo.SkuExistsAsync(sku, ct))
             throw new DomainException($"Позиция с артикулом «{sku}» уже существует.");
 
+        var barcode = await ValidateBarcodeAsync(request.Barcode, null, ct);
+
         var item = new Item
         {
             Sku = sku,
@@ -78,7 +80,8 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
             UnitId = request.UnitId,
             MinStock = request.MinStock,
             MaxStock = request.MaxStock,
-            Description = request.Description?.Trim()
+            Description = request.Description?.Trim(),
+            Barcode = barcode
         };
 
         repo.AddItem(item);
@@ -145,6 +148,7 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         item.MaxStock = request.MaxStock;
         item.Description = request.Description?.Trim();
         item.IsActive = request.IsActive;
+        item.Barcode = await ValidateBarcodeAsync(request.Barcode, id, ct);
 
         await repo.SaveChangesAsync(ct);
         return await GetItemAsync(id, ct);
@@ -218,11 +222,26 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         return new EquipmentDto(equipment.Id, equipment.ParentId, equipment.Code, equipment.Name);
     }
 
+    public const int MaxBarcodeLength = 64;
+
+    /// <summary>Штрих-код необязателен; если задан — без пробелов по краям и не занят другой позицией.</summary>
+    private async Task<string?> ValidateBarcodeAsync(string? value, int? itemId, CancellationToken ct)
+    {
+        var barcode = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (barcode is null)
+            return null;
+        if (barcode.Length > MaxBarcodeLength)
+            throw new DomainException($"Штрих-код — не длиннее {MaxBarcodeLength} символов.");
+        if (await repo.BarcodeExistsAsync(barcode, itemId, ct))
+            throw new DomainException($"Штрих-код «{barcode}» уже указан у другой позиции.");
+        return barcode;
+    }
+
     private static CategoryDto ToDto(Category c) => new(c.Id, c.Name, c.Description);
 
     private static UnitDto ToDto(UnitOfMeasure u) => new(u.Id, u.Code, u.Name, u.IsFractional);
 
     private static ItemDto ToDto(Item i) => new(
         i.Id, i.Sku, i.Name, i.CategoryId, i.Category?.Name, i.UnitId, i.Unit.Code,
-        i.MinStock, i.MaxStock, i.Description, i.IsActive, i.ImageUpdatedAt?.ToUnixTimeMilliseconds());
+        i.MinStock, i.MaxStock, i.Description, i.IsActive, i.ImageUpdatedAt?.ToUnixTimeMilliseconds(), i.Barcode);
 }
