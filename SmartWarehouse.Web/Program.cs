@@ -19,6 +19,7 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 });
 
 builder.Services.AddScoped<BrowserStore>();
+builder.Services.AddScoped<ScannerHub>();
 
 // Подсветка давнего подотчёта (Custody:AgeWarningDays, по умолчанию 30 дней).
 builder.Services.AddSingleton(builder.Configuration.GetSection("Custody").Get<CustodyOptions>() ?? new CustodyOptions());

@@ -79,7 +79,14 @@ public class ScanAndLabelTests
         Assert.Equal(ScanKind.Location, kind);
         Assert.Equal("СК1-A-01", code);
 
-        Assert.Equal("ЗЧ-000005", LabelLinks.ForItem(null, "ЗЧ-000005")); // без адреса — просто код
+        // Без адреса — путь, тоже только латиницей.
+        var path = LabelLinks.ForItem(null, "ЗЧ-000005");
+        Assert.Equal("/i/%D0%97%D0%A7-000005", path);
+        Assert.True(path.All(char.IsAscii));
+        Assert.True(LabelLinks.TryParse(path, out kind, out code));
+        Assert.Equal(ScanKind.Item, kind);
+        Assert.Equal("ЗЧ-000005", code);
+
         Assert.False(LabelLinks.TryParse("СК1-A-01", out _, out _));
     }
 
@@ -123,5 +130,36 @@ public class ScanAndLabelTests
         Assert.Equal("http://sklad:8081", LabelService.NormalizeBaseUrl("http://sklad:8081/"));
         Assert.Equal("https://host/app", LabelService.NormalizeBaseUrl("https://host/app/?x=1"));
         Assert.Null(LabelService.NormalizeBaseUrl(" "));
+    }
+
+    // ---------- Ручной сканер ----------
+
+    [Theory]
+    [InlineData("реезЖ..ылдфв.д.%В0%Ф1%В0%9Ф1-Ф-01")]   // http://sklad/l/%D0%A1%D0%9A1-A-01 в русской раскладке
+    [InlineData("HTTP://SKLAD:8081/L/%D0%A1%D0%9A1-A-01")]  // Caps Lock
+    [InlineData("/l/%D0%A1%D0%9A1-A-01")]                    // наклейка без адреса
+    public async Task Ячейка_распознаётся_при_неверной_раскладке_и_Caps_Lock(string typed)
+    {
+        var found = await _scan.ResolveAsync(typed);
+
+        Assert.Equal(ScanKind.Location, found.Kind);
+        Assert.Equal(11, found.Id);
+    }
+
+    [Fact]
+    public async Task Штрих_код_и_артикул_в_русской_раскладке()
+    {
+        _catalog.Items.Add(new Item { Id = 6, Sku = "BRG-6205", Name = "Подшипник", UnitId = 1 });
+
+        Assert.Equal(6, (await _scan.ResolveAsync("ИКП-6205")).Id);  // BRG-6205
+        Assert.Equal(5, (await _scan.ResolveAsync("зч-000005")).Id); // настоящая кириллица — находится сразу
+    }
+
+    [Fact]
+    public void Перевод_раскладки()
+    {
+        Assert.Equal("http://sklad/l/A-01", KeyboardLayout.FromRussianLayout("реезЖ..ылдфв.д.Ф-01"));
+        Assert.True(KeyboardLayout.HasRussianLetters("реез"));
+        Assert.False(KeyboardLayout.HasRussianLetters("http://x/l/A"));
     }
 }

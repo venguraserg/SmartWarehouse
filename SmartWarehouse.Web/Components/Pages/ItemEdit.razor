@@ -4,6 +4,8 @@
 @inject ApiClient Api
 @inject BrowserStore Store
 @inject NavigationManager Nav
+@inject ScannerHub Scanner
+@implements IDisposable
 
 <PageTitle>@(IsNew ? "Новая позиция" : "Изменение позиции") — склад</PageTitle>
 
@@ -82,7 +84,10 @@
             <label for="barcode">Штрих-код с упаковки</label>
             <input id="barcode" type="text" @bind="form.Barcode" maxlength="64" autocomplete="off"
                    placeholder="Отсканируйте сканером или введите цифры" />
-            <div class="field-hint">Заводской штрих- или QR-код: по нему позиция находится сканированием. Необязательно.</div>
+            <div class="field-hint">
+                Заводской штрих- или QR-код: по нему позиция находится сканированием. Необязательно.
+                Ручным сканером — просто отсканируйте упаковку, код встанет сюда.
+            </div>
         </div>
 
         <div class="field">
@@ -137,8 +142,21 @@ else if (error is null)
 
     // ---------- Загрузка ----------
 
+    private IDisposable? scanSubscription;
+
+    /// <summary>На этой странице код с ручного сканера — это штрих-код упаковки.</summary>
+    private Task<bool> OnScanAsync(string code)
+    {
+        form.Barcode = code.Trim();
+        StateHasChanged();
+        return Task.FromResult(true);
+    }
+
+    public void Dispose() => scanSubscription?.Dispose();
+
     protected override async Task OnInitializedAsync()
     {
+        scanSubscription = Scanner.Subscribe(OnScanAsync);
         try
         {
             units = await Api.GetUnitsAsync();
