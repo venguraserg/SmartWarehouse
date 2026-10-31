@@ -2,6 +2,8 @@
 @page "/acts/{Id:int}/edit"
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject ScannerHub Scanner
+@implements IDisposable
 
 <PageTitle>@(Id is null ? "Новый акт на списание" : $"Акт {act?.Number}") — склад</PageTitle>
 
@@ -112,6 +114,7 @@ else
         </div>
 
         <h2>Что израсходовано</h2>
+        <p class="scan-hint">📷 Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству).</p>
 
         @if (employeeId is null)
         {
@@ -385,6 +388,61 @@ else
     {
         if (lines.Count > 1)
             lines.Remove(line);
+    }
+
+    // ---------- Ручной сканер ----------
+
+    private IDisposable? scanSubscription;
+
+    protected override void OnInitialized() => scanSubscription = Scanner.Subscribe(OnScanAsync);
+
+    public void Dispose() => scanSubscription?.Dispose();
+
+    /// <summary>Скан позиции добавляет строку из подотчёта (или +1 к уже добавленной).</summary>
+    private async Task<bool> OnScanAsync(string code)
+    {
+        if (!loaded || employeeId is null)
+            return false;
+
+        try
+        {
+            var found = await Api.ScanAsync(code);
+            if (found.Kind != ScanKind.Item)
+            {
+                error = $"{found.Code} — это место хранения; в акте нужны позиции.";
+            }
+            else if (custody.FirstOrDefault(c => c.ItemId == found.Id) is not { } row)
+            {
+                error = $"За сотрудником не числится {found.Code} · {found.Title}.";
+            }
+            else
+            {
+                error = null;
+                var existing = lines.LastOrDefault(l => l.ItemId == row.ItemId);
+                if (existing is not null)
+                {
+                    existing.Quantity += 1;
+                }
+                else
+                {
+                    var line = lines.FirstOrDefault(l => l.ItemId is null);
+                    if (line is null)
+                    {
+                        line = new LineModel();
+                        lines.Add(line);
+                    }
+                    line.ItemId = row.ItemId;
+                    line.Quantity = 1;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+
+        StateHasChanged();
+        return true;
     }
 
     private void FillAll()

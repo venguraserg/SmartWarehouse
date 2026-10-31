@@ -24,20 +24,26 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
         if (raw.Length > MaxCodeLength)
             throw new DomainException("Слишком длинный код.");
 
+        var found = await TryResolveAsync(raw, ct);
+
+        // Ручной сканер при русской раскладке печатает «не те» буквы — пробуем как в английской.
+        if (found is null && KeyboardLayout.HasRussianLetters(raw))
+            found = await TryResolveAsync(KeyboardLayout.FromRussianLayout(raw), ct);
+
+        return found ?? throw new NotFoundException(LabelLinks.TryParse(raw, out var kind, out var value)
+            ? kind == ScanKind.Location
+                ? $"Место хранения «{value}» не найдено (наклейка от удалённого или переименованного места?)."
+                : $"Позиция «{value}» не найдена."
+            : $"Код «{raw}» не найден: это не место хранения, не артикул и не штрих-код позиции.");
+    }
+
+    private async Task<ScanResultDto?> TryResolveAsync(string raw, CancellationToken ct)
+    {
         // Ссылка с нашей наклейки: …/l/<код места> или …/i/<артикул>.
         if (LabelLinks.TryParse(raw, out var kind, out var value))
-        {
-            var found = kind == ScanKind.Location
-                ? await FindLocationAsync(value, ct)
-                : await FindItemAsync(value, ct);
-            return found ?? throw new NotFoundException(kind == ScanKind.Location
-                ? $"Место хранения «{value}» не найдено (наклейка от удалённого или переименованного места?)."
-                : $"Позиция «{value}» не найдена.");
-        }
+            return kind == ScanKind.Location ? await FindLocationAsync(value, ct) : await FindItemAsync(value, ct);
 
-        return await FindLocationAsync(raw, ct)
-            ?? await FindItemAsync(raw, ct)
-            ?? throw new NotFoundException($"Код «{raw}» не найден: это не место хранения, не артикул и не штрих-код позиции.");
+        return await FindLocationAsync(raw, ct) ?? await FindItemAsync(raw, ct);
     }
 
     private async Task<ScanResultDto?> FindLocationAsync(string code, CancellationToken ct)
@@ -71,25 +77,42 @@ public static class LabelLinks
 
     public static string ForItem(string? baseUrl, string sku) => Build(baseUrl, ItemPath, sku);
 
-    /// <summary>Без адреса приложения в QR — только сам код (его распознаёт сканер внутри приложения).</summary>
+    /// <summary>
+    /// Без адреса приложения — только путь «/l/%D0%A1%D0%9A1-A-01»: его распознаёт сканер в приложении.
+    /// Кириллица кодируется, поэтому в QR только латиница — её «напечатает» любой ручной сканер.
+    /// </summary>
     private static string Build(string? baseUrl, string path, string code) =>
-        string.IsNullOrWhiteSpace(baseUrl) ? code : $"{baseUrl.Trim().TrimEnd('/')}{path}{Uri.EscapeDataString(code)}";
+        $"{(string.IsNullOrWhiteSpace(baseUrl) ? "" : baseUrl.Trim().TrimEnd('/'))}{path}{Uri.EscapeDataString(code)}";
 
     /// <summary>Разбирает ссылку с наклейки (адрес сервера не важен — мог смениться).</summary>
     public static bool TryParse(string text, out ScanKind kind, out string code)
     {
         kind = default;
         code = "";
-        if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+
+        string path;
+        if (text.StartsWith('/'))
+            path = text.Split('?', '#')[0]; // путь без адреса сервера
+        else if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            path = uri.AbsolutePath;
+        else
             return false;
 
-        var path = uri.AbsolutePath;
         foreach (var (prefix, k) in new[] { (LocationPath, ScanKind.Location), (ItemPath, ScanKind.Item) })
         {
-            var at = path.LastIndexOf(prefix, StringComparison.Ordinal);
+            // Сканер с включённым Caps Lock может прислать «/L/» — регистр пути не важен.
+            var at = path.LastIndexOf(prefix, StringComparison.OrdinalIgnoreCase);
             if (at < 0)
                 continue;
-            var value = Uri.UnescapeDataString(path[(at + prefix.Length)..]).Trim();
+            string value;
+            try
+            {
+                value = Uri.UnescapeDataString(path[(at + prefix.Length)..]).Trim();
+            }
+            catch (UriFormatException)
+            {
+                continue;
+            }
             if (value.Length == 0 || value.Contains('/'))
                 continue;
             kind = k;

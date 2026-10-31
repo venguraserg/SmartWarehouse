@@ -3,6 +3,8 @@
 @inject ApiClient Api
 @inject BrowserStore Store
 @inject NavigationManager Nav
+@inject ScannerHub Scanner
+@implements IDisposable
 
 <PageTitle>@Title — склад</PageTitle>
 
@@ -113,6 +115,14 @@ else
         </div>
 
         <h2>Строки</h2>
+        <p class="scan-hint">
+            📷 Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству),
+            QR ячейки — @ScanLocationHint.
+        </p>
+        @if (scanInfo is not null)
+        {
+            <div class="alert alert-success" role="status">@scanInfo</div>
+        }
 
         <datalist id="items-list">
             @foreach (var label in ItemChoices)
@@ -386,6 +396,8 @@ else
         custody = new();
         error = null;
         showErrors = false;
+        scannedLocationId = null;
+        scanInfo = null;
 
         if (type is null)
             return;
@@ -644,8 +656,177 @@ else
         }
     }
 
+    // ---------- Ручной сканер ----------
+
+    private IDisposable? scanSubscription;
+    private string? scanInfo;
+
+    /// <summary>Последняя отсканированная ячейка — подставляется в новые строки.</summary>
+    private int? scannedLocationId;
+
+    protected override void OnInitialized() => scanSubscription = Scanner.Subscribe(OnScanAsync);
+
+    public void Dispose() => scanSubscription?.Dispose();
+
+    private string ScanLocationHint => type switch
+    {
+        MovementType.Receipt or MovementType.Return => "куда положить (для текущей и следующих строк)",
+        MovementType.Issue => "откуда взять",
+        MovementType.Transfer => "сначала откуда, затем куда",
+        MovementType.Adjustment => "место корректировки",
+        _ => "место"
+    };
+
+    /// <summary>Код со сканера на странице документа: позиция — строка, ячейка — место в строке.</summary>
+    private async Task<bool> OnScanAsync(string code)
+    {
+        if (type is null || !loaded)
+            return false;
+
+        ScanResultDto found;
+        try
+        {
+            found = await Api.ScanAsync(code);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            scanInfo = null;
+            error = ex.Message;
+            StateHasChanged();
+            return true;
+        }
+
+        error = null;
+        if (found.Kind == ScanKind.Item)
+            await AddScannedItemAsync(found);
+        else
+            ApplyScannedLocation(found);
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task AddScannedItemAsync(ScanResultDto found)
+    {
+        var entry = itemsByLabel.FirstOrDefault(kv => kv.Value.Id == found.Id);
+        if (entry.Value is null)
+        {
+            error = $"Позиция {found.Code} неактивна — операции с ней запрещены.";
+            return;
+        }
+        var item = entry.Value;
+
+        if (FromEmployee)
+        {
+            if (accountableId is null)
+            {
+                error = "Сначала выберите сотрудника.";
+                return;
+            }
+            if (!custody.ContainsKey(item.Id))
+            {
+                error = $"За сотрудником не числится {item.Sku} · {item.Name}.";
+                return;
+            }
+        }
+
+        // Повторный скан — +1 к строке с этой позицией.
+        var existing = lines.LastOrDefault(l => l.Item?.Id == item.Id);
+        if (existing is not null)
+        {
+            existing.Quantity += 1;
+            scanInfo = $"{item.Sku} · {item.Name}: {Ui.Qty(existing.Quantity)} {item.UnitCode}";
+            return;
+        }
+
+        var line = lines.FirstOrDefault(l => l.Item is null && string.IsNullOrWhiteSpace(l.ItemText));
+        if (line is null)
+        {
+            line = new LineModel { Direction = lines.LastOrDefault()?.Direction ?? "plus" };
+            lines.Add(line);
+        }
+        line.ItemText = entry.Key;
+        await OnItemChangedAsync(line);
+        line.Quantity = 1; // сканер считает поштучно
+
+        // Ранее отсканированная ячейка — в новую строку.
+        if (scannedLocationId is int locationId)
+        {
+            if (NeedsTo(line) && type != MovementType.Transfer && leaves.Any(l => l.Id == locationId))
+                line.ToId = locationId;
+            else if (NeedsFrom(line) && line.Available.Any(a => a.LocationId == locationId))
+            {
+                line.FromId = locationId;
+                line.FromScanned = true;
+            }
+        }
+
+        scanInfo = $"Добавлено: {item.Sku} · {item.Name}";
+    }
+
+    private void ApplyScannedLocation(ScanResultDto found)
+    {
+        var leaf = leaves.FirstOrDefault(l => l.Id == found.Id);
+        if (leaf is null)
+        {
+            error = $"{found.Code} содержит вложенные места — отсканируйте конкретную ячейку.";
+            return;
+        }
+
+        var line = lines.LastOrDefault(l => l.Item is not null);
+        var here = line?.Available.FirstOrDefault(a => a.LocationId == found.Id);
+
+        if (line is not null && type == MovementType.Transfer)
+        {
+            // Перемещение: ячейка, где позиция лежит, — «откуда» (если ещё не сканировали), иначе — «куда».
+            if (here is not null && !line.FromScanned)
+            {
+                line.FromId = found.Id;
+                line.FromScanned = true;
+                scanInfo = $"Откуда: {found.Code}";
+            }
+            else if (found.Id != line.FromId)
+            {
+                line.ToId = found.Id;
+                scanInfo = $"Куда: {found.Code}";
+            }
+            return;
+        }
+
+        scannedLocationId = found.Id;
+
+        if (line is null)
+        {
+            scanInfo = $"Ячейка {found.Code} — теперь сканируйте позиции.";
+            return;
+        }
+
+        if (NeedsTo(line))
+        {
+            line.ToId = found.Id;
+            scanInfo = $"Куда: {found.Code} (и для следующих строк)";
+        }
+        else if (NeedsFrom(line))
+        {
+            if (here is null)
+            {
+                error = $"В {found.Code} нет «{line.Item!.Name}».";
+                return;
+            }
+            line.FromId = found.Id;
+            line.FromScanned = true;
+            scanInfo = $"Откуда: {found.Code}";
+        }
+        else
+        {
+            scanInfo = $"Ячейка {found.Code}";
+        }
+    }
+
     private sealed class LineModel
     {
+        /// <summary>«Откуда» задано сканированием (для перемещения следующий скан ячейки — «куда»).</summary>
+        public bool FromScanned { get; set; }
+
         public string? ItemText { get; set; }
         public ItemDto? Item { get; set; }
         public decimal Quantity { get; set; } = 1;

@@ -235,3 +235,10 @@ tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; pa
 .scan-list-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .scan-list-name { overflow: hidden; text-overflow: ellipsis; }
 .scan-list-qty { white-space: nowrap; font-size: 1.05rem; }
+
+/* ---------- Ручной сканер ---------- */
+.scan-toast { position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 1000;
+              max-width: min(560px, calc(100vw - 2rem)); padding: .7rem 1rem; border-radius: var(--radius);
+              background: #1f2933; color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.25); cursor: pointer; }
+.scan-toast-error { background: var(--danger); }
+.scan-hint { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--muted); }
