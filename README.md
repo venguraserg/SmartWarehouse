@@ -167,7 +167,12 @@ dotnet ef migrations add InitialCreate -p SmartWarehouse.Infrastructure -s Smart
 
 При первом запуске база и таблицы создадутся автоматически, справочник единиц заполнится.
 
-### 3. Docker (сервер)
+### 3. Сервер на Windows (без Docker)
+
+Отдельный ПК с Windows в сети предприятия: программа работает как службы Windows, PostgreSQL, ежедневные резервные копии.
+Пошаговая инструкция — [deploy/windows/README.md](deploy/windows/README.md).
+
+### 4. Docker (сервер на Linux)
 
 ```bash
 cp .env.example .env      # задайте POSTGRES_PASSWORD и JWT_KEY

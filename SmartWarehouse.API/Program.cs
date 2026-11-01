@@ -13,6 +13,9 @@ using SmartWarehouse.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Запуск как служба Windows (сервер без Docker, см. deploy/windows). В Visual Studio и Docker ничего не меняет.
+builder.Host.UseWindowsService();
+
 // Строка подключения не хранится в репозитории: задаётся через user-secrets (разработка)
 // или переменную окружения ConnectionStrings__Default (сервер, Docker).
 var connectionString = builder.Configuration.GetConnectionString("Default")
