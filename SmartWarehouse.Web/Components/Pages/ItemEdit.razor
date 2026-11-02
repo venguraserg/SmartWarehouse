@@ -78,6 +78,13 @@
             </div>
         </div>
 
+        <div class="field" style="max-width: 420px">
+            <label for="barcode">Штрих-код с упаковки</label>
+            <input id="barcode" type="text" @bind="form.Barcode" maxlength="64" autocomplete="off"
+                   placeholder="Отсканируйте сканером или введите цифры" />
+            <div class="field-hint">Заводской штрих- или QR-код: по нему позиция находится сканированием. Необязательно.</div>
+        </div>
+
         <div class="field">
             <label for="desc">Описание</label>
             <textarea id="desc" @bind="form.Description" maxlength="2000"></textarea>
@@ -148,6 +155,7 @@ else if (error is null)
                 form.MaxStock = item.MaxStock;
                 form.Description = item.Description;
                 form.IsActive = item.IsActive;
+                form.Barcode = item.Barcode;
             }
             else
             {
@@ -197,12 +205,12 @@ else if (error is null)
             if (Id is int id)
             {
                 saved = await Api.UpdateItemAsync(id, new UpdateItemRequest(
-                    form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.IsActive));
+                    form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.IsActive, form.Barcode));
             }
             else
             {
                 saved = await Api.CreateItemAsync(new CreateItemRequest(
-                    form.Sku.Trim(), form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description));
+                    form.Sku.Trim(), form.Name.Trim(), form.CategoryId, form.UnitId, form.MinStock, form.MaxStock, form.Description, form.Barcode));
                 await Store.SetAsync("item.unit", form.UnitId);
                 await Store.SetAsync("item.category", form.CategoryId);
             }
@@ -228,5 +236,6 @@ else if (error is null)
         public decimal? MaxStock { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
+        public string? Barcode { get; set; }
     }
 }

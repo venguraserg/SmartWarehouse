@@ -24,6 +24,12 @@ public class LocationRepository(WarehouseDbContext db) : ILocationRepository
     public Task<StorageLocation?> GetLocationByFullCodeAsync(string fullCode, CancellationToken ct = default) =>
         db.Locations.AsNoTracking().FirstOrDefaultAsync(x => x.FullCode == fullCode, ct);
 
+    public async Task<IReadOnlyList<StorageLocation>> GetLocationsAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default)
+    {
+        var list = ids.ToList();
+        return await db.Locations.AsNoTracking().Include(x => x.Warehouse).Where(x => list.Contains(x.Id)).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<StorageLocation>> ListLocationsAsync(int warehouseId, CancellationToken ct = default) =>
         await db.Locations.AsNoTracking().Where(x => x.WarehouseId == warehouseId).ToListAsync(ct);
 

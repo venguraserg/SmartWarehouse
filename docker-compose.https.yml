@@ -1,0 +1,32 @@
+# HTTPS для телефонов (камера в браузере работает только по https).
+# Запуск вместе с основным файлом:
+#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+# Адрес сервера — в .env: SITE_ADDRESS=sklad.local (или IP: SITE_ADDRESS=192.168.1.10).
+# Caddy выпускает сертификат своим внутренним центром сертификации; его корневой сертификат нужно
+# один раз установить на телефоны — см. README, раздел «HTTPS для телефонов».
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Задайте SITE_ADDRESS в .env (имя или IP сервера)}
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  web:
+    environment:
+      # Веб-приложение за прокси: схема https и адрес клиента берутся из заголовков X-Forwarded-*.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Адрес для ссылок в QR-кодах наклеек.
+      App__PublicUrl: https://${SITE_ADDRESS}
+
+volumes:
+  caddy_data:
+  caddy_config:

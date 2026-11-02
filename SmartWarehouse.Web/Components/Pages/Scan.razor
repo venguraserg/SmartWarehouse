@@ -1,0 +1,172 @@
+@page "/scan"
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Сканирование — склад</PageTitle>
+
+<h1>Сканирование</h1>
+<p class="muted" style="margin-top: -.5rem">
+    QR-наклейка ячейки или позиции, заводской штрих-код на упаковке, код места или артикул.
+</p>
+
+<Alert Error="@error" />
+
+<div class="panel scan-panel">
+    @if (cameraOn)
+    {
+        <div id="scanner" class="scanner"></div>
+        <div class="actions" style="margin-top: .75rem">
+            <button class="btn" type="button" @onclick="StopCameraAsync">Выключить камеру</button>
+        </div>
+    }
+    else
+    {
+        <button class="btn btn-primary btn-big" type="button" @onclick="StartCameraAsync" disabled="@busy">📷 Сканировать камерой</button>
+    }
+
+    @if (cameraHint is not null)
+    {
+        <div class="field-hint" style="margin-top: .75rem">@((MarkupString)cameraHint)</div>
+    }
+
+    <form class="scan-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+        <label for="code">Или введите код (сюда же вводит USB/Bluetooth-сканер)</label>
+        <div class="input-with-btn">
+            <input id="code" type="search" @ref="input" @bind="code" autocomplete="off" autocapitalize="characters"
+                   placeholder="СК1-A-01-03, артикул или штрих-код" />
+            <button class="btn btn-primary" type="submit" disabled="@busy">Найти</button>
+        </div>
+    </form>
+</div>
+
+@code {
+    private ElementReference input;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<Scan>? self;
+
+    private string? code;
+    private bool cameraOn;
+    private bool busy;
+    private string? error;
+    private string? cameraHint;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        // Поле ввода сразу в фокусе — ручной сканер «печатает» код и нажимает Enter.
+        try
+        {
+            await input.FocusAsync();
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/scanner.js");
+            if (!await module.InvokeAsync<bool>("isSecure"))
+            {
+                cameraHint = InsecureHint;
+                StateHasChanged();
+            }
+        }
+        catch (JSException)
+        {
+            // без камеры остаётся ручной ввод
+        }
+    }
+
+    private const string InsecureHint =
+        "Камера внутри приложения работает только при открытии сайта по <b>https</b>. " +
+        "Пока можно сканировать наклейки <b>обычной камерой телефона</b> — откроется нужная страница — " +
+        "или вводить код вручную.";
+
+    private async Task StartCameraAsync()
+    {
+        error = null;
+        if (module is null)
+        {
+            error = "Сканер не загрузился — обновите страницу.";
+            return;
+        }
+
+        busy = true;
+        cameraOn = true;
+        StateHasChanged();          // появляется область для видео
+        await Task.Yield();
+
+        self ??= DotNetObjectReference.Create(this);
+        var status = await module.InvokeAsync<string>("start", "scanner", self);
+        busy = false;
+
+        if (status != "ok")
+        {
+            cameraOn = false;
+            cameraHint = status switch
+            {
+                "insecure" => InsecureHint,
+                "nolib" => "Этот браузер не умеет распознавать коды сам, а библиотеку сканера загрузить не удалось (нет интернета). " +
+                           "Откройте приложение в Chrome или сканируйте обычной камерой телефона.",
+                _ => System.Net.WebUtility.HtmlEncode(status)
+            };
+        }
+    }
+
+    private async Task StopCameraAsync()
+    {
+        cameraOn = false;
+        if (module is not null)
+            await module.InvokeVoidAsync("stop");
+    }
+
+    /// <summary>Вызывается из JS, когда камера распознала код.</summary>
+    [JSInvokable]
+    public async Task OnScanned(string value)
+    {
+        cameraOn = false;
+        code = value;
+        await ResolveAsync(value);
+        StateHasChanged();
+    }
+
+    private Task SubmitAsync() => ResolveAsync(code);
+
+    private async Task ResolveAsync(string? value)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        busy = true;
+        try
+        {
+            var found = await Api.ScanAsync(value);
+            Nav.NavigateTo(found.Kind == ScanKind.Location
+                ? $"/l/{Uri.EscapeDataString(found.Code)}"
+                : $"/items/{found.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (module is not null)
+            {
+                await module.InvokeVoidAsync("stop");
+                await module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // вкладку закрыли — камера остановится вместе с ней
+        }
+        self?.Dispose();
+    }
+}

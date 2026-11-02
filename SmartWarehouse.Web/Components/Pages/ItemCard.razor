@@ -14,7 +14,10 @@
             <span class="tag tag-neutral">неактивна</span>
         }
         <span class="spacer"></span>
-<AuthorizeView Roles="@AppRoles.Warehouse"><a class="btn" href="/items/@item.Id/edit">Изменить</a></AuthorizeView>
+        <AuthorizeView Roles="@AppRoles.Warehouse">
+            <a class="btn" href="/labels.pdf?kind=Item&ids=@item.Id&layout=3x8" target="_blank" rel="noopener" title="Наклейка с QR-кодом позиции">Наклейка QR</a>
+            <a class="btn" href="/items/@item.Id/edit">Изменить</a>
+        </AuthorizeView>
     </div>
 
     <div class="panel">
@@ -47,6 +50,11 @@
             <dl class="props">
                 <dt>Артикул</dt>
                 <dd class="mono">@item.Sku</dd>
+                @if (!string.IsNullOrEmpty(item.Barcode))
+                {
+                    <dt>Штрих-код</dt>
+                    <dd class="mono">@item.Barcode</dd>
+                }
                 <dt>Категория</dt>
                 <dd>@(item.CategoryName ?? "—")</dd>
                 <dt>Единица</dt>

@@ -157,6 +157,9 @@ internal class FakeLocationRepository : ILocationRepository
     public Task<StorageLocation?> GetLocationByFullCodeAsync(string fullCode, CancellationToken ct = default) =>
         Task.FromResult(Locations.FirstOrDefault(x => x.FullCode == fullCode));
 
+    public Task<IReadOnlyList<StorageLocation>> GetLocationsAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<StorageLocation>>(Locations.Where(x => ids.Contains(x.Id)).ToList());
+
     public Task<IReadOnlyList<StorageLocation>> ListLocationsAsync(int warehouseId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<StorageLocation>>(Locations.Where(x => x.WarehouseId == warehouseId).ToList());
 

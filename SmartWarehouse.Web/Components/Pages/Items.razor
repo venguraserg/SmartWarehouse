@@ -10,7 +10,7 @@
 </div>
 
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-    <input type="search" placeholder="Поиск по артикулу или наименованию" @bind="search" style="max-width: 360px" />
+    <input type="search" placeholder="Артикул, наименование или штрих-код" @bind="search" style="max-width: 360px" />
     <select @bind="categoryId" @bind:after="LoadAsync" style="max-width: 240px">
         <option value="">Все категории</option>
         @foreach (var c in categories)

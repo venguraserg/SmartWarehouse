@@ -8,6 +8,12 @@ public class Item
     /// <summary>Артикул / внутренний код. Уникален.</summary>
     public string Sku { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Заводской штрих-код или QR-код с упаковки (EAN-13, Code 128 и т.п.) — для поиска сканированием.
+    /// Уникален, если задан.
+    /// </summary>
+    public string? Barcode { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public int? CategoryId { get; set; }

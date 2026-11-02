@@ -53,6 +53,16 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
     public Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default) =>
         db.Items.AnyAsync(x => x.Sku == sku, ct);
 
+    public Task<bool> BarcodeExistsAsync(string barcode, int? exceptItemId, CancellationToken ct = default) =>
+        db.Items.AnyAsync(x => x.Barcode == barcode && x.Id != exceptItemId, ct);
+
+    public async Task<Item?> FindItemByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var upper = code.ToUpperInvariant();
+        return await db.Items.AsNoTracking().Include(x => x.Unit).FirstOrDefaultAsync(x => x.Sku.ToUpper() == upper, ct)
+            ?? await db.Items.AsNoTracking().Include(x => x.Unit).FirstOrDefaultAsync(x => x.Barcode == code, ct);
+    }
+
     public async Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default)
     {
         var query = db.Items.AsNoTracking().Include(x => x.Category).Include(x => x.Unit).AsQueryable();
@@ -60,7 +70,8 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
         if (!string.IsNullOrEmpty(search))
         {
             var pattern = $"%{search}%";
-            query = query.Where(x => EF.Functions.ILike(x.Name, pattern) || EF.Functions.ILike(x.Sku, pattern));
+            query = query.Where(x => EF.Functions.ILike(x.Name, pattern) || EF.Functions.ILike(x.Sku, pattern)
+                || (x.Barcode != null && x.Barcode == search));
         }
 
         if (categoryId is not null)
