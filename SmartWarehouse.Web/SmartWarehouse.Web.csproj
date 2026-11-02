@@ -10,6 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Запуск как служба Windows (deploy/windows). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Общие DTO и перечисления; к базе данных веб-приложение не обращается, только к API. -->
     <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
   </ItemGroup>
