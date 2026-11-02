@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<ICatalogRepository, CatalogRepository>();
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+        services.AddScoped<IReferenceAdminRepository, ReferenceAdminRepository>();
         services.AddScoped<IWriteOffActRepository, WriteOffActRepository>();
         services.AddSingleton<IActPdfRenderer, ActPdfRenderer>();
         services.AddSingleton<ILabelPdfRenderer, LabelPdfRenderer>();

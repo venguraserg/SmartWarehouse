@@ -112,6 +112,30 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<EquipmentDto> CreateEquipmentAsync(CreateEquipmentRequest request, CancellationToken ct = default) =>
         SendAsync<EquipmentDto>(HttpMethod.Post, "api/equipment", request, ct);
 
+    // ---------- Правка справочников (администратор) ----------
+
+    public Task<ReferenceChangeResult> UpdateWarehouseAsync(int id, UpdateWarehouseRequest request, CancellationToken ct = default) =>
+        SendAsync<ReferenceChangeResult>(HttpMethod.Put, $"api/warehouses/{id}", request, ct);
+
+    public Task<ReferenceChangeResult> UpdateLocationAsync(int id, UpdateLocationRequest request, CancellationToken ct = default) =>
+        SendAsync<ReferenceChangeResult>(HttpMethod.Put, $"api/locations/{id}", request, ct);
+
+    public Task<ReferenceChangeResult> UpdateCategoryAsync(int id, UpdateCategoryRequest request, CancellationToken ct = default) =>
+        SendAsync<ReferenceChangeResult>(HttpMethod.Put, $"api/categories/{id}", request, ct);
+
+    public Task<ReferenceChangeResult> UpdateUnitAsync(int id, UpdateUnitRequest request, CancellationToken ct = default) =>
+        SendAsync<ReferenceChangeResult>(HttpMethod.Put, $"api/units/{id}", request, ct);
+
+    public Task<ReferenceChangeResult> UpdateEquipmentAsync(int id, UpdateEquipmentRequest request, CancellationToken ct = default) =>
+        SendAsync<ReferenceChangeResult>(HttpMethod.Put, $"api/equipment/{id}", request, ct);
+
+    /// <summary>Удаление записи справочника: what — warehouses, locations, categories, units, equipment.</summary>
+    public async Task<ReferenceChangeResult> DeleteReferenceAsync(string what, int id, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Delete, $"api/{what}/{id}", ct);
+        return await ReadAsync<ReferenceChangeResult>(response, ct);
+    }
+
     // ---------- Сотрудники ----------
 
     /// <summary>Все сотрудники, включая неработающих (фильтрация и поиск — на странице).</summary>

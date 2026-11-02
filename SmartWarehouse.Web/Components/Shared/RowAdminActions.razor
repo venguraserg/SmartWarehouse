@@ -1,0 +1,22 @@
+@* Кнопки администратора в строке справочника: изменить / удалить (с подтверждением). *@
+@if (Confirming)
+{
+    <span class="muted" style="font-size: .85rem">@DeleteHint</span>
+    <button class="btn btn-danger btn-sm" type="button" disabled="@Busy" @onclick="OnDelete">Да, удалить</button>
+    <button class="btn btn-sm" type="button" @onclick="OnCancelDelete">Нет</button>
+}
+else
+{
+    <button class="btn btn-sm" type="button" title="Изменить" @onclick="OnEdit">Изменить</button>
+    <button class="btn btn-sm btn-danger" type="button" title="Удалить" @onclick="OnAskDelete">✕</button>
+}
+
+@code {
+    [Parameter] public bool Confirming { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? DeleteHint { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnAskDelete { get; set; }
+    [Parameter] public EventCallback OnCancelDelete { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+}
