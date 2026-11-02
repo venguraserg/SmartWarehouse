@@ -20,12 +20,43 @@
             <button class="btn btn-primary" type="submit" disabled="@(CategoryError is not null || string.IsNullOrWhiteSpace(categoryName) || busy)">Добавить</button>
         </form>
         <FieldError Message="@CategoryError" />
-        <ul style="margin: 1rem 0 0; padding-left: 1.1rem">
-            @foreach (var c in categories)
-            {
-                <li>@c.Name</li>
-            }
-        </ul>
+        <table style="margin-top: 1rem">
+            <tbody>
+                @foreach (var c in categories)
+                {
+                    if (IsEditing("categories", c.Id))
+                    {
+                        <tr>
+                            <td colspan="2">
+                                <div class="inline-form">
+                                    <input type="text" @bind="editName" maxlength="128" aria-label="Название" />
+                                    <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editName))"
+                                            @onclick="() => SaveAsync(() => Api.UpdateCategoryAsync(c.Id, new UpdateCategoryRequest(editName!, c.Description)))">Сохранить</button>
+                                    <button class="btn btn-sm" type="button" @onclick="CancelEdit">Отмена</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td>@c.Name</td>
+                            <td class="row-actions">
+                                @if (isAdmin)
+                                {
+                                    <RowAdminActions Confirming="@IsConfirming("categories", c.Id)" Busy="busy"
+                                                     DeleteHint="Позиции останутся — без категории."
+                                                     OnEdit='() => StartEdit("categories", c.Id, c.Name)'
+                                                     OnAskDelete='() => AskDelete("categories", c.Id)'
+                                                     OnCancelDelete="CancelEdit"
+                                                     OnDelete='() => DeleteAsync("categories", c.Id)' />
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
         @if (categories.Count == 0)
         {
             <p class="muted">Категорий пока нет.</p>
@@ -50,15 +81,42 @@
         <FieldError Message="@UnitCodeError" />
         <div class="field-hint">«Дробная» — можно учитывать 0,5 (метры, литры). Для штук оставьте выключенным.</div>
         <table style="margin-top: 1rem">
-            <thead><tr><th>Обозн.</th><th>Название</th><th>Количество</th></tr></thead>
+            <thead><tr><th>Обозн.</th><th>Название</th><th>Количество</th><th></th></tr></thead>
             <tbody>
                 @foreach (var u in units)
                 {
-                    <tr>
-                        <td>@u.Code</td>
-                        <td>@u.Name</td>
-                        <td class="muted">@(u.IsFractional ? "дробное" : "целое")</td>
-                    </tr>
+                    if (IsEditing("units", u.Id))
+                    {
+                        <tr>
+                            <td><input type="text" @bind="editCode" maxlength="16" aria-label="Обозначение" style="max-width: 80px" /></td>
+                            <td><input type="text" @bind="editName" maxlength="64" aria-label="Название" /></td>
+                            <td><label class="checkbox"><input type="checkbox" @bind="editFractional" /> дробное</label></td>
+                            <td class="row-actions">
+                                <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editCode) || string.IsNullOrWhiteSpace(editName))"
+                                        @onclick="() => SaveAsync(() => Api.UpdateUnitAsync(u.Id, new UpdateUnitRequest(editCode!, editName!, editFractional)))">Сохранить</button>
+                                <button class="btn btn-sm" type="button" @onclick="CancelEdit">Отмена</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td>@u.Code</td>
+                            <td>@u.Name</td>
+                            <td class="muted">@(u.IsFractional ? "дробное" : "целое")</td>
+                            <td class="row-actions">
+                                @if (isAdmin)
+                                {
+                                    <RowAdminActions Confirming="@IsConfirming("units", u.Id)" Busy="busy"
+                                                     DeleteHint="Только если не указана ни у одной позиции."
+                                                     OnEdit='() => StartEdit("units", u.Id, u.Name, u.Code, fractional: u.IsFractional)'
+                                                     OnAskDelete='() => AskDelete("units", u.Id)'
+                                                     OnCancelDelete="CancelEdit"
+                                                     OnDelete='() => DeleteAsync("units", u.Id)' />
+                                }
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -94,14 +152,58 @@
 
     <div class="table-wrap" style="margin-top: 1rem">
         <table>
-            <thead><tr><th>Код</th><th>Наименование</th></tr></thead>
+            <thead><tr><th>Код</th><th>Наименование</th><th></th></tr></thead>
             <tbody>
                 @foreach (var e in equipmentTree)
                 {
-                    <tr>
-                        <td class="mono" style="@Indent(e.Depth)">@e.Item.Code</td>
-                        <td>@e.Item.Name</td>
-                    </tr>
+                    if (IsEditing("equipment", e.Item.Id))
+                    {
+                        <tr>
+                            <td colspan="3">
+                                <div class="inline-form">
+                                    <div class="field">
+                                        <label>Входит в</label>
+                                        <select @bind="editParentId">
+                                            <option value="">— верхний уровень —</option>
+                                            @foreach (var p in EquipmentParentChoices(e.Item.Id))
+                                            {
+                                                <option value="@p.Item.Id">@(new string('\u00A0', p.Depth * 3))@p.Item.Code — @p.Item.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="field" style="max-width: 160px">
+                                        <label>Код</label>
+                                        <input type="text" @bind="editCode" maxlength="64" />
+                                    </div>
+                                    <div class="field">
+                                        <label>Наименование</label>
+                                        <input type="text" @bind="editName" maxlength="256" />
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editCode) || string.IsNullOrWhiteSpace(editName))"
+                                            @onclick="() => SaveAsync(() => Api.UpdateEquipmentAsync(e.Item.Id, new UpdateEquipmentRequest(editParentId, editCode!, editName!)))">Сохранить</button>
+                                    <button class="btn btn-sm" type="button" @onclick="CancelEdit">Отмена</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td class="mono" style="@Indent(e.Depth)">@e.Item.Code</td>
+                            <td>@e.Item.Name</td>
+                            <td class="row-actions">
+                                @if (isAdmin)
+                                {
+                                    <RowAdminActions Confirming="@IsConfirming("equipment", e.Item.Id)" Busy="busy"
+                                                     DeleteHint="Только если не указано в документах и актах и в него ничего не входит."
+                                                     OnEdit='() => StartEdit("equipment", e.Item.Id, e.Item.Name, e.Item.Code, parentId: e.Item.ParentId)'
+                                                     OnAskDelete='() => AskDelete("equipment", e.Item.Id)'
+                                                     OnCancelDelete="CancelEdit"
+                                                     OnDelete='() => DeleteAsync("equipment", e.Item.Id)' />
+                                }
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -113,6 +215,82 @@
 </section>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool isAdmin;
+
+    // ---------- Правка строки (администратор) ----------
+
+    private string? editKind;
+    private int editId;
+    private bool confirming;
+    private string? editName;
+    private string? editCode;
+    private bool editFractional;
+    private int? editParentId;
+
+    private bool IsEditing(string kind, int id) => editKind == kind && editId == id && !confirming;
+
+    private bool IsConfirming(string kind, int id) => editKind == kind && editId == id && confirming;
+
+    private void StartEdit(string kind, int id, string name, string? code = null, bool fractional = false, int? parentId = null)
+    {
+        error = success = null;
+        editKind = kind;
+        editId = id;
+        confirming = false;
+        editName = name;
+        editCode = code;
+        editFractional = fractional;
+        editParentId = parentId;
+    }
+
+    private void AskDelete(string kind, int id)
+    {
+        error = success = null;
+        editKind = kind;
+        editId = id;
+        confirming = true;
+    }
+
+    private void CancelEdit()
+    {
+        editKind = null;
+        confirming = false;
+    }
+
+    /// <summary>Куда можно перенести оборудование: не в себя и не в свои узлы.</summary>
+    private IEnumerable<(EquipmentDto Item, int Depth)> EquipmentParentChoices(int id)
+    {
+        var excluded = new HashSet<int> { id };
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var e in equipment.Where(e => e.ParentId is int p && excluded.Contains(p)))
+                changed |= excluded.Add(e.Id);
+        } while (changed);
+        return equipmentTree.Where(x => !excluded.Contains(x.Item.Id));
+    }
+
+    private Task SaveAsync(Func<Task<ReferenceChangeResult>> save) => RunAsync(async () =>
+    {
+        success = (await save()).Message;
+        CancelEdit();
+    });
+
+    private Task DeleteAsync(string what, int id) => RunAsync(async () =>
+    {
+        try
+        {
+            success = (await Api.DeleteReferenceAsync(what, id)).Message;
+        }
+        finally
+        {
+            CancelEdit();
+        }
+    });
+
     private List<CategoryDto> categories = [];
     private List<UnitDto> units = [];
     private List<EquipmentDto> equipment = [];
@@ -156,7 +334,12 @@
 
     // ---------- Загрузка ----------
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+            isAdmin = (await AuthState).User.IsInRole(AppRoles.Admin);
+        await LoadAsync();
+    }
 
     private static string Indent(int depth) =>
         FormattableString.Invariant($"padding-left: {0.75 + depth * 1.25}rem");

@@ -430,5 +430,5 @@ public record UpdateUnitRequest(string Code, string Name, bool IsFractional);
 public record UpdateEquipmentRequest(int? ParentId, string Code, string Name);
 
 /// <summary>Итог правки: что изменилось и что из этого следует (например, перепечатать наклейки).</summary>
-/// <param name="ChangedCodes">Места, у которых изменился полный код (их QR-наклейки нужно перепечатать).</param>
+/// <param name="ChangedLocationIds">Места, у которых изменился полный код (их QR-наклейки нужно перепечатать).</param>
 public record ReferenceChangeResult(string Message, IReadOnlyList<int>? ChangedLocationIds = null);
