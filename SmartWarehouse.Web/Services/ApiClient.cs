@@ -184,9 +184,9 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default) =>
         SendAsync<ItemDto>(HttpMethod.Put, $"api/items/{id}", request, ct);
 
-    /// <summary>Следующий свободный артикул вида «ЗЧ-000001».</summary>
-    public async Task<string> GetNextSkuAsync(CancellationToken ct = default) =>
-        (await GetAsync<NextSkuBody>("api/items/next-sku", ct)).Sku;
+    /// <summary>Следующий свободный артикул: SP-000001 или с префиксом категории.</summary>
+    public async Task<string> GetNextSkuAsync(int? categoryId = null, CancellationToken ct = default) =>
+        (await GetAsync<NextSkuBody>($"api/items/next-sku{(categoryId is int id ? $"?categoryId={id}" : "")}", ct)).Sku;
 
     public Task<List<StockBalanceDto>> GetBalancesAsync(int itemId, CancellationToken ct = default) =>
         GetAsync<List<StockBalanceDto>>($"api/items/{itemId}/balances", ct);

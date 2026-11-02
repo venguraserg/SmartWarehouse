@@ -9,6 +9,9 @@ public class Category
     public string Name { get; set; } = string.Empty;
 
     public string? Description { get; set; }
+
+    /// <summary>Префикс автоартикула позиций категории — английское сокращение (BRG — подшипники). Пусто — общий SP.</summary>
+    public string? SkuPrefix { get; set; }
 }
 
 /// <summary>Единица измерения.</summary>

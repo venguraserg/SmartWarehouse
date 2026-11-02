@@ -14,7 +14,7 @@ public class LocationServiceTests
 
     public LocationServiceTests() => _service = new LocationService(_repo);
 
-    private async Task<int> WarehouseAsync(string code = "ск1") =>
+    private async Task<int> WarehouseAsync(string code = "wh1") =>
         (await _service.CreateWarehouseAsync(new CreateWarehouseRequest(code, "Склад запчастей", null))).Id;
 
     private Task<LocationDto> AddAsync(int warehouseId, int? parentId, LocationType type, string code) =>
@@ -28,8 +28,8 @@ public class LocationServiceTests
         var shelf = await AddAsync(wh, rack.Id, LocationType.Shelf, "01");
         var cell = await AddAsync(wh, shelf.Id, LocationType.Cell, "03");
 
-        Assert.Equal("СК1-A", rack.FullCode);
-        Assert.Equal("СК1-A-01-03", cell.FullCode);
+        Assert.Equal("WH1-A", rack.FullCode);
+        Assert.Equal("WH1-A-01-03", cell.FullCode);
         Assert.Equal(shelf.Id, cell.ParentId);
     }
 
@@ -40,7 +40,7 @@ public class LocationServiceTests
         var rack = await AddAsync(wh, null, LocationType.Rack, "B");
         var cell = await AddAsync(wh, rack.Id, LocationType.Cell, "1");
 
-        Assert.Equal("СК1-B-1", cell.FullCode);
+        Assert.Equal("WH1-B-1", cell.FullCode);
     }
 
     [Theory]
@@ -77,8 +77,8 @@ public class LocationServiceTests
     [Fact]
     public async Task Родитель_с_другого_склада_запрещён()
     {
-        var wh1 = await WarehouseAsync("СК1");
-        var wh2 = await WarehouseAsync("СК2");
+        var wh1 = await WarehouseAsync("WH1");
+        var wh2 = await WarehouseAsync("WH2");
         var rack = await AddAsync(wh1, null, LocationType.Rack, "A");
 
         await Assert.ThrowsAsync<DomainException>(() => AddAsync(wh2, rack.Id, LocationType.Shelf, "01"));
@@ -99,9 +99,16 @@ public class LocationServiceTests
     [Fact]
     public async Task Дубликат_кода_склада_запрещён()
     {
-        await WarehouseAsync("СК1");
+        await WarehouseAsync("WH1");
 
-        await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("ск1"));
+        await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("wh1"));
+    }
+
+    [Fact]
+    public async Task Код_склада_только_латиницей()
+    {
+        var ex = await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("СК1"));
+        Assert.Contains("латинские", ex.Message);
     }
 
     [Fact]
@@ -115,7 +122,7 @@ public class LocationServiceTests
 
         var root = Assert.Single(await _service.GetLocationTreeAsync(wh));
         var shelfNode = Assert.Single(root.Children);
-        Assert.Equal(new[] { "СК1-A-01-01", "СК1-A-01-02" }, shelfNode.Children.Select(c => c.FullCode));
+        Assert.Equal(new[] { "WH1-A-01-01", "WH1-A-01-02" }, shelfNode.Children.Select(c => c.FullCode));
     }
 
     [Fact]
@@ -127,7 +134,7 @@ public class LocationServiceTests
         var found = await _service.GetByCodeAsync(" ск1-a ");
         Assert.Equal(rack.Id, found.Id);
 
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetByCodeAsync("СК1-Z"));
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.GetByCodeAsync("WH1-Z"));
     }
 }
 

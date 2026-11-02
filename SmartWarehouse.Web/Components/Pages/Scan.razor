@@ -34,8 +34,8 @@
     <form class="scan-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
         <label for="code">Или введите код (сюда же вводит USB/Bluetooth-сканер)</label>
         <div class="input-with-btn">
-            <input id="code" type="search" @ref="input" @bind="code" autocomplete="off" autocapitalize="characters"
-                   placeholder="СК1-A-01-03, артикул или штрих-код" />
+            <input id="code" type="search" @ref="input" @bind="code" autocomplete="off" autocapitalize="characters" data-latin
+                   placeholder="WH1-A-01-03, артикул или штрих-код" />
             <button class="btn btn-primary" type="submit" disabled="@busy">Найти</button>
         </div>
     </form>

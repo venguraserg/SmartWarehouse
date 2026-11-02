@@ -20,14 +20,14 @@ public class ScanAndLabelTests
 
     public ScanAndLabelTests()
     {
-        var warehouse = new Warehouse { Id = 1, Code = "СК1", Name = "Склад запчастей" };
+        var warehouse = new Warehouse { Id = 1, Code = "WH1", Name = "Склад запчастей" };
         _locations.Warehouses.Add(warehouse);
-        _locations.Locations.Add(new StorageLocation { Id = 10, WarehouseId = 1, Warehouse = warehouse, Type = LocationType.Rack, Code = "A", FullCode = "СК1-A" });
-        _locations.Locations.Add(new StorageLocation { Id = 11, WarehouseId = 1, Warehouse = warehouse, ParentId = 10, Type = LocationType.Cell, Code = "01", FullCode = "СК1-A-01", Name = "Подшипники" });
+        _locations.Locations.Add(new StorageLocation { Id = 10, WarehouseId = 1, Warehouse = warehouse, Type = LocationType.Rack, Code = "A", FullCode = "WH1-A" });
+        _locations.Locations.Add(new StorageLocation { Id = 11, WarehouseId = 1, Warehouse = warehouse, ParentId = 10, Type = LocationType.Cell, Code = "01", FullCode = "WH1-A-01", Name = "Подшипники" });
 
         var pcs = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" };
         _catalog.Units.Add(pcs);
-        var bearing = new Item { Id = 5, Sku = "ЗЧ-000005", Name = "Подшипник 6205-2RS", UnitId = 1, Unit = pcs, Barcode = "4607001234567" };
+        var bearing = new Item { Id = 5, Sku = "SP-000005", Name = "Подшипник 6205-2RS", UnitId = 1, Unit = pcs, Barcode = "4607001234567" };
         _catalog.Items.Add(bearing);
         _stock.Items.Add(bearing);
 
@@ -39,7 +39,8 @@ public class ScanAndLabelTests
     // ---------- Распознавание кода ----------
 
     [Theory]
-    [InlineData("СК1-A-01")]
+    [InlineData("WH1-A-01")]
+    [InlineData("СК1-A-01")]                                   // старое написание (до перевода в латиницу)
     [InlineData(" ск1-a-01 ")]
     [InlineData("http://192.168.1.10:8081/l/%D0%A1%D0%9A1-A-01")]
     [InlineData("https://sklad.local/l/СК1-A-01")]
@@ -49,11 +50,12 @@ public class ScanAndLabelTests
 
         Assert.Equal(ScanKind.Location, found.Kind);
         Assert.Equal(11, found.Id);
-        Assert.Equal("СК1-A-01", found.Code);
+        Assert.Equal("WH1-A-01", found.Code);
     }
 
     [Theory]
-    [InlineData("ЗЧ-000005")]
+    [InlineData("SP-000005")]
+    [InlineData("ЗЧ-000005")]                                  // старый артикул
     [InlineData("зч-000005")]
     [InlineData("4607001234567")]
     [InlineData("http://sklad:8081/i/%D0%97%D0%A7-000005")]
@@ -94,7 +96,18 @@ public class ScanAndLabelTests
         Assert.False(LabelLinks.TryParse("СК1-A-01", out _, out _));
     }
 
-    // ---------- Короткие коды наклеек (без ссылки) ----------
+    // ---------- Латиница в кодах ----------
+
+    [Theory]
+    [InlineData("СК1-A-01", "WH1-A-01")]
+    [InlineData("ск2-Б-03", "WH2-B-03")]
+    [InlineData("ЗЧ-000005", "SP-000005")]
+    [InlineData("ЖУК-Щ1", "ZHUK-SHCH1")]
+    [InlineData("A-01", "A-01")]
+    public void Старые_коды_переводятся_в_латиницу(string code, string expected) =>
+        Assert.Equal(expected, Transliteration.ToLatin(code).ToUpperInvariant());
+
+    // ---------- Первые наклейки с короткими кодами SWL / SWI ----------
 
     [Theory]
     [InlineData("SWL-11")]
@@ -107,7 +120,7 @@ public class ScanAndLabelTests
 
         Assert.Equal(ScanKind.Location, found.Kind);
         Assert.Equal(11, found.Id);
-        Assert.Equal("СК1-A-01", found.Code);
+        Assert.Equal("WH1-A-01", found.Code);
     }
 
     [Fact]
@@ -132,8 +145,8 @@ public class ScanAndLabelTests
         await labels.RenderAsync(new LabelRequest(LabelKind.Location, [11], null, BaseUrl: "http://sklad:8081"));
         await labels.RenderAsync(new LabelRequest(LabelKind.Item, [5], null, BaseUrl: "http://sklad:8081"));
 
-        Assert.Equal(["SWL-11", "SWI-5"], _captured.Labels.Select(l => l.Payload));
-        Assert.Equal("СК1-A-01", _captured.Labels[0].Code); // крупная подпись — как раньше
+        Assert.Equal(["WH1-A-01", "SP-000005"], _captured.Labels.Select(l => l.Payload));
+        Assert.Equal("WH1-A-01", _captured.Labels[0].Code); // крупная подпись — как раньше
         Assert.All(_captured.Labels, l => Assert.True(l.Payload.All(char.IsAscii)));
     }
 
@@ -148,8 +161,8 @@ public class ScanAndLabelTests
         await _settings.SaveLabelSettingsAsync(new LabelSettingsDto(QrContent.Link, " http://192.168.1.10:8081/ "), "Админ");
         await labels.RenderAsync(new LabelRequest(LabelKind.Item, [5], null, BaseUrl: "http://site:8081"));
 
-        Assert.Equal("http://site:8081/l/%D0%A1%D0%9A1-A-01", _captured.Labels[0].Payload);
-        Assert.Equal("http://192.168.1.10:8081/i/%D0%97%D0%A7-000005", _captured.Labels[1].Payload);
+        Assert.Equal("http://site:8081/l/WH1-A-01", _captured.Labels[0].Payload);
+        Assert.Equal("http://192.168.1.10:8081/i/SP-000005", _captured.Labels[1].Payload);
     }
 
     // ---------- Наклейки ----------

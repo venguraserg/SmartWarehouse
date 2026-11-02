@@ -22,12 +22,15 @@
                 @if (IsNew)
                 {
                     <div class="input-with-btn">
-                        <input id="sku" type="text" @bind="form.Sku" @bind:event="oninput" maxlength="64"
-                               class="@(SkuError is not null ? "invalid" : null)" />
+                        <input id="sku" type="text" @bind="form.Sku" @bind:event="oninput" maxlength="64" data-latin="upper"
+                               class="@(SkuError is not null ? "invalid" : null)" autocomplete="off" spellcheck="false" />
                         <button class="btn btn-sm" type="button" title="Подставить следующий свободный номер" @onclick="SuggestSkuAsync">↻</button>
                     </div>
                     <FieldError Message="@SkuError" />
-                    <div class="field-hint">Предложен следующий свободный номер. Можно заменить на артикул производителя.</div>
+                    <div class="field-hint">
+                        Предложен следующий свободный номер (префикс — от категории, иначе SP). Можно заменить на артикул
+                        производителя. Только латиница, цифры и «- . _ /» — русские буквы заменяются автоматически.
+                    </div>
                 }
                 else
                 {
@@ -54,11 +57,11 @@
 
         <div class="field">
             <label for="category">Категория</label>
-            <select id="category" @bind="form.CategoryId">
+            <select id="category" @bind="form.CategoryId" @bind:after="OnCategoryChangedAsync">
                 <option value="">— без категории —</option>
                 @foreach (var c in categories)
                 {
-                    <option value="@c.Id">@c.Name</option>
+                    <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
                 }
             </select>
         </div>
@@ -82,7 +85,7 @@
 
         <div class="field" style="max-width: 420px">
             <label for="barcode">Штрих-код с упаковки</label>
-            <input id="barcode" type="text" @bind="form.Barcode" maxlength="64" autocomplete="off"
+            <input id="barcode" type="text" @bind="form.Barcode" maxlength="64" autocomplete="off" data-latin spellcheck="false"
                    placeholder="Отсканируйте сканером или введите цифры" />
             <div class="field-hint">
                 Заводской штрих- или QR-код: по нему позиция находится сканированием. Необязательно.
@@ -178,8 +181,6 @@ else if (error is null)
             else
             {
                 // Предзаполнение: свободный артикул, единица и категория — как в прошлый раз.
-                form.Sku = await Api.GetNextSkuAsync();
-
                 var lastUnit = await Store.GetIntAsync("item.unit");
                 form.UnitId = units.Any(u => u.Id == lastUnit)
                     ? lastUnit!.Value
@@ -187,6 +188,8 @@ else if (error is null)
 
                 var lastCategory = await Store.GetIntAsync("item.category");
                 form.CategoryId = categories.Any(c => c.Id == lastCategory) ? lastCategory : null;
+
+                form.Sku = suggestedSku = await Api.GetNextSkuAsync(form.CategoryId);
             }
 
             loaded = true;
@@ -197,11 +200,20 @@ else if (error is null)
         }
     }
 
+    /// <summary>Последний предложенный артикул: если его не меняли, при смене категории подставляется новый.</summary>
+    private string? suggestedSku;
+
+    private async Task OnCategoryChangedAsync()
+    {
+        if (IsNew && (string.IsNullOrWhiteSpace(form.Sku) || form.Sku == suggestedSku))
+            await SuggestSkuAsync();
+    }
+
     private async Task SuggestSkuAsync()
     {
         try
         {
-            form.Sku = await Api.GetNextSkuAsync();
+            form.Sku = suggestedSku = await Api.GetNextSkuAsync(form.CategoryId);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

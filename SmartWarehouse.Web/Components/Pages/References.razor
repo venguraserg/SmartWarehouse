@@ -17,9 +17,17 @@
                 <input id="cat-name" type="text" @bind="categoryName" @bind:event="oninput" maxlength="128" placeholder="Подшипники"
                        class="@(CategoryError is not null ? "invalid" : null)" />
             </div>
+            <div class="field" style="max-width: 140px">
+                <label for="cat-prefix">Префикс артикула</label>
+                <input id="cat-prefix" type="text" @bind="categoryPrefix" maxlength="6" placeholder="BRG" data-latin="upper" autocomplete="off" />
+            </div>
             <button class="btn btn-primary" type="submit" disabled="@(CategoryError is not null || string.IsNullOrWhiteSpace(categoryName) || busy)">Добавить</button>
         </form>
         <FieldError Message="@CategoryError" />
+        <div class="field-hint">
+            Префикс — английское сокращение для автоартикула позиций категории: BRG-000001 (bearings — подшипники),
+            BLT- (belts — ремни). Латинские буквы, до 6. Пусто — общий SP- (spare part).
+        </div>
         <table style="margin-top: 1rem">
             <tbody>
                 @foreach (var c in categories)
@@ -27,11 +35,12 @@
                     if (IsEditing("categories", c.Id))
                     {
                         <tr>
-                            <td colspan="2">
+                            <td colspan="3">
                                 <div class="inline-form">
                                     <input type="text" @bind="editName" maxlength="128" aria-label="Название" />
+                                    <input type="text" @bind="editCode" maxlength="6" aria-label="Префикс артикула" placeholder="префикс" data-latin="upper" style="max-width: 100px" />
                                     <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editName))"
-                                            @onclick="() => SaveAsync(() => Api.UpdateCategoryAsync(c.Id, new UpdateCategoryRequest(editName!, c.Description)))">Сохранить</button>
+                                            @onclick="() => SaveAsync(() => Api.UpdateCategoryAsync(c.Id, new UpdateCategoryRequest(editName!, c.Description, editCode)))">Сохранить</button>
                                     <button class="btn btn-sm" type="button" @onclick="CancelEdit">Отмена</button>
                                 </div>
                             </td>
@@ -41,12 +50,13 @@
                     {
                         <tr>
                             <td>@c.Name</td>
+                            <td class="mono muted">@(c.SkuPrefix is null ? "" : $"{c.SkuPrefix}-")</td>
                             <td class="row-actions">
                                 @if (isAdmin)
                                 {
                                     <RowAdminActions Confirming="@IsConfirming("categories", c.Id)" Busy="busy"
                                                      DeleteHint="Позиции останутся — без категории."
-                                                     OnEdit='() => StartEdit("categories", c.Id, c.Name)'
+                                                     OnEdit='() => StartEdit("categories", c.Id, c.Name, c.SkuPrefix)'
                                                      OnAskDelete='() => AskDelete("categories", c.Id)'
                                                      OnCancelDelete="CancelEdit"
                                                      OnDelete='() => DeleteAsync("categories", c.Id)' />
@@ -296,6 +306,7 @@
     private List<(EquipmentDto Item, int Depth)> equipmentTree = [];
 
     private string? categoryName;
+    private string? categoryPrefix;
     private string? unitCode;
     private string? unitName;
     private bool unitFractional;
@@ -371,9 +382,10 @@
     private Task AddCategoryAsync() => RunAsync(async () =>
     {
         var name = categoryName!.Trim();
-        await Api.CreateCategoryAsync(new CreateCategoryRequest(name, null));
+        await Api.CreateCategoryAsync(new CreateCategoryRequest(name, null, categoryPrefix));
         success = $"Категория «{name}» добавлена.";
         categoryName = null;
+        categoryPrefix = null;
     });
 
     private Task AddUnitAsync() => RunAsync(async () =>

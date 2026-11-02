@@ -98,6 +98,10 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("SkuPrefix")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")

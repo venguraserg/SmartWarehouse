@@ -4,9 +4,10 @@ namespace SmartWarehouse.Application.DTOs;
 
 // ---------- Справочники ----------
 
-public record CreateCategoryRequest(string Name, string? Description);
+public record CreateCategoryRequest(string Name, string? Description, string? SkuPrefix = null);
 
-public record CategoryDto(int Id, string Name, string? Description);
+/// <param name="SkuPrefix">Префикс автоартикула (BRG); null — общий SP.</param>
+public record CategoryDto(int Id, string Name, string? Description, string? SkuPrefix = null);
 
 public record CreateUnitRequest(string Code, string Name, bool IsFractional);
 
@@ -449,7 +450,7 @@ public record LabelLayoutDto(string Id, string Title, int Columns, int Rows, dou
 /// <summary>Что зашивается в QR-код наклейки.</summary>
 public enum QrContent
 {
-    /// <summary>Короткий код (SWL-15, SWI-7): его понимают ручной сканер и сканер в приложении.</summary>
+    /// <summary>Сам код места хранения или артикул (WH1-A-01, SP-000012) — как напечатан на наклейке.</summary>
     Code,
 
     /// <summary>Ссылка на страницу приложения: открывается и обычной камерой телефона.</summary>
@@ -489,7 +490,7 @@ public record UpdateWarehouseRequest(string Code, string Name, string? Descripti
 /// <summary>Изменение места хранения: код, название, тип и куда вложено (ParentId = null — верхний уровень склада).</summary>
 public record UpdateLocationRequest(int? ParentId, LocationType Type, string Code, string? Name);
 
-public record UpdateCategoryRequest(string Name, string? Description);
+public record UpdateCategoryRequest(string Name, string? Description, string? SkuPrefix = null);
 
 public record UpdateUnitRequest(string Code, string Name, bool IsFractional);
 

@@ -7,7 +7,8 @@ public class CodesTests
 {
     [Theory]
     [InlineData("a-01", "A01")]
-    [InlineData(" ск 1 ", "СК1")]
+    [InlineData(" ыл 1 ", "SK1")]   // набрано в русской раскладке
+    [InlineData("СК1", "CR1")]       // кириллица — по клавишам, как при английской раскладке
     [InlineData("A.1/2", "A12")]
     [InlineData("", "")]
     [InlineData(null, "")]
@@ -45,8 +46,8 @@ public class CodesTests
     [Fact]
     public void Следующий_код_склада_и_оборудования()
     {
-        Assert.Equal("СК1", Codes.NextWarehouseCode([]));
-        Assert.Equal("СК3", Codes.NextWarehouseCode(["СК1", "СК2", "ОСН"]));
+        Assert.Equal("WH1", Codes.NextWarehouseCode([]));
+        Assert.Equal("WH3", Codes.NextWarehouseCode(["WH1", "WH2", "MAIN"]));
 
         Assert.Equal("УЧ-01", Codes.NextEquipmentCode(null, []));
         Assert.Equal("L1-03", Codes.NextEquipmentCode("L1", ["L1", "L1-01", "L1-02", "УЧ-01"]));

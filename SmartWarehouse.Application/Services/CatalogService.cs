@@ -21,7 +21,7 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         if (await repo.CategoryNameExistsAsync(name, ct))
             throw new DomainException($"Категория «{name}» уже существует.");
 
-        var category = new Category { Name = name, Description = request.Description?.Trim() };
+        var category = new Category { Name = name, Description = request.Description?.Trim(), SkuPrefix = CodeRules.NormalizeSkuPrefix(request.SkuPrefix) };
         repo.AddCategory(category);
         await repo.SaveChangesAsync(ct);
         return ToDto(category);
@@ -52,10 +52,9 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
 
     public async Task<ItemDto> CreateItemAsync(CreateItemRequest request, CancellationToken ct = default)
     {
-        var sku = request.Sku?.Trim();
+        var sku = CodeRules.NormalizeSku(request.Sku);
         var name = request.Name?.Trim();
 
-        if (string.IsNullOrEmpty(sku)) throw new DomainException("Артикул обязателен.");
         if (string.IsNullOrEmpty(name)) throw new DomainException("Наименование обязательно.");
         if (request.MinStock < 0) throw new DomainException("Минимальный остаток не может быть отрицательным.");
         if (request.MaxStock is { } max && max < request.MinStock)
@@ -104,19 +103,25 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         return items.Select(ToDto).ToList();
     }
 
-    /// <summary>Префикс автоматических артикулов (запчасть).</summary>
-    public const string AutoSkuPrefix = "ЗЧ-";
+    /// <summary>Общий префикс автоматических артикулов: SP — spare part (запчасть).</summary>
+    public const string DefaultSkuPrefix = "SP";
 
-    public async Task<string> SuggestSkuAsync(CancellationToken ct = default)
+    /// <summary>Следующий свободный артикул: префикс категории (BRG-000004) или общий (SP-000012).</summary>
+    public async Task<string> SuggestSkuAsync(int? categoryId = null, CancellationToken ct = default)
     {
-        var existing = await repo.ListSkusStartingWithAsync(AutoSkuPrefix, ct);
+        var prefix = DefaultSkuPrefix;
+        if (categoryId is int id && (await repo.ListCategoriesAsync(ct)).FirstOrDefault(c => c.Id == id) is { SkuPrefix: { Length: > 0 } own })
+            prefix = own;
+        prefix += "-";
+
+        var existing = await repo.ListSkusStartingWithAsync(prefix, ct);
 
         var max = existing
-            .Select(s => int.TryParse(s.AsSpan(AutoSkuPrefix.Length), out var n) ? n : 0)
+            .Select(s => int.TryParse(s.AsSpan(prefix.Length), out var n) ? n : 0)
             .DefaultIfEmpty(0)
             .Max();
 
-        return $"{AutoSkuPrefix}{max + 1:D6}";
+        return $"{prefix}{max + 1:D6}";
     }
 
     public async Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default)
@@ -232,12 +237,14 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
             return null;
         if (barcode.Length > MaxBarcodeLength)
             throw new DomainException($"Штрих-код — не длиннее {MaxBarcodeLength} символов.");
+        if (!CodeRules.IsValidBarcode(barcode))
+            throw new DomainException("Штрих-код: только латинские буквы, цифры и знаки, без пробелов и русских букв.");
         if (await repo.BarcodeExistsAsync(barcode, itemId, ct))
             throw new DomainException($"Штрих-код «{barcode}» уже указан у другой позиции.");
         return barcode;
     }
 
-    private static CategoryDto ToDto(Category c) => new(c.Id, c.Name, c.Description);
+    private static CategoryDto ToDto(Category c) => new(c.Id, c.Name, c.Description, c.SkuPrefix);
 
     private static UnitDto ToDto(UnitOfMeasure u) => new(u.Id, u.Code, u.Name, u.IsFractional);
 

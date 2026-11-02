@@ -59,7 +59,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         if ((long)ids.Count * request.Copies > MaxLabels)
             throw new DomainException($"За один раз — не больше {MaxLabels} наклеек.");
 
-        // В QR — короткий код или ссылка (см. настройки). Адрес для ссылок — из настроек, а если не задан — адрес сайта из запроса.
+        // В QR — сам код места / артикул или ссылка (см. настройки). Адрес для ссылок — из настроек, а если не задан — адрес сайта из запроса.
         var options = await settings.GetLabelSettingsAsync(ct);
         var requestUrl = NormalizeBaseUrl(request.BaseUrl);
         var payload = options.QrContent == QrContent.Link
@@ -75,7 +75,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         return (renderer.Render(copies, layout, request.Skip), $"{name}.pdf");
     }
 
-    /// <summary>Как строить ссылку для QR; null — короткий код.</summary>
+    /// <summary>Как строить ссылку для QR; null — сам код.</summary>
     private sealed record Payloads(Func<string, string> Location, Func<string, string> Item);
 
     private async Task<List<LabelData>> LocationLabelsAsync(List<int> ids, Payloads? payload, CancellationToken ct)
@@ -89,7 +89,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         return found.Values
             .OrderBy(l => l.FullCode, StringComparer.Ordinal)
             .Select(l => new LabelData(
-                payload?.Location(l.FullCode) ?? LabelCodes.ForLocation(l.Id),
+                payload?.Location(l.FullCode) ?? l.FullCode,
                 l.FullCode,
                 l.Name,
                 $"{LocationService.TypeName(l.Type)}, склад {l.Warehouse.Code}"))
@@ -105,7 +105,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
 
         return ids
             .Select(id => found[id])
-            .Select(i => new LabelData(payload?.Item(i.Sku) ?? LabelCodes.ForItem(i.Id), i.Sku, i.Name, i.Unit.Code))
+            .Select(i => new LabelData(payload?.Item(i.Sku) ?? i.Sku, i.Sku, i.Name, i.Unit.Code))
             .ToList();
     }
 

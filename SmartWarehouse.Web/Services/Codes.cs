@@ -5,19 +5,23 @@ namespace SmartWarehouse.Web.Services;
 
 /// <summary>
 /// Подготовка кодов складов и мест хранения в форме: те же правила, что проверяет сервер
-/// (только буквы и цифры, верхний регистр, до 16 символов), плюс подбор следующего свободного кода.
+/// (только латинские буквы и цифры, верхний регистр, до 16 символов), плюс подбор следующего свободного кода.
 /// </summary>
 public static class Codes
 {
     public const int MaxLength = 16;
 
-    /// <summary>Приводит ввод к допустимому коду: верхний регистр, без пробелов, дефисов и прочих знаков.</summary>
+    /// <summary>
+    /// Приводит ввод к допустимому коду: русская раскладка — в латинскую по клавишам («ЫЛ1» → «SK1»),
+    /// верхний регистр, без пробелов, дефисов и прочих знаков.
+    /// </summary>
     public static string Normalize(string? input)
     {
         if (string.IsNullOrEmpty(input))
             return string.Empty;
 
-        var chars = input.ToUpperInvariant().Where(char.IsLetterOrDigit).Take(MaxLength).ToArray();
+        var chars = SmartWarehouse.Application.Services.KeyboardLayout.FromRussianLayout(input)
+            .ToUpperInvariant().Where(char.IsAsciiLetterOrDigit).Take(MaxLength).ToArray();
         return new string(chars);
     }
 
@@ -41,9 +45,9 @@ public static class Codes
         return NextNumber(used, minWidth: 2);
     }
 
-    /// <summary>Следующий код склада: СК1, СК2…</summary>
+    /// <summary>Следующий код склада: WH1, WH2… (warehouse).</summary>
     public static string NextWarehouseCode(IEnumerable<string> existingCodes) =>
-        NextWithPrefix("СК", existingCodes, width: 1);
+        NextWithPrefix("WH", existingCodes, width: 1);
 
     /// <summary>Следующий код оборудования: внутри родителя — «код родителя-01», на верхнем уровне — «УЧ-01».</summary>
     public static string NextEquipmentCode(string? parentCode, IEnumerable<string> existingCodes) =>
