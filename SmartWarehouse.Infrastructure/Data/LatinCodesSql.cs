@@ -14,7 +14,8 @@ public static class LatinCodesSql
     public static string Build()
     {
         var wh = ToLatin("\"Code\"");
-        var loc = ToLatin("\"Code\"");
+        // Собственный код места — не начало полного кода (там код склада), поэтому сокращения к нему не применяются.
+        var loc = Letters("\"Code\"");
         var full = ToLatin("\"FullCode\"");
         var sku = ToLatin("\"Sku\"");
 
