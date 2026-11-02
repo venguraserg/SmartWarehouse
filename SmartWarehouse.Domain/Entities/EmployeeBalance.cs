@@ -14,5 +14,10 @@ public class EmployeeBalance
 
     public Item Item { get; set; } = null!;
 
+    /// <summary>Партия: подотчёт тоже ведётся по партиям — списывается то, что взяли.</summary>
+    public int BatchId { get; set; }
+
+    public Batch Batch { get; set; } = null!;
+
     public decimal Quantity { get; set; }
 }

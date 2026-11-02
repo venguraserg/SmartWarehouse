@@ -44,6 +44,10 @@
 
     <div class="page-head" style="margin-top: 1.5rem; margin-bottom: .75rem">
         <h2 style="margin: 0">Числится за сотрудником</h2>
+        @if (ShowValue)
+        {
+            <span class="muted">на сумму @Ui.Value(custody.Any(c => c.Value is not null) ? custody.Sum(c => c.Value ?? 0) : null, custody.Any(c => c.ValueIncomplete))</span>
+        }
         <span class="spacer"></span>
         @if (custody.Count > 0 && (isWarehouse || employee.Id == myEmployeeId))
         {
@@ -69,6 +73,10 @@
                     <th>Артикул</th>
                     <th>Наименование</th>
                     <th class="num">Количество</th>
+                    @if (ShowValue)
+                    {
+                        <th class="num">Стоимость</th>
+                    }
                     <th class="num" title="Сколько дней числится (по самой ранней невозвращённой выдаче)">Числится</th>
                 </tr>
             </thead>
@@ -86,6 +94,10 @@
                                 <div class="line-hint">из них @Ui.Qty(c.Reserved) — в актах на утверждении</div>
                             }
                         </td>
+                        @if (ShowValue)
+                        {
+                            <td class="num">@Ui.Value(c.Value, c.ValueIncomplete)</td>
+                        }
                         <td class="num"><CustodyAge Since="c.HeldSince" /></td>
                     </tr>
                 }
@@ -144,6 +156,8 @@ else if (error is null)
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool isWarehouse;
+
+    private bool ShowValue => custody.Any(c => c.Value is not null || c.ValueIncomplete);
     private int? myEmployeeId;
 
     private EmployeeDto? employee;

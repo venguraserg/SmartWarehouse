@@ -49,9 +49,14 @@ public class StockServiceTests
         new(item, qty, from, to);
 
     // Для выдачи, списания и возврата сразу указываем сотрудника Worker.
+    // Поступление (приход, корректировка «+») требует цену — в тестах по умолчанию 10.
     private static CreateDocumentRequest Doc(MovementType type, params DocumentLineRequest[] lines) =>
-        new(type, null, null, "Тест", type == MovementType.WriteOff ? "Замена при ремонте насоса" : null, lines,
+        new(type, null, null, "Тест", type == MovementType.WriteOff ? "Замена при ремонте насоса" : null,
+            lines.Select(l => IsIncoming(type, l) && l.UnitPrice is null && l.BatchId is null ? l with { UnitPrice = 10 } : l).ToArray(),
             ReceivedById: StockService.UsesAccountable(type) ? Worker : null);
+
+    private static bool IsIncoming(MovementType type, DocumentLineRequest line) =>
+        type == MovementType.Receipt || (type == MovementType.Adjustment && line.ToLocationId is not null && line.FromLocationId is null);
 
     private Task<DocumentDto> Post(MovementType type, params DocumentLineRequest[] lines) =>
         Send(Doc(type, lines));
@@ -71,7 +76,7 @@ public class StockServiceTests
     }
 
     private decimal Balance(int location, int item = Bearing) =>
-        _repo.Balances.FirstOrDefault(b => b.ItemId == item && b.LocationId == location)?.Quantity ?? 0;
+        _repo.Balances.Where(b => b.ItemId == item && b.LocationId == location).Sum(b => b.Quantity);
 
     // ---------- Проведение документов ----------
 
@@ -80,7 +85,7 @@ public class StockServiceTests
     {
         var doc = await _service.PostDocumentAsync(
             new CreateDocumentRequest(MovementType.Receipt, "ТТН 123", null, "Кладовщик", null,
-                [Line(12, to: CellA), Line(4.5m, to: CellB, item: Cable)]));
+                [Line(12, to: CellA) with { UnitPrice = 15.5m }, Line(4.5m, to: CellB, item: Cable) with { UnitPrice = 2.1m }]));
 
         Assert.Equal("ПР-000001", doc.Number);
         Assert.Equal("ТТН 123", doc.ExternalNumber);
@@ -88,6 +93,8 @@ public class StockServiceTests
         Assert.Equal(2, doc.Lines.Count);
         Assert.Equal("СК1-A-01-01", doc.Lines[0].ToLocation);
         Assert.Equal("м", doc.Lines[1].UnitCode);
+        Assert.Equal(15.5m, doc.Lines[0].UnitPrice);
+        Assert.Equal(2, _repo.Batches.Count); // каждая строка прихода — своя партия
 
         Assert.Equal(12, Balance(CellA));
         Assert.Equal(4.5m, Balance(CellB, Cable));
@@ -399,7 +406,7 @@ public class StockServiceTests
     // ---------- Подотчёт: выдача → списание / возврат ----------
 
     private decimal Custody(int employee = Worker, int item = Bearing) =>
-        _repo.EmployeeBalances.FirstOrDefault(b => b.EmployeeId == employee && b.ItemId == item)?.Quantity ?? 0;
+        _repo.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item).Sum(b => b.Quantity);
 
     [Fact]
     public async Task Выдача_переводит_товар_со_склада_за_сотрудника()
@@ -530,7 +537,7 @@ public class StockServiceTests
         _repo.Acts.Add(new WriteOffAct
         {
             Id = 7, EmployeeId = Worker, Status = ActStatus.Pending,
-            Lines = { new WriteOffActLine { ItemId = Bearing, Quantity = 3, Usage = "ремонт" } }
+            Lines = { new WriteOffActLine { ItemId = Bearing, BatchId = 1, Quantity = 3, Usage = "ремонт" } }
         });
 
         var ex = await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.Return, Line(2, to: CellB)));
@@ -539,5 +546,85 @@ public class StockServiceTests
 
         await Post(MovementType.Return, Line(1, to: CellB)); // свободная 1 шт — можно
         Assert.Equal(3, Custody());
+    }
+
+    // ---------- Партии и цены ----------
+
+    [Fact]
+    public async Task Приход_без_цены_не_проводится()
+    {
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(
+            new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(1, to: CellA)])));
+        Assert.Contains("цену", ex.Message);
+        Assert.Empty(_repo.Batches);
+    }
+
+    [Fact]
+    public async Task Выдача_берёт_самую_старую_партию_и_добирает_из_следующей()
+    {
+        await Post(MovementType.Receipt, Line(3, to: CellA) with { UnitPrice = 10 });
+        await Post(MovementType.Receipt, Line(4, to: CellA) with { UnitPrice = 12 });
+
+        var issue = await Post(MovementType.Issue, Line(5, from: CellA));
+
+        // Строка разошлась на две партии: 3 шт по 10 и 2 шт по 12.
+        Assert.Equal(2, issue.Lines.Count);
+        Assert.Equal(3, issue.Lines[0].Quantity);
+        Assert.Equal(10, issue.Lines[0].UnitPrice);
+        Assert.Equal(2, issue.Lines[1].Quantity);
+        Assert.Equal(12, issue.Lines[1].UnitPrice);
+        Assert.Equal(2, Balance(CellA));
+        Assert.Equal(5, Custody());
+    }
+
+    [Fact]
+    public async Task Можно_выбрать_конкретную_партию()
+    {
+        await Post(MovementType.Receipt, Line(3, to: CellA) with { UnitPrice = 10 });
+        await Post(MovementType.Receipt, Line(4, to: CellA) with { UnitPrice = 12 });
+        var newer = _repo.Batches.Single(b => b.UnitPrice == 12).Id;
+
+        var issue = await Post(MovementType.Issue, Line(2, from: CellA) with { BatchId = newer });
+
+        Assert.Equal(12, Assert.Single(issue.Lines).UnitPrice);
+        await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.Issue, Line(3, from: CellA) with { BatchId = newer }));
+    }
+
+    [Fact]
+    public async Task Партия_идёт_за_товаром_до_списания_и_возврата()
+    {
+        await Post(MovementType.Receipt, Line(2, to: CellA) with { UnitPrice = 10 });
+        await Post(MovementType.Receipt, Line(2, to: CellA) with { UnitPrice = 30 });
+        var expensive = _repo.Batches.Single(b => b.UnitPrice == 30).Id;
+        await Post(MovementType.Issue, Line(1, from: CellA) with { BatchId = expensive }, Line(1, from: CellA));
+
+        // Списывается то, что взяли: дорогая партия — по её цене.
+        var writeOff = await Post(MovementType.WriteOff, Line(1) with { BatchId = expensive });
+        Assert.Equal(30, Assert.Single(writeOff.Lines).UnitPrice);
+
+        // Возврат — оставшаяся у сотрудника партия по 10 возвращается в ячейку как партия по 10.
+        var back = await Post(MovementType.Return, Line(1, to: CellB));
+        Assert.Equal(10, Assert.Single(back.Lines).UnitPrice);
+        Assert.Equal(0, Custody());
+    }
+
+    [Fact]
+    public async Task Стоимость_остатков_по_партиям_и_цена_партии_администратором()
+    {
+        await Post(MovementType.Receipt, Line(3, to: CellA) with { UnitPrice = 10 });
+        await Post(MovementType.Receipt, Line(1, to: CellA) with { UnitPrice = 2.5m });
+
+        var row = Assert.Single((await _service.SearchStockAsync(new StockQuery())).Rows);
+        Assert.Equal(4, row.Quantity);
+        Assert.Equal(32.5m, row.Value);
+        Assert.False(row.ValueIncomplete);
+
+        var batch = _repo.Batches.First();
+        await _service.SetBatchPriceAsync(batch.Id, 11);
+        Assert.Equal(11, batch.UnitPrice);
+        await Assert.ThrowsAsync<DomainException>(() => _service.SetBatchPriceAsync(batch.Id, -1));
+
+        var batches = await _service.GetBatchesAsync(Bearing, CellA, null);
+        Assert.Equal(new[] { 11m, 2.5m }, batches.Select(b => b.UnitPrice!.Value).ToArray());
     }
 }

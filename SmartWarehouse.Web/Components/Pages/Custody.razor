@@ -47,6 +47,10 @@ else
                     <th>Артикул</th>
                     <th>Наименование</th>
                     <th class="num">Количество</th>
+                    @if (ShowValue)
+                    {
+                        <th class="num">Стоимость</th>
+                    }
                     <th class="num" title="Сколько дней числится (по самой ранней невозвращённой выдаче)">Числится</th>
                 </tr>
             </thead>
@@ -55,12 +59,16 @@ else
                 {
                     var first = group.First();
                     <tr class="group-row">
-                        <td colspan="5">
+                        <td colspan="@(ShowValue ? 6 : 5)">
                             <div class="toolbar" style="margin: 0">
                                 <a href="/employees/@first.EmployeeId">@first.EmployeeName</a>
                                 @if (!string.IsNullOrEmpty(first.Position))
                                 {
                                     <span class="muted">· @first.Position</span>
+                                }
+                                @if (ShowValue)
+                                {
+                                    <span class="muted">· на @Ui.Value(group.Any(r => r.Value is not null) ? group.Sum(r => r.Value ?? 0) : null, group.Any(r => r.ValueIncomplete))</span>
                                 }
                                 @if (!first.EmployeeIsActive)
                                 {
@@ -90,6 +98,10 @@ else
                                     <div class="line-hint">из них @Ui.Qty(r.Reserved) — в актах на утверждении</div>
                                 }
                             </td>
+                            @if (ShowValue)
+                            {
+                                <td class="num">@Ui.Value(r.Value, r.ValueIncomplete)</td>
+                            }
                             <td class="num"><CustodyAge Since="r.HeldSince" /></td>
                         </tr>
                     }
@@ -103,6 +115,9 @@ else
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool isWarehouse;
+
+    /// <summary>Стоимость отдаётся API только тем, кому её можно видеть.</summary>
+    private bool ShowValue => rows?.Any(r => r.Value is not null || r.ValueIncomplete) == true;
     private int? myEmployeeId;
     private List<CustodyRowDto>? rows;
     private string? search;

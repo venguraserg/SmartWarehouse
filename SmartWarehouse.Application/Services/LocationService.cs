@@ -110,9 +110,16 @@ public class LocationService(ILocationRepository repo) : ILocationService
             throw new NotFoundException($"Место хранения {locationId} не найдено.");
 
         var balances = await repo.GetLocationContentAsync(locationId, ct);
+        // Позиция может лежать в месте несколькими партиями — показываем одной строкой с суммой.
         return balances
-            .Select(b => new LocationContentDto(b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code, b.Quantity,
-                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds()))
+            .GroupBy(b => b.ItemId)
+            .Select(g =>
+            {
+                var b = g.First();
+                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, x.Batch?.UnitPrice)));
+                return new LocationContentDto(b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code, g.Sum(x => x.Quantity),
+                    b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), value, incomplete);
+            })
             .OrderBy(x => x.Name)
             .ToList();
     }

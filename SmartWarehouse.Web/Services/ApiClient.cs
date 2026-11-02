@@ -167,6 +167,21 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<List<StockBalanceDto>> GetBalancesAsync(int itemId, CancellationToken ct = default) =>
         GetAsync<List<StockBalanceDto>>($"api/items/{itemId}/balances", ct);
 
+    /// <summary>Партии позиции с остатком: в месте, у сотрудника или всего.</summary>
+    public Task<List<BatchStockDto>> GetBatchesAsync(int itemId, int? locationId = null, int? employeeId = null, CancellationToken ct = default)
+    {
+        var query = locationId is int l ? $"?locationId={l}" : employeeId is int e ? $"?employeeId={e}" : "";
+        return GetAsync<List<BatchStockDto>>($"api/items/{itemId}/batches{query}", ct);
+    }
+
+    /// <summary>Цена партии (администратор).</summary>
+    public async Task SetBatchPriceAsync(int batchId, decimal unitPrice, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Put, $"api/batches/{batchId}/price", ct,
+            JsonContent.Create(new SetBatchPriceRequest(unitPrice), options: Json));
+        await EnsureSuccessAsync(response, ct);
+    }
+
     public Task<List<MovementDto>> GetMovementsAsync(int itemId, int take = 100, CancellationToken ct = default) =>
         GetAsync<List<MovementDto>>($"api/items/{itemId}/movements?take={take}", ct);
 

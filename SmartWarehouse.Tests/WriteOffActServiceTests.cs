@@ -62,13 +62,13 @@ public class WriteOffActServiceTests
     private async Task GiveAsync(int employee, int item, decimal qty)
     {
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
-            MovementType.Receipt, null, null, null, null, [new DocumentLineRequest(item, qty, null, Cell)]));
+            MovementType.Receipt, null, null, null, null, [new DocumentLineRequest(item, qty, null, Cell, UnitPrice: 10)]));
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
             MovementType.Issue, null, null, null, null, [new DocumentLineRequest(item, qty, Cell, null)], ReceivedById: employee));
     }
 
     private decimal Custody(int employee, int item = Bearing) =>
-        _stock.EmployeeBalances.FirstOrDefault(b => b.EmployeeId == employee && b.ItemId == item)?.Quantity ?? 0;
+        _stock.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item).Sum(b => b.Quantity);
 
     private static SaveActRequest Request(int employee, params ActLineRequest[] lines) =>
         new(employee, null, null, "Наряд 15", null, lines);
@@ -365,6 +365,7 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
         {
             line.Item = stock.Items.First(i => i.Id == line.ItemId);
             line.Equipment = stock.Equipment.FirstOrDefault(e => e.Id == line.EquipmentId);
+            line.Batch = stock.Batches.FirstOrDefault(b => b.Id == line.BatchId);
         }
     }
 }

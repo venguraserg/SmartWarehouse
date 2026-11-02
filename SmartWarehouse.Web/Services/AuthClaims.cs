@@ -66,6 +66,10 @@ public static class AuthClaims
     public static bool MustChangePasswordOf(this ClaimsPrincipal user) =>
         user.FindFirstValue(MustChangePassword) == "true";
 
+    /// <summary>Цены и суммы видят все, кроме рядовых сотрудников.</summary>
+    public static bool SeesPrices(this ClaimsPrincipal user) =>
+        user.IsInRole(AppRoles.Manager) || user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin);
+
     public static bool IsWarehouseStaff(this ClaimsPrincipal user) =>
         user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin);
 }

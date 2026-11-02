@@ -1,0 +1,37 @@
+# Временный: генерация миграции AddBatches средствами .NET SDK в GitHub Actions
+# (запускается коммитом с пометкой [gen-migration] в ветке feature/batch-prices). Будет удалён.
+name: Генерация миграции
+
+on:
+  push:
+    branches: [feature/batch-prices]
+
+permissions:
+  contents: write
+
+jobs:
+  migration:
+    if: contains(github.event.head_commit.message, '[gen-migration]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/batch-prices
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 10.0.0
+
+      - name: Миграция
+        run: dotnet ef migrations add AddBatches -p SmartWarehouse.Infrastructure -s SmartWarehouse.API -o Data/Migrations
+
+      - name: Коммит
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SmartWarehouse.Infrastructure/Data/Migrations
+          git commit -m "Миграция AddBatches (сгенерирована в CI)"
+          git push

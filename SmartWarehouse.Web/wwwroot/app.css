@@ -192,6 +192,7 @@ tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; pa
 .lines td { vertical-align: top; }
 .lines input, .lines select { min-width: 90px; }
 .line-hint { font-size: .78rem; color: var(--muted); margin-top: .2rem; }
+.batch-select { margin-top: .3rem; font-size: .8rem; padding: .2rem .35rem; } /* партия в строке акта */
 
 /* ===== Ошибка соединения Blazor ===== */
 #blazor-error-ui {

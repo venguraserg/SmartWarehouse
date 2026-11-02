@@ -84,6 +84,11 @@ public class WriteOffActLine
 
     public Item Item { get; set; } = null!;
 
+    /// <summary>Партия из подотчёта сотрудника, которая списывается (резервируется на утверждении).</summary>
+    public int? BatchId { get; set; }
+
+    public Batch? Batch { get; set; }
+
     public decimal Quantity { get; set; }
 
     /// <summary>Оборудование, на которое установлено / по которому израсходовано.</summary>

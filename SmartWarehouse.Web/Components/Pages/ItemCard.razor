@@ -85,13 +85,17 @@
             <h2 style="margin-top: 0">Остатки по местам</h2>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Место</th><th class="num">Количество</th></tr></thead>
+                    <thead><tr><th>Место</th><th class="num">Количество</th>@if (seesPrices){<th class="num">Стоимость</th>}</tr></thead>
                     <tbody>
                         @foreach (var b in balances)
                         {
                             <tr>
                                 <td class="mono"><a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@b.LocationCode</a></td>
                                 <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
+                                @if (seesPrices)
+                                {
+                                    <td class="num">@Ui.Value(b.Value, b.ValueIncomplete)</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -105,13 +109,17 @@
             <h2>За сотрудниками (подотчёт)</h2>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Сотрудник</th><th class="num">Количество</th></tr></thead>
+                    <thead><tr><th>Сотрудник</th><th class="num">Количество</th>@if (seesPrices){<th class="num">Стоимость</th>}</tr></thead>
                     <tbody>
                         @foreach (var c in custody)
                         {
                             <tr>
                                 <td><a href="/employees/@c.EmployeeId">@c.EmployeeName</a></td>
                                 <td class="num">@Ui.Qty(c.Quantity) @item.UnitCode</td>
+                                @if (seesPrices)
+                                {
+                                    <td class="num">@Ui.Value(c.Value, c.ValueIncomplete)</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -121,6 +129,61 @@
                     <div class="empty">Ни за кем не числится.</div>
                 }
             </div>
+        </div>
+
+            @if (seesPrices)
+            {
+                <h2>Партии</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Поступила</th><th>Документ</th><th class="num">Цена</th><th class="num">Остаток</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var b in batches)
+                            {
+                                <tr>
+                                    <td>@Ui.Day(b.ReceivedAt)@(string.IsNullOrEmpty(b.Note) ? "" : $" · {b.Note}")</td>
+                                    <td class="mono">
+                                        @if (b.DocumentId is long documentId)
+                                        {
+                                            <a href="/documents/@documentId">@b.DocumentNumber</a>
+                                        }
+                                    </td>
+                                    <td class="num">
+                                        @if (priceFor == b.BatchId)
+                                        {
+                                            <input type="number" min="0" step="0.01" @bind="newPrice" style="max-width: 110px" aria-label="Цена" />
+                                        }
+                                        else
+                                        {
+                                            @(b.UnitPrice is decimal p ? Ui.Price(p) : "без цены")
+                                        }
+                                    </td>
+                                    <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
+                                    <td class="row-actions">
+                                        @if (isAdmin)
+                                        {
+                                            if (priceFor == b.BatchId)
+                                            {
+                                                <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || newPrice is null || newPrice < 0)" @onclick="() => SavePriceAsync(b.BatchId)">Сохранить</button>
+                                                <button class="btn btn-sm" type="button" @onclick="() => priceFor = null">Отмена</button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm" type="button" @onclick="() => { priceFor = b.BatchId; newPrice = b.UnitPrice; }">@(b.UnitPrice is null ? "Указать цену" : "Цена")</button>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (batches.Count == 0)
+                    {
+                        <div class="empty">Партий с остатком нет.</div>
+                    }
+                </div>
+                <div class="field-hint">Остаток партии — на складе и у сотрудников вместе. Цену партии может исправить администратор.</div>
+            }
         </div>
 
         <div>
@@ -173,12 +236,52 @@ else if (error is null)
 
     private decimal Total => balances.Sum(b => b.Quantity);
 
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool seesPrices;
+    private bool isAdmin;
+    private List<BatchStockDto> batches = [];
+    private int? priceFor;
+    private decimal? newPrice;
+
+    private async Task SavePriceAsync(int batchId)
+    {
+        if (newPrice is not decimal price) return;
+        busy = true;
+        error = success = null;
+        try
+        {
+            await Api.SetBatchPriceAsync(batchId, price);
+            priceFor = null;
+            success = "Цена партии сохранена.";
+            batches = await Api.GetBatchesAsync(Id);
+            balances = await Api.GetBalancesAsync(Id);
+            custody = await Api.GetCustodyAsync(itemId: Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         try
         {
+            if (AuthState is not null)
+            {
+                var user = (await AuthState).User;
+                seesPrices = user.SeesPrices();
+                isAdmin = user.IsInRole(AppRoles.Admin);
+            }
             item = await Api.GetItemAsync(Id);
             balances = await Api.GetBalancesAsync(Id);
+            if (seesPrices)
+                batches = await Api.GetBatchesAsync(Id);
             movements = await Api.GetMovementsAsync(Id, 50);
             custody = await Api.GetCustodyAsync(itemId: Id);
         }

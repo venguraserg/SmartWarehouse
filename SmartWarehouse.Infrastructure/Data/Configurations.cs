@@ -103,8 +103,10 @@ internal class StockBalanceConfiguration : IEntityTypeConfiguration<StockBalance
     public void Configure(EntityTypeBuilder<StockBalance> b)
     {
         b.ToTable("stock_balances", t => t.HasCheckConstraint("ck_stock_balances_quantity_nonnegative", "\"Quantity\" >= 0"));
-        b.HasKey(x => new { x.ItemId, x.LocationId });
+        b.HasKey(x => new { x.ItemId, x.LocationId, x.BatchId });
         b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
+        b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.BatchId);
 
         b.HasOne(x => x.Item).WithMany(x => x.Balances).HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Location).WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Restrict);
@@ -113,6 +115,20 @@ internal class StockBalanceConfiguration : IEntityTypeConfiguration<StockBalance
         // Npgsql отображает uint-свойство с IsRowVersion() на системный столбец PostgreSQL xmin
         // (миграция отдельный столбец не создаёт).
         b.Property<uint>("Version").IsRowVersion();
+    }
+}
+
+internal class BatchConfiguration : IEntityTypeConfiguration<Batch>
+{
+    public void Configure(EntityTypeBuilder<Batch> b)
+    {
+        b.ToTable("batches", t => t.HasCheckConstraint("ck_batches_price_nonnegative", "\"UnitPrice\" IS NULL OR \"UnitPrice\" >= 0"));
+        // Цена — до десятитысячных (метры, литры по копеечной цене); суммы округляются при показе.
+        b.Property(x => x.UnitPrice).HasPrecision(18, 4);
+        b.Property(x => x.Note).HasMaxLength(256);
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.ReceiptDocument).WithMany().HasForeignKey(x => x.ReceiptDocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.ItemId, x.ReceivedAt });
     }
 }
 
@@ -147,6 +163,8 @@ internal class StockMovementConfiguration : IEntityTypeConfiguration<StockMoveme
         b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
 
         b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.BatchId);
         b.HasOne(x => x.FromLocation).WithMany().HasForeignKey(x => x.FromLocationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.ToLocation).WithMany().HasForeignKey(x => x.ToLocationId).OnDelete(DeleteBehavior.Restrict);
 
@@ -185,7 +203,9 @@ internal class EmployeeBalanceConfiguration : IEntityTypeConfiguration<EmployeeB
     public void Configure(EntityTypeBuilder<EmployeeBalance> b)
     {
         b.ToTable("employee_balances", t => t.HasCheckConstraint("ck_employee_balances_quantity_nonnegative", "\"Quantity\" >= 0"));
-        b.HasKey(x => new { x.EmployeeId, x.ItemId });
+        b.HasKey(x => new { x.EmployeeId, x.ItemId, x.BatchId });
+        b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.BatchId);
         b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
         b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
@@ -262,6 +282,7 @@ internal class WriteOffActLineConfiguration : IEntityTypeConfiguration<WriteOffA
         b.ToTable("write_off_act_lines", t => t.HasCheckConstraint("ck_write_off_act_lines_quantity_positive", "\"Quantity\" > 0"));
         b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
         b.Property(x => x.Usage).HasMaxLength(500);
+        b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Equipment).WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ActId, x.LineNo }).IsUnique();

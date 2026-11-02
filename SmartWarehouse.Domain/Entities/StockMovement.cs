@@ -27,6 +27,11 @@ public class StockMovement
 
     public Item Item { get; set; } = null!;
 
+    /// <summary>Партия, которая двигалась (её цена — цена строки).</summary>
+    public int BatchId { get; set; }
+
+    public Batch Batch { get; set; } = null!;
+
     /// <summary>Откуда убыло (выдача, списание, перемещение, отрицательная корректировка).</summary>
     public int? FromLocationId { get; set; }
 

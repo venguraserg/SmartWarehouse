@@ -133,6 +133,11 @@
                     <th>Артикул</th>
                     <th>Наименование</th>
                     <th class="num">Количество</th>
+                    @if (ShowPrices)
+                    {
+                        <th class="num">Цена</th>
+                        <th class="num">Сумма</th>
+                    }
                     <th>Куда использовано</th>
                     <th>Дата</th>
                 </tr>
@@ -144,7 +149,18 @@
                         <td class="num">@l.LineNo</td>
                         <td class="mono"><a href="/items/@l.ItemId">@l.Sku</a></td>
                         <td>@l.ItemName</td>
-                        <td class="num">@Ui.Qty(l.Quantity) @l.UnitCode</td>
+                        <td class="num">
+                            @Ui.Qty(l.Quantity) @l.UnitCode
+                            @if (l.BatchDate is { } batchDate)
+                            {
+                                <div class="line-hint">партия от @Ui.Day(batchDate)</div>
+                            }
+                        </td>
+                        @if (ShowPrices)
+                        {
+                            <td class="num">@(l.UnitPrice is decimal p ? Ui.Price(p) : "—")</td>
+                            <td class="num">@(l.UnitPrice is decimal q ? Ui.Money(decimal.Round(l.Quantity * q, 2, MidpointRounding.AwayFromZero)) : "—")</td>
+                        }
                         <td>
                             @if (l.Equipment is not null)
                             {
@@ -161,6 +177,10 @@
             </tbody>
         </table>
     </div>
+    @if (ShowPrices)
+    {
+        <p style="text-align: right"><strong>Итого: @Ui.Money(ActTotal)</strong>@(act.Lines.Any(l => l.UnitPrice is null) ? " (без строк, у партий которых цена не указана)" : "")</p>
+    }
 }
 else if (error is null)
 {
@@ -173,6 +193,12 @@ else if (error is null)
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private ActDto? act;
+
+    private bool ShowPrices => act?.Lines.Any(l => l.UnitPrice is not null) == true;
+
+    private decimal ActTotal => act?.Lines
+        .Where(l => l.UnitPrice is not null)
+        .Sum(l => decimal.Round(l.Quantity * l.UnitPrice!.Value, 2, MidpointRounding.AwayFromZero)) ?? 0;
     private int? myEmployeeId;
     private string? remark;
     private bool busy;

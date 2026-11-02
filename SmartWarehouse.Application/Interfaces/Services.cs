@@ -17,6 +17,12 @@ public interface IStockService
 
     Task<IReadOnlyList<StockBalanceDto>> GetBalancesAsync(int itemId, CancellationToken ct = default);
 
+    /// <summary>Партии позиции с остатком: в месте (locationId), у сотрудника (employeeId) или всего.</summary>
+    Task<IReadOnlyList<BatchStockDto>> GetBatchesAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
+
+    /// <summary>Цена партии — администратор (для остатков «без цены» или исправления).</summary>
+    Task SetBatchPriceAsync(int batchId, decimal unitPrice, CancellationToken ct = default);
+
     Task<IReadOnlyList<MovementDto>> GetMovementsAsync(int itemId, int take = 100, CancellationToken ct = default);
 
     /// <summary>Что лежит на складе по факту: остатки по местам с фильтрами.</summary>

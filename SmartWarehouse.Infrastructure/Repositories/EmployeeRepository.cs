@@ -66,6 +66,7 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
             .AsNoTracking()
             .Include(x => x.Employee)
             .Include(x => x.Item).ThenInclude(i => i.Unit)
+            .Include(x => x.Batch)
             .Where(x => x.Quantity > 0);
 
         if (employeeId is not null)

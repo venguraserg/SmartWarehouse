@@ -43,6 +43,7 @@ public class LocationRepository(WarehouseDbContext db) : ILocationRepository
         await db.Balances
             .AsNoTracking()
             .Include(x => x.Item).ThenInclude(i => i.Unit)
+            .Include(x => x.Batch)
             .Where(x => x.LocationId == locationId && x.Quantity > 0)
             .ToListAsync(ct);
 

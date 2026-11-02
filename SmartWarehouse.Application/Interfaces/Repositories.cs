@@ -6,6 +6,9 @@ namespace SmartWarehouse.Application.Interfaces;
 /// <summary>Позиция номенклатуры с суммарным остатком по всем местам.</summary>
 public record ItemStock(Item Item, decimal Total);
 
+/// <summary>Партия и сколько её в выбранном месте / у сотрудника / всего.</summary>
+public record BatchStock(Batch Batch, decimal Quantity, string? DocumentNumber);
+
 /// <summary>Шапка документа с числом строк — для списков.</summary>
 public record DocumentHeader(StockDocument Document, int LineCount);
 
@@ -43,15 +46,25 @@ public interface IStockRepository
 
     Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default);
 
-    /// <summary>Остаток позиции на месте (отслеживаемая сущность) или null, если записи ещё нет.</summary>
-    Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default);
+    /// <summary>Остатки позиции на месте по партиям (отслеживаемые, с партией), включая нулевые.</summary>
+    Task<IReadOnlyList<StockBalance>> GetLocationBatchesAsync(int itemId, int locationId, CancellationToken ct = default);
 
     void AddBalance(StockBalance balance);
 
-    /// <summary>Сколько позиции числится за сотрудником (отслеживаемая сущность) или null.</summary>
-    Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default);
+    /// <summary>Что числится за сотрудником по позиции — по партиям (отслеживаемые, с партией), включая нулевые.</summary>
+    Task<IReadOnlyList<EmployeeBalance>> GetEmployeeBatchesAsync(int itemId, int employeeId, CancellationToken ct = default);
 
     void AddEmployeeBalance(EmployeeBalance balance);
+
+    Task<Batch?> GetBatchAsync(int id, CancellationToken ct = default);
+
+    void AddBatch(Batch batch);
+
+    /// <summary>Зарезервировано актами на утверждении по партиям (кроме акта <paramref name="exceptActId"/>).</summary>
+    Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
+
+    /// <summary>Партии позиции с остатком: в месте, у сотрудника или везде (склад + подотчёт).</summary>
+    Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
 
     /// <summary>
     /// Сколько позиции за сотрудником зарезервировано актами на утверждении

@@ -13,6 +13,7 @@ public class WriteOffActRepository(WarehouseDbContext db) : IWriteOffActReposito
             .Include(x => x.Employee).ThenInclude(e => e.Manager)
             .Include(x => x.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Lines).ThenInclude(l => l.Equipment)
+            .Include(x => x.Lines).ThenInclude(l => l.Batch)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
