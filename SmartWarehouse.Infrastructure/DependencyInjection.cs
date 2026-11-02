@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
@@ -13,7 +14,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
     {
-        services.AddDbContext<WarehouseDbContext>(options => options.UseNpgsql(connectionString));
+        // Миграция актов взята из основной ветки, где она включает и поле «Штрих-код» номенклатуры
+        // (появилось на следующем этапе): колонка в базе есть, модель этого этапа её не использует.
+        services.AddDbContext<WarehouseDbContext>(options => options
+            .UseNpgsql(connectionString)
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
         services.AddScoped<IStockRepository, StockRepository>();
         services.AddScoped<ICatalogRepository, CatalogRepository>();
         services.AddScoped<ILocationRepository, LocationRepository>();
