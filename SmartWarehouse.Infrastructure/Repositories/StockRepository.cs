@@ -38,15 +38,71 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     public Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default) =>
         db.Employees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
 
-    public Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default) =>
-        db.Balances.FirstOrDefaultAsync(x => x.ItemId == itemId && x.LocationId == locationId, ct);
+    public async Task<IReadOnlyList<StockBalance>> GetLocationBatchesAsync(int itemId, int locationId, CancellationToken ct = default) =>
+        await db.Balances.Include(x => x.Batch).Where(x => x.ItemId == itemId && x.LocationId == locationId).ToListAsync(ct);
 
     public void AddBalance(StockBalance balance) => db.Balances.Add(balance);
 
-    public Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default) =>
-        db.EmployeeBalances.FirstOrDefaultAsync(x => x.ItemId == itemId && x.EmployeeId == employeeId, ct);
+    public async Task<IReadOnlyList<EmployeeBalance>> GetEmployeeBatchesAsync(int itemId, int employeeId, CancellationToken ct = default) =>
+        await db.EmployeeBalances.Include(x => x.Batch).Where(x => x.ItemId == itemId && x.EmployeeId == employeeId).ToListAsync(ct);
 
     public void AddEmployeeBalance(EmployeeBalance balance) => db.EmployeeBalances.Add(balance);
+
+    public Task<Batch?> GetBatchAsync(int id, CancellationToken ct = default) =>
+        db.Batches.FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    public void AddBatch(Batch batch) => db.Batches.Add(batch);
+
+    public async Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default)
+    {
+        var rows = await db.WriteOffActLines
+            .Where(l => l.ItemId == itemId
+                && l.BatchId != null
+                && l.Act.EmployeeId == employeeId
+                && l.Act.Status == ActStatus.Pending
+                && (exceptActId == null || l.ActId != exceptActId))
+            .GroupBy(l => l.BatchId!.Value)
+            .Select(g => new { BatchId = g.Key, Quantity = g.Sum(l => l.Quantity) })
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.BatchId, r => r.Quantity);
+    }
+
+    public async Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default)
+    {
+        List<(int BatchId, decimal Quantity)> amounts;
+        if (locationId is int location)
+        {
+            amounts = (await db.Balances.AsNoTracking()
+                    .Where(x => x.ItemId == itemId && x.LocationId == location && x.Quantity > 0)
+                    .Select(x => new { x.BatchId, x.Quantity }).ToListAsync(ct))
+                .Select(x => (x.BatchId, x.Quantity)).ToList();
+        }
+        else if (employeeId is int employee)
+        {
+            amounts = (await db.EmployeeBalances.AsNoTracking()
+                    .Where(x => x.ItemId == itemId && x.EmployeeId == employee && x.Quantity > 0)
+                    .Select(x => new { x.BatchId, x.Quantity }).ToListAsync(ct))
+                .Select(x => (x.BatchId, x.Quantity)).ToList();
+        }
+        else
+        {
+            var stock = await db.Balances.AsNoTracking().Where(x => x.ItemId == itemId && x.Quantity > 0)
+                .Select(x => new { x.BatchId, x.Quantity }).ToListAsync(ct);
+            var custody = await db.EmployeeBalances.AsNoTracking().Where(x => x.ItemId == itemId && x.Quantity > 0)
+                .Select(x => new { x.BatchId, x.Quantity }).ToListAsync(ct);
+            amounts = stock.Concat(custody).Select(x => (x.BatchId, x.Quantity)).ToList();
+        }
+
+        var totals = amounts.GroupBy(a => a.BatchId).ToDictionary(g => g.Key, g => g.Sum(a => a.Quantity));
+        var ids = totals.Keys.ToList();
+        var batches = await db.Batches.AsNoTracking()
+            .Where(x => ids.Contains(x.Id))
+            .Select(x => new { Batch = x, Document = x.ReceiptDocument })
+            .ToListAsync(ct);
+        return batches
+            .Select(b => new BatchStock(b.Batch, totals[b.Batch.Id], b.Document == null ? null : b.Document.Number))
+            .ToList();
+    }
 
     public void AddDocument(StockDocument document) => db.Documents.Add(document);
 
@@ -64,6 +120,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Include(x => x.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Lines).ThenInclude(l => l.FromLocation)
             .Include(x => x.Lines).ThenInclude(l => l.ToLocation)
+            .Include(x => x.Lines).ThenInclude(l => l.Batch)
             .Include(x => x.Act)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -88,6 +145,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         await db.Balances
             .AsNoTracking()
             .Include(x => x.Location)
+            .Include(x => x.Batch)
             .Where(x => x.ItemId == itemId && x.Quantity > 0)
             .OrderBy(x => x.Location.FullCode)
             .ToListAsync(ct);
@@ -98,6 +156,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Include(x => x.Document)
             .Include(x => x.FromLocation)
             .Include(x => x.ToLocation)
+            .Include(x => x.Batch)
             .Where(x => x.ItemId == itemId)
             .OrderByDescending(x => x.OccurredAt)
             .ThenByDescending(x => x.Id)
@@ -111,6 +170,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Include(b => b.Item).ThenInclude(i => i.Unit)
             .Include(b => b.Item).ThenInclude(i => i.Category)
             .Include(b => b.Location).ThenInclude(l => l.Warehouse)
+            .Include(b => b.Batch)
             .Where(b => b.Quantity > 0);
 
         if (filter.WarehouseId is int warehouseId)

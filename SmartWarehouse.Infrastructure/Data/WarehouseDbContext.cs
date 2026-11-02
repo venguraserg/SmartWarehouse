@@ -12,6 +12,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StorageLocation> Locations => Set<StorageLocation>();
     public DbSet<StockBalance> Balances => Set<StockBalance>();
+    public DbSet<Batch> Batches => Set<Batch>();
     public DbSet<StockDocument> Documents => Set<StockDocument>();
     public DbSet<StockMovement> Movements => Set<StockMovement>();
     public DbSet<Equipment> Equipment => Set<Equipment>();

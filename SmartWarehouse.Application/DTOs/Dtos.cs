@@ -111,7 +111,9 @@ public record CustodyRowDto(
     long? ImageVersion,
     decimal Quantity,
     DateTimeOffset? HeldSince = null,
-    decimal Reserved = 0);
+    decimal Reserved = 0,
+    decimal? Value = null,
+    bool ValueIncomplete = false);
 
 // ---------- Учётные записи ----------
 
@@ -184,7 +186,7 @@ public record LocationNodeDto(
     IReadOnlyList<LocationNodeDto> Children);
 
 /// <summary>Что лежит в месте хранения (например, после сканирования QR ячейки).</summary>
-public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity, long? ImageVersion = null);
+public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity, long? ImageVersion = null, decimal? Value = null, bool ValueIncomplete = false);
 
 // ---------- Документы и движения ----------
 
@@ -193,7 +195,9 @@ public record LocationContentDto(int ItemId, string Sku, string Name, string Uni
 /// приход — только To, выдача и списание — только From, перемещение — оба,
 /// корректировка — ровно одно (To увеличивает остаток, From уменьшает).
 /// </summary>
-public record DocumentLineRequest(int ItemId, decimal Quantity, int? FromLocationId, int? ToLocationId);
+/// <param name="BatchId">Партия: откуда взять (иначе — самая старая) или к какой добавить при корректировке «+».</param>
+/// <param name="UnitPrice">Цена за единицу — обязательна для прихода и корректировки «+» без партии (создаётся новая партия).</param>
+public record DocumentLineRequest(int ItemId, decimal Quantity, int? FromLocationId, int? ToLocationId, int? BatchId = null, decimal? UnitPrice = null);
 
 public record CreateDocumentRequest(
     MovementType Type,
@@ -213,7 +217,10 @@ public record DocumentLineDto(
     string UnitCode,
     decimal Quantity,
     string? FromLocation,
-    string? ToLocation);
+    string? ToLocation,
+    int? BatchId = null,
+    decimal? UnitPrice = null,
+    DateTimeOffset? BatchDate = null);
 
 public record DocumentDto(
     long Id,
@@ -253,7 +260,8 @@ public record MovementDto(
     string? ToLocation,
     int? EquipmentId,
     string? PerformedBy,
-    string? ReceivedBy);
+    string? ReceivedBy,
+    decimal? UnitPrice = null);
 
 // ---------- Остатки ----------
 
@@ -287,12 +295,28 @@ public record StockRowDto(
     string? LocationName,
     int WarehouseId,
     string WarehouseCode,
-    decimal Quantity);
+    decimal Quantity,
+    decimal? Value = null,
+    bool ValueIncomplete = false);
 
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
 
-public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity);
+public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false);
+
+/// <summary>Партия позиции и сколько её в выбранном месте (у сотрудника, всего).</summary>
+/// <param name="Reserved">У сотрудника: сколько из этого — в актах на утверждении.</param>
+public record BatchStockDto(
+    int BatchId,
+    DateTimeOffset ReceivedAt,
+    decimal? UnitPrice,
+    decimal Quantity,
+    long? DocumentId,
+    string? DocumentNumber,
+    string? Note,
+    decimal Reserved = 0);
+
+public record SetBatchPriceRequest(decimal UnitPrice);
 
 /// <summary>Позиция, остаток которой ниже минимума.</summary>
 /// <param name="ToOrder">Сколько нужно пополнить, чтобы дойти до максимума (или до минимума, если максимум не задан).</param>
@@ -308,7 +332,8 @@ public record LowStockItemDto(
 // ---------- Акты на списание ----------
 
 /// <summary>Строка акта: что, сколько и куда использовано (оборудование и/или описание).</summary>
-public record ActLineRequest(int ItemId, decimal Quantity, int? EquipmentId, string? Usage, DateOnly? UsedOn = null);
+/// <param name="BatchId">Партия из подотчёта; не указана — самая старая (при нехватке строка делится по партиям).</param>
+public record ActLineRequest(int ItemId, decimal Quantity, int? EquipmentId, string? Usage, DateOnly? UsedOn = null, int? BatchId = null);
 
 /// <summary>Создание или изменение акта (черновика).</summary>
 /// <param name="PeriodFrom">Период сводного акта — необязательно.</param>
@@ -330,7 +355,10 @@ public record ActLineDto(
     int? EquipmentId,
     string? Equipment,
     string? Usage,
-    DateOnly? UsedOn);
+    DateOnly? UsedOn,
+    int? BatchId = null,
+    decimal? UnitPrice = null,
+    DateTimeOffset? BatchDate = null);
 
 /// <summary>Что текущий пользователь может сделать с актом.</summary>
 public record ActPermissions(bool Edit, bool Submit, bool Recall, bool Decide);

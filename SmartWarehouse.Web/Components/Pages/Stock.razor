@@ -80,6 +80,10 @@ else
         <span class="muted">
             Позиций: <strong>@result.Rows.Select(r => r.ItemId).Distinct().Count()</strong> ·
             мест: <strong>@result.Rows.Select(r => r.LocationId).Distinct().Count()</strong>
+            @if (ShowValue)
+            {
+                <span> · стоимость: <strong>@Ui.Value(TotalValue, result.Rows.Any(r => r.ValueIncomplete))</strong></span>
+            }
         </span>
     </div>
 
@@ -105,6 +109,10 @@ else
                         <th>Наименование</th>
                         <th>Категория</th>
                         <th class="num">Количество</th>
+                        @if (ShowValue)
+                        {
+                            <th class="num">Стоимость</th>
+                        }
                     </tr>
                 </thead>
                 <tbody>
@@ -112,7 +120,7 @@ else
                     {
                         var first = group.First();
                         <tr class="group-row">
-                            <td colspan="5">
+                            <td colspan="@(ShowValue ? 6 : 5)">
                                 <a class="mono" href="@StockUrl(location: first.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(first.LocationCode)">@first.LocationCode</a>
                                 @if (!string.IsNullOrEmpty(first.LocationName))
                                 {
@@ -129,6 +137,10 @@ else
                                 <td><a href="/items/@row.ItemId">@row.ItemName</a></td>
                                 <td>@row.CategoryName</td>
                                 <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
+                                @if (ShowValue)
+                                {
+                                    <td class="num">@Ui.Value(row.Value, row.ValueIncomplete)</td>
+                                }
                             </tr>
                         }
                     }
@@ -146,6 +158,10 @@ else
                         <th>Артикул</th>
                         <th>Наименование</th>
                         <th class="num">Всего</th>
+                        @if (ShowValue)
+                        {
+                            <th class="num">Стоимость</th>
+                        }
                         <th>Где лежит</th>
                     </tr>
                 </thead>
@@ -165,6 +181,10 @@ else
                                 }
                             </td>
                             <td class="num"><strong>@Ui.Qty(total) @first.UnitCode</strong></td>
+                            @if (ShowValue)
+                            {
+                                <td class="num">@Ui.Value(group.Any(r => r.Value is not null) ? group.Sum(r => r.Value ?? 0) : null, group.Any(r => r.ValueIncomplete))</td>
+                            }
                             <td>
                                 <div class="chips">
                                     @foreach (var row in group)
@@ -288,18 +308,25 @@ else
 
     private string CsvFileName => $"остатки_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv";
 
+    /// <summary>Стоимость видна тем, кому API её отдаёт (не рядовым сотрудникам).</summary>
+    private bool ShowValue => result?.Rows.Any(r => r.Value is not null || r.ValueIncomplete) == true;
+
+    private decimal? TotalValue =>
+        result?.Rows.Any(r => r.Value is not null) == true ? result.Rows.Sum(r => r.Value ?? 0) : null;
+
     private string CsvHref
     {
         get
         {
             var ru = CultureInfo.GetCultureInfo("ru-RU");
             var sb = new StringBuilder("﻿"); // BOM — чтобы Excel понял кодировку
-            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.");
+            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.;Стоимость");
             foreach (var r in result?.Rows ?? Array.Empty<StockRowDto>())
             {
                 sb.AppendLine(string.Join(';',
                     Csv(r.WarehouseCode), Csv(r.LocationCode), Csv(r.LocationName), Csv(r.Sku), Csv(r.ItemName),
-                    Csv(r.CategoryName), r.Quantity.ToString("0.###", ru), Csv(r.UnitCode)));
+                    Csv(r.CategoryName), r.Quantity.ToString("0.###", ru), Csv(r.UnitCode),
+                    r.Value is decimal v ? v.ToString("0.00", ru) : ""));
             }
             return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
         }

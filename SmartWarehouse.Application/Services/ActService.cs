@@ -12,7 +12,8 @@ public record DocumentPrintOptions(string? Organization);
 
 /// <summary>Строка акта для печати.</summary>
 /// <param name="Usage">Куда использовано: оборудование, описание, дата.</param>
-public record WriteOffActLineData(int LineNo, string Sku, string ItemName, string UnitCode, decimal Quantity, string? Usage);
+/// <param name="UnitPrice">Цена партии; null — не печатается (нет цены или не видно пользователю).</param>
+public record WriteOffActLineData(int LineNo, string Sku, string ItemName, string UnitCode, decimal Quantity, string? Usage, decimal? UnitPrice = null);
 
 /// <summary>Отметка об утверждении акта в программе.</summary>
 public record ActApprovalData(string Name, string? Position, DateTimeOffset At);
@@ -85,7 +86,8 @@ public class ActService(
             act.ExternalNumber,
             act.Comment,
             act.Lines
-                .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, Usage(l)))
+                .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, Usage(l),
+                    actor.SeesPrices ? l.UnitPrice : null))
                 .ToList(),
             act.Status == ActStatus.Approved && act.DecidedBy is not null && act.DecidedAt is { } at
                 ? new ActApprovalData(await DecidedByFullAsync(act, ct), act.DecidedByPosition, at)
@@ -133,7 +135,8 @@ public class ActService(
             doc.ExternalNumber,
             null,
             doc.Lines
-                .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, usage.Length == 0 ? null : usage))
+                .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, usage.Length == 0 ? null : usage,
+                    actor.SeesPrices ? l.UnitPrice : null))
                 .ToList());
 
         return (renderer.RenderWriteOffAct(data), $"Акт_{doc.Number}.pdf");

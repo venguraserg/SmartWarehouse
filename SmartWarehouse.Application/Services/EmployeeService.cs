@@ -71,13 +71,22 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
             .GroupBy(r => (r.EmployeeId, r.ItemId))
             .ToDictionary(g => g.Key, g => g.Sum(r => r.Quantity));
 
+        // Подотчёт ведётся по партиям — показываем одной строкой «сотрудник × позиция» с суммой.
         return balances
-            .Select(b => new CustodyRowDto(
-                b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
-                b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
-                b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), b.Quantity,
-                HeldSince(b.Quantity, issuesByKey[(b.EmployeeId, b.ItemId)]),
-                reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId))))
+            .GroupBy(b => (b.EmployeeId, b.ItemId))
+            .Select(g =>
+            {
+                var b = g.First();
+                var quantity = g.Sum(x => x.Quantity);
+                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, x.Batch?.UnitPrice)));
+                return new CustodyRowDto(
+                    b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
+                    b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
+                    b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), quantity,
+                    HeldSince(quantity, issuesByKey[(b.EmployeeId, b.ItemId)]),
+                    reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId)),
+                    value, incomplete);
+            })
             .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName)
             .ToList();
     }

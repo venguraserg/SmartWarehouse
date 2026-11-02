@@ -118,7 +118,12 @@ public static class CurrentUserExtensions
         user.EmployeeId(),
         user.FindFirstValue(AppClaims.DisplayName) ?? user.Identity?.Name,
         user.SeesAllCustody(),
-        user.IsInRole(Roles.Manager));
+        user.IsInRole(Roles.Manager),
+        user.SeesPrices());
+
+    /// <summary>Цены и суммы видят все, кроме рядовых сотрудников: руководитель, кладовщик, администратор.</summary>
+    public static bool SeesPrices(this ClaimsPrincipal user) =>
+        user.IsInRole(Roles.Manager) || user.IsInRole(Roles.Storekeeper) || user.IsInRole(Roles.Admin);
 
     /// <summary>Видит весь подотчёт: кладовщик и администратор.</summary>
     public static bool SeesAllCustody(this ClaimsPrincipal user) =>

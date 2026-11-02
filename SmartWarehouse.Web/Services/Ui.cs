@@ -1,5 +1,6 @@
 using System.Globalization;
 using SmartWarehouse.Domain.Enums;
+using SmartWarehouse.Application.DTOs;
 
 namespace SmartWarehouse.Web.Services;
 
@@ -46,6 +47,22 @@ public static class Ui
 
     /// <summary>Количество без лишних нулей: 12, 4,5, 0,125.</summary>
     public static string Qty(decimal value) => value.ToString("#,0.###", Ru);
+
+    /// <summary>Сумма: 1 234,50.</summary>
+    public static string Money(decimal value) => value.ToString("#,0.00", Ru);
+
+    /// <summary>Цена: до 4 знаков, минимум 2 — 12,50 или 0,0125.</summary>
+    public static string Price(decimal value) => value.ToString("#,0.00##", Ru);
+
+    /// <summary>Стоимость с пометкой, что у части количества цена не указана.</summary>
+    public static string Value(decimal? value, bool incomplete) =>
+        value is decimal v ? Money(v) + (incomplete ? "*" : "") : incomplete ? "без цены" : "—";
+
+    /// <summary>Партия для выбора: «от 12.10.2026 · 12,50 · 8 шт».</summary>
+    public static string Batch(BatchStockDto b, string unit, bool showPrice = true) =>
+        showPrice
+            ? $"от {Day(b.ReceivedAt)} · {(b.UnitPrice is decimal p ? Price(p) : "без цены")} · {Qty(b.Quantity - b.Reserved)} {unit}"
+            : $"от {Day(b.ReceivedAt)} · {Qty(b.Quantity - b.Reserved)} {unit}";
 
     public static string Date(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ru);
 

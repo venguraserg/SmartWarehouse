@@ -10,7 +10,8 @@ namespace SmartWarehouse.Application.Services;
 /// <param name="EmployeeId">Сотрудник, к которому привязана учётная запись.</param>
 /// <param name="IsWarehouse">Кладовщик или администратор: видит все акты и может составить акт за сотрудника.</param>
 /// <param name="IsManager">Руководитель: видит акты подчинённых.</param>
-public record ActActor(int? EmployeeId, string? DisplayName, bool IsWarehouse, bool IsManager);
+/// <param name="SeesPrices">Видит цены и суммы (все, кроме рядовых сотрудников).</param>
+public record ActActor(int? EmployeeId, string? DisplayName, bool IsWarehouse, bool IsManager, bool SeesPrices = true);
 
 public interface IWriteOffActService
 {
@@ -148,8 +149,13 @@ public class WriteOffActService(
         if (act.Lines.Count == 0)
             throw new DomainException("В акте нет строк.");
 
-        // За время черновика подотчёт мог измениться (возврат, другой акт) — проверяем снова.
-        await CheckAvailableAsync(act.Employee, act.Lines.Select(l => (l.Item, l.Quantity)), act.Id, ct);
+        // За время черновика подотчёт мог измениться (возврат, другой акт) — проверяем снова
+        // и закрепляем партии: на утверждении резервируются именно они.
+        var current = act.Lines.OrderBy(l => l.LineNo)
+            .Select(l => new ActLineRequest(l.ItemId, l.Quantity, l.EquipmentId, l.Usage, l.UsedOn, l.BatchId))
+            .ToList();
+        var allocated = await AllocateAsync(act.Employee, current, act.Lines.GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.First().Item), act.Id, ct);
+        SetLines(act, allocated);
 
         var now = clock.GetUtcNow();
         act.Status = ActStatus.Pending;
@@ -228,7 +234,7 @@ public class WriteOffActService(
             equipment.Count == 1 ? equipment[0] : null,
             null,
             comment,
-            act.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineRequest(l.ItemId, l.Quantity, null, null)).ToList(),
+            act.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineRequest(l.ItemId, l.Quantity, null, null, l.BatchId)).ToList(),
             PerformedById: approver.Id,
             ReceivedById: act.EmployeeId);
 
@@ -306,22 +312,27 @@ public class WriteOffActService(
             }
         }
 
-        await CheckAvailableAsync(employee, lines.Select(l => (items[l.ItemId], l.Quantity)), act.Id == 0 ? null : act.Id, ct);
+        var allocated = await AllocateAsync(employee, lines, items, act.Id == 0 ? null : act.Id, ct);
 
         act.PeriodFrom = request.PeriodFrom;
         act.PeriodTo = request.PeriodTo;
         act.ExternalNumber = externalNumber;
         act.Comment = comment;
+        SetLines(act, allocated);
+    }
 
+    private static void SetLines(WriteOffAct act, List<(ActLineRequest Line, int BatchId, decimal Quantity)> allocated)
+    {
         act.Lines.Clear();
-        for (var i = 0; i < lines.Count; i++)
+        var lineNo = 0;
+        foreach (var (line, batchId, quantity) in allocated)
         {
-            var line = lines[i];
             act.Lines.Add(new WriteOffActLine
             {
-                LineNo = i + 1,
+                LineNo = ++lineNo,
                 ItemId = line.ItemId,
-                Quantity = line.Quantity,
+                BatchId = batchId,
+                Quantity = quantity,
                 EquipmentId = line.EquipmentId,
                 Usage = Clean(line.Usage),
                 UsedOn = line.UsedOn
@@ -330,23 +341,60 @@ public class WriteOffActService(
     }
 
     /// <summary>
-    /// Хватает ли за сотрудником свободного (не зарезервированного другими актами) количества.
-    /// Одна позиция может быть в нескольких строках — суммируется.
+    /// Распределяет строки акта по партиям подотчёта: указанная партия или самая старая
+    /// (при нехватке строка делится на несколько партий). Учитывает резерв других актов на утверждении.
     /// </summary>
-    private async Task CheckAvailableAsync(
-        Employee employee, IEnumerable<(Item Item, decimal Quantity)> lines, int? exceptActId, CancellationToken ct)
+    private async Task<List<(ActLineRequest Line, int BatchId, decimal Quantity)>> AllocateAsync(
+        Employee employee, IReadOnlyList<ActLineRequest> lines, IReadOnlyDictionary<int, Item> items, int? exceptActId, CancellationToken ct)
     {
-        foreach (var group in lines.GroupBy(l => l.Item.Id))
+        var free = new Dictionary<int, Dictionary<int, decimal>>();      // позиция → партия → свободно
+        var order = new Dictionary<int, List<int>>();                     // позиция → партии от старой к новой
+        var held = new Dictionary<int, decimal>();                        // позиция → зарезервировано другими актами
+
+        foreach (var itemId in lines.Select(l => l.ItemId).Distinct())
         {
-            var item = group.First().Item;
-            var requested = group.Sum(l => l.Quantity);
-            var balance = (await stockRepo.GetEmployeeBalanceAsync(item.Id, employee.Id, ct))?.Quantity ?? 0;
-            var reserved = await stockRepo.GetReservedAsync(item.Id, employee.Id, exceptActId, ct);
-            var available = Math.Max(0, balance - reserved);
-            if (available < requested)
-                throw new InsufficientStockException(item.Sku, employee.ShortName, available, requested, isEmployee: true, reserved: reserved);
+            var batches = await stockRepo.GetEmployeeBatchesAsync(itemId, employee.Id, ct);
+            var reserved = await stockRepo.GetReservedByBatchAsync(itemId, employee.Id, exceptActId, ct);
+            free[itemId] = batches.ToDictionary(b => b.BatchId, b => Math.Max(0, b.Quantity - reserved.GetValueOrDefault(b.BatchId)));
+            order[itemId] = batches.OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId).Select(b => b.BatchId).ToList();
+            held[itemId] = reserved.Values.Sum();
         }
+
+        var result = new List<(ActLineRequest, int, decimal)>();
+        foreach (var line in lines)
+        {
+            var item = items[line.ItemId];
+            var available = free[line.ItemId];
+            if (line.BatchId is int chosen)
+            {
+                var have = available.GetValueOrDefault(chosen);
+                if (!available.ContainsKey(chosen) || have < line.Quantity)
+                    throw new InsufficientStockException(item.Sku, employee.ShortName, have, line.Quantity, isEmployee: true, reserved: held[line.ItemId]);
+                available[chosen] = have - line.Quantity;
+                result.Add((line, chosen, line.Quantity));
+                continue;
+            }
+
+            var total = available.Values.Sum();
+            if (total < line.Quantity)
+                throw new InsufficientStockException(item.Sku, employee.ShortName, total, line.Quantity, isEmployee: true, reserved: held[line.ItemId]);
+
+            var left = line.Quantity;
+            foreach (var batchId in order[line.ItemId])
+            {
+                var take = Math.Min(available[batchId], left);
+                if (take <= 0)
+                    continue;
+                available[batchId] -= take;
+                left -= take;
+                result.Add((line, batchId, take));
+                if (left == 0)
+                    break;
+            }
+        }
+        return result;
     }
+
 
     private async Task<WriteOffAct> LoadVisibleAsync(int id, ActActor actor, CancellationToken ct)
     {
@@ -439,7 +487,7 @@ public class WriteOffActService(
                 .Select(l => new ActLineDto(
                     l.LineNo, l.ItemId, l.Item.Sku, l.Item.Name, l.Item.Unit.Code, l.Quantity,
                     l.EquipmentId, l.Equipment is { } e ? $"{e.Code} — {e.Name}" : null,
-                    l.Usage, l.UsedOn))
+                    l.Usage, l.UsedOn, l.BatchId, l.Batch?.UnitPrice, l.Batch?.ReceivedAt))
                 .ToList(),
             new ActPermissions(CanEdit(act, actor), CanEdit(act, actor), CanRecall(act, actor), CanDecide(act, actor)));
     }

@@ -47,16 +47,49 @@ internal class FakeStockRepository : IStockRepository
     public Task<Employee?> GetEmployeeAsync(int id, CancellationToken ct = default) =>
         Task.FromResult(Employees.FirstOrDefault(x => x.Id == id));
 
-    public Task<StockBalance?> GetBalanceAsync(int itemId, int locationId, CancellationToken ct = default) =>
-        Task.FromResult(Balances.FirstOrDefault(x => x.ItemId == itemId && x.LocationId == locationId));
+    public List<Batch> Batches { get; } = [];
+    private readonly List<Batch> _pendingBatches = [];
+    private int _nextBatchId = 1;
+
+    public Task<IReadOnlyList<StockBalance>> GetLocationBatchesAsync(int itemId, int locationId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<StockBalance>>(Balances.Where(x => x.ItemId == itemId && x.LocationId == locationId).ToList());
+
+    public Task<IReadOnlyList<EmployeeBalance>> GetEmployeeBatchesAsync(int itemId, int employeeId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<EmployeeBalance>>(EmployeeBalances.Where(x => x.ItemId == itemId && x.EmployeeId == employeeId).ToList());
+
+    public Task<Batch?> GetBatchAsync(int id, CancellationToken ct = default) =>
+        Task.FromResult(Batches.FirstOrDefault(x => x.Id == id));
+
+    public void AddBatch(Batch batch) => _pendingBatches.Add(batch);
+
+    public Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<int, decimal>>(Acts
+            .Where(a => a.EmployeeId == employeeId && a.Status == ActStatus.Pending && a.Id != exceptActId)
+            .SelectMany(a => a.Lines)
+            .Where(l => l.ItemId == itemId && l.BatchId is not null)
+            .GroupBy(l => l.BatchId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity)));
+
+    public Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default)
+    {
+        IEnumerable<(int BatchId, decimal Quantity)> amounts = locationId is int l
+            ? Balances.Where(b => b.ItemId == itemId && b.LocationId == l).Select(b => (b.BatchId, b.Quantity))
+            : employeeId is int e
+                ? EmployeeBalances.Where(b => b.ItemId == itemId && b.EmployeeId == e).Select(b => (b.BatchId, b.Quantity))
+                : Balances.Where(b => b.ItemId == itemId).Select(b => (b.BatchId, b.Quantity))
+                    .Concat(EmployeeBalances.Where(b => b.ItemId == itemId).Select(b => (b.BatchId, b.Quantity)));
+        return Task.FromResult<IReadOnlyList<BatchStock>>(amounts
+            .Where(a => a.Quantity > 0)
+            .GroupBy(a => a.BatchId)
+            .Select(g => new BatchStock(Batches.First(b => b.Id == g.Key), g.Sum(a => a.Quantity), null))
+            .ToList());
+    }
 
     // Как и EF, новые записи попадают в «базу» только при сохранении.
     public void AddBalance(StockBalance balance) => _pendingBalances.Add(balance);
 
     public void AddDocument(StockDocument document) => _pendingDocuments.Add(document);
 
-    public Task<EmployeeBalance?> GetEmployeeBalanceAsync(int itemId, int employeeId, CancellationToken ct = default) =>
-        Task.FromResult(EmployeeBalances.FirstOrDefault(x => x.ItemId == itemId && x.EmployeeId == employeeId));
 
     public void AddEmployeeBalance(EmployeeBalance balance) => _pendingEmployeeBalances.Add(balance);
 
@@ -117,6 +150,18 @@ internal class FakeStockRepository : IStockRepository
 
     public Task SaveChangesAsync(CancellationToken ct = default)
     {
+        // Как EF: сначала новые партии получают номера, затем ссылки на них.
+        foreach (var batch in _pendingBatches)
+        {
+            batch.Id = _nextBatchId++;
+            Batches.Add(batch);
+        }
+        _pendingBatches.Clear();
+        foreach (var b in _pendingBalances)
+            if (b.Batch is not null) b.BatchId = b.Batch.Id;
+        foreach (var b in _pendingEmployeeBalances)
+            if (b.Batch is not null) b.BatchId = b.Batch.Id;
+
         foreach (var balance in _pendingBalances)
         {
             balance.Location = Locations.First(x => x.Id == balance.LocationId);
@@ -126,8 +171,11 @@ internal class FakeStockRepository : IStockRepository
         foreach (var document in _pendingDocuments)
         {
             document.Id = _nextDocumentId++;
+            foreach (var batch in Batches.Where(b => b.ReceiptDocument == document))
+                batch.ReceiptDocumentId = document.Id;
             foreach (var line in document.Lines)
             {
+                if (line.Batch is not null) line.BatchId = line.Batch.Id;
                 line.Id = _nextMovementId++;
                 line.DocumentId = document.Id;
                 line.FromLocation = Locations.FirstOrDefault(x => x.Id == line.FromLocationId);

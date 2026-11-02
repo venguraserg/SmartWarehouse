@@ -73,45 +73,79 @@ public class ActPdfRenderer : IActPdfRenderer
         intro.Format.Alignment = ParagraphAlignment.Justify;
 
         // ---------- Таблица (ширина текста 17 см) ----------
+        // Цены и суммы — если они есть (у партий указана цена и пользователь их видит).
+        var withPrices = data.Lines.Any(l => l.UnitPrice is not null);
         var table = section.AddTable();
         table.Borders.Width = 0.5;
-        table.Format.Font.Size = 9;
-        table.AddColumn(Unit.FromCentimeter(0.8)).Format.Alignment = ParagraphAlignment.Center;
-        table.AddColumn(Unit.FromCentimeter(2.4));
-        table.AddColumn(Unit.FromCentimeter(5.4));
-        table.AddColumn(Unit.FromCentimeter(1.2)).Format.Alignment = ParagraphAlignment.Center;
-        table.AddColumn(Unit.FromCentimeter(1.8)).Format.Alignment = ParagraphAlignment.Right;
-        table.AddColumn(Unit.FromCentimeter(5.4));
+        table.Format.Font.Size = withPrices ? 8.5 : 9;
+
+        var columns = withPrices
+            ? new (string Title, double Cm, ParagraphAlignment Align)[]
+            {
+                ("№", 0.7, ParagraphAlignment.Center), ("Артикул", 2.1, ParagraphAlignment.Left),
+                ("Наименование", 4.4, ParagraphAlignment.Left), ("Ед. изм.", 1.0, ParagraphAlignment.Center),
+                ("Кол-во", 1.5, ParagraphAlignment.Right), ("Цена", 1.7, ParagraphAlignment.Right),
+                ("Сумма", 1.9, ParagraphAlignment.Right), ("Куда использовано", 3.7, ParagraphAlignment.Left)
+            }
+            : new (string Title, double Cm, ParagraphAlignment Align)[]
+            {
+                ("№", 0.8, ParagraphAlignment.Center), ("Артикул", 2.4, ParagraphAlignment.Left),
+                ("Наименование", 5.4, ParagraphAlignment.Left), ("Ед. изм.", 1.2, ParagraphAlignment.Center),
+                ("Кол-во", 1.8, ParagraphAlignment.Right), ("Куда использовано", 5.4, ParagraphAlignment.Left)
+            };
+        foreach (var c in columns)
+            table.AddColumn(Unit.FromCentimeter(c.Cm)).Format.Alignment = c.Align;
 
         var header = table.AddRow();
         header.HeadingFormat = true; // повторяется на каждой странице
         header.Format.Font.Bold = true;
         header.Shading.Color = Colors.LightGray;
         header.VerticalAlignment = VerticalAlignment.Center;
-        string[] headers = ["№", "Артикул", "Наименование", "Ед. изм.", "Кол-во", "Куда использовано"];
-        for (var i = 0; i < headers.Length; i++)
+        for (var i = 0; i < columns.Length; i++)
         {
-            header.Cells[i].AddParagraph(headers[i]);
+            header.Cells[i].AddParagraph(columns[i].Title);
             header.Cells[i].Format.Alignment = ParagraphAlignment.Center;
         }
 
+        decimal total = 0;
+        var totalIncomplete = false;
         foreach (var line in data.Lines.OrderBy(l => l.LineNo))
         {
             var row = table.AddRow();
             row.VerticalAlignment = VerticalAlignment.Center;
-            row.Cells[0].AddParagraph(line.LineNo.ToString(Ru));
-            row.Cells[1].AddParagraph(line.Sku);
-            row.Cells[2].AddParagraph(line.ItemName);
-            row.Cells[3].AddParagraph(line.UnitCode);
-            row.Cells[4].AddParagraph(line.Quantity.ToString("#,0.###", Ru));
-            row.Cells[5].AddParagraph(line.Usage ?? "");
+            var c = 0;
+            row.Cells[c++].AddParagraph(line.LineNo.ToString(Ru));
+            row.Cells[c++].AddParagraph(line.Sku);
+            row.Cells[c++].AddParagraph(line.ItemName);
+            row.Cells[c++].AddParagraph(line.UnitCode);
+            row.Cells[c++].AddParagraph(line.Quantity.ToString("#,0.###", Ru));
+            if (withPrices)
+            {
+                if (line.UnitPrice is decimal price)
+                {
+                    var sum = decimal.Round(line.Quantity * price, 2, MidpointRounding.AwayFromZero);
+                    total += sum;
+                    row.Cells[c++].AddParagraph(price.ToString("#,0.00##", Ru));
+                    row.Cells[c++].AddParagraph(sum.ToString("#,0.00", Ru));
+                }
+                else
+                {
+                    totalIncomplete = true;
+                    row.Cells[c++].AddParagraph("—");
+                    row.Cells[c++].AddParagraph("—");
+                }
+            }
+            row.Cells[c].AddParagraph(line.Usage ?? "");
         }
 
-        var total = section.AddParagraph($"Всего наименований: {data.Lines.Count}");
-        total.Format.SpaceBefore = Unit.FromPoint(6);
+        var totalText = $"Всего наименований: {data.Lines.Count}";
+        if (withPrices)
+            totalText += $". На сумму: {total.ToString("#,0.00", Ru)}{(totalIncomplete ? " (без позиций, у которых не указана цена)" : "")}";
+        var totalParagraph = section.AddParagraph(totalText);
+        totalParagraph.Format.SpaceBefore = Unit.FromPoint(6);
         if (data.DocumentNumber is not null)
-            total.AddText($". Списание проведено документом {data.DocumentNumber}.");
-        total.Format.SpaceAfter = Unit.FromPoint(24);
+            totalParagraph.AddText($". Списание проведено документом {data.DocumentNumber}.");
+        totalParagraph.Format.SpaceAfter = Unit.FromPoint(24);
 
         // ---------- Подписи ----------
         var signatures = section.AddTable();

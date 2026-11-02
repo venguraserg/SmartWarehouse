@@ -77,6 +77,11 @@
                     <th>Откуда</th>
                     <th>Куда</th>
                     <th class="num">Количество</th>
+                    @if (ShowPrices)
+                    {
+                        <th class="num">Цена</th>
+                        <th class="num">Сумма</th>
+                    }
                 </tr>
             </thead>
             <tbody>
@@ -88,11 +93,35 @@
                         <td>@line.ItemName</td>
                         <td class="mono">@(line.FromLocation ?? "—")</td>
                         <td class="mono">@(line.ToLocation ?? "—")</td>
-                        <td class="num">@Ui.Qty(line.Quantity) @line.UnitCode</td>
+                        <td class="num">
+                            @Ui.Qty(line.Quantity) @line.UnitCode
+                            @if (line.BatchDate is { } batchDate)
+                            {
+                                <div class="line-hint">партия от @Ui.Day(batchDate)</div>
+                            }
+                        </td>
+                        @if (ShowPrices)
+                        {
+                            <td class="num">@(line.UnitPrice is decimal p ? Ui.Price(p) : "—")</td>
+                            <td class="num">@(line.UnitPrice is decimal q ? Ui.Money(decimal.Round(line.Quantity * q, 2, MidpointRounding.AwayFromZero)) : "—")</td>
+                        }
                     </tr>
                 }
             </tbody>
+            @if (ShowPrices)
+            {
+                <tfoot>
+                    <tr>
+                        <td colspan="7" class="num"><strong>Итого</strong></td>
+                        <td class="num"><strong>@Ui.Money(Total)</strong>@(doc.Lines.Any(l => l.UnitPrice is null) ? "*" : "")</td>
+                    </tr>
+                </tfoot>
+            }
         </table>
+        @if (ShowPrices && doc.Lines.Any(l => l.UnitPrice is null))
+        {
+            <div class="field-hint">* без строк, у партий которых цена не указана.</div>
+        }
     </div>
 }
 else if (error is null)
@@ -104,6 +133,13 @@ else if (error is null)
     [Parameter] public long Id { get; set; }
 
     private DocumentDto? doc;
+
+    /// <summary>Цены есть в ответе только у тех, кому их можно видеть.</summary>
+    private bool ShowPrices => doc?.Lines.Any(l => l.UnitPrice is not null) == true;
+
+    private decimal Total => doc?.Lines
+        .Where(l => l.UnitPrice is not null)
+        .Sum(l => decimal.Round(l.Quantity * l.UnitPrice!.Value, 2, MidpointRounding.AwayFromZero)) ?? 0;
     private List<EquipmentDto> equipment = [];
     private string? error;
 

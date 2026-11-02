@@ -71,7 +71,39 @@ public class ItemsController(ICatalogService catalog, IStockService stock) : Con
     public Task<IReadOnlyList<StockBalanceDto>> Balances(int id, CancellationToken ct) =>
         stock.GetBalancesAsync(id, ct);
 
+    /// <summary>
+    /// Партии позиции с остатком: в месте (locationId), у сотрудника (employeeId) или всего.
+    /// Для выбора партии в документах и актах.
+    /// </summary>
+    [HttpGet("{id:int}/batches")]
+    public async Task<IReadOnlyList<BatchStockDto>> Batches(
+        int id, [FromQuery] int? locationId, [FromQuery] int? employeeId,
+        [FromServices] IEmployeeService employees, CancellationToken ct)
+    {
+        if (employeeId is int emp)
+        {
+            var visible = await CustodyVisibility.VisibleEmployeesAsync(User, employees, ct);
+            if (visible is not null && !visible.Contains(emp))
+                throw new ForbiddenException("Нет доступа к подотчёту этого сотрудника.");
+        }
+        return await stock.GetBatchesAsync(id, locationId, employeeId, ct);
+    }
+
     [HttpGet("{id:int}/movements")]
     public Task<IReadOnlyList<MovementDto>> Movements(int id, [FromQuery] int take = 100, CancellationToken ct = default) =>
         stock.GetMovementsAsync(id, take, ct);
+}
+
+/// <summary>Партии: цена (только администратор) — для остатков «без цены» или исправления ошибки.</summary>
+[ApiController]
+[Route("api/batches")]
+[Authorize(Roles = Roles.Admin)]
+public class BatchesController(IStockService stock) : ControllerBase
+{
+    [HttpPut("{id:int}/price")]
+    public async Task<IActionResult> SetPrice(int id, SetBatchPriceRequest request, CancellationToken ct)
+    {
+        await stock.SetBatchPriceAsync(id, request.UnitPrice, ct);
+        return NoContent();
+    }
 }

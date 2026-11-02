@@ -149,6 +149,14 @@ else
                         {
                             <th style="min-width: 170px">Куда</th>
                         }
+                        @if (ShowBatchColumn)
+                        {
+                            <th style="min-width: 200px">Партия</th>
+                        }
+                        @if (ShowPriceColumn)
+                        {
+                            <th style="width: 130px">Цена за ед.</th>
+                        }
                         <th style="width: 130px">Количество</th>
                         <th></th>
                     </tr>
@@ -179,7 +187,7 @@ else
                             @if (type == MovementType.Adjustment)
                             {
                                 <td>
-                                    <select @bind="line.Direction" @bind:after="() => PrefillLocationsAsync(line)">
+                                    <select @bind="line.Direction" @bind:after="() => OnDirectionChangedAsync(line)">
                                         <option value="plus">+ добавить</option>
                                         <option value="minus">− убрать</option>
                                     </select>
@@ -190,7 +198,7 @@ else
                                 <td>
                                     @if (NeedsFrom(line))
                                     {
-                                        <select @bind="line.FromId" disabled="@(line.Item is null)">
+                                        <select @bind="line.FromId" @bind:after="() => LoadBatchesAsync(line)" disabled="@(line.Item is null)">
                                             <option value="">@(line.Item is null ? "сначала позицию" : line.Available.Count == 0 ? "нет на складе" : "— выберите —")</option>
                                             @foreach (var a in line.Available)
                                             {
@@ -220,6 +228,39 @@ else
                                     else
                                     {
                                         <span class="muted">—</span>
+                                    }
+                                </td>
+                            }
+                            @if (ShowBatchColumn)
+                            {
+                                <td>
+                                    @if (TakesBatch(line))
+                                    {
+                                        <select @bind="line.BatchId" disabled="@(line.Batches.Count == 0)">
+                                            <option value="">@(line.Batches.Count == 0 ? "—" : "самая старая")</option>
+                                            @foreach (var b in line.Batches)
+                                            {
+                                                <option value="@b.BatchId">@Ui.Batch(b, line.Item?.UnitCode ?? "")</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">новая</span>
+                                    }
+                                </td>
+                            }
+                            @if (ShowPriceColumn)
+                            {
+                                <td>
+                                    @if (NeedsPrice(line))
+                                    {
+                                        <input type="number" min="0" step="0.01" @bind="line.UnitPrice"
+                                               class="@(showErrors && line.UnitPrice is null ? "invalid" : null)" placeholder="0,00" />
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">по партии</span>
                                     }
                                 </td>
                             }
@@ -455,6 +496,10 @@ else
                 error = ex.Message;
             }
         }
+
+        // Возврат: партии теперь — из подотчёта выбранного сотрудника.
+        foreach (var line in lines.Where(l => l.Item is not null))
+            await LoadBatchesAsync(line);
     }
 
     private async Task OnItemChangedAsync(LineModel line)
@@ -485,6 +530,7 @@ else
             line.Quantity = CustodyOf(line);
 
         await PrefillLocationsAsync(line);
+        await LoadBatchesAsync(line);
     }
 
     /// <summary>
@@ -597,6 +643,14 @@ else
                 return $"В этом месте есть только {Ui.Qty(Math.Max(0, available - takenAbove))} {line.Item.UnitCode}.";
         }
 
+        if (NeedsPrice(line))
+        {
+            if (line.UnitPrice is null)
+                return "Укажите цену за единицу.";
+            if (line.UnitPrice < 0)
+                return "Цена не может быть отрицательной.";
+        }
+
         if (NeedsTo(line) && line.ToId is null)
             return "Выберите, куда положить.";
 
@@ -629,7 +683,9 @@ else
                 l.Item!.Id,
                 l.Quantity,
                 NeedsFrom(l) ? l.FromId : null,
-                NeedsTo(l) ? l.ToId : null)).ToList(),
+                NeedsTo(l) ? l.ToId : null,
+                TakesBatch(l) ? l.BatchId : null,
+                NeedsPrice(l) ? l.UnitPrice : null)).ToList(),
             PerformedById: performedById,
             ReceivedById: UsesAccountable ? accountableId : null);
 
@@ -701,6 +757,10 @@ else
             await AddScannedItemAsync(found);
         else
             ApplyScannedLocation(found);
+
+        // Место «откуда» могло смениться — обновляем список партий строки.
+        if (lines.LastOrDefault(l => l.Item is not null) is { } current)
+            await LoadBatchesAsync(current);
         StateHasChanged();
         return true;
     }
@@ -839,5 +899,60 @@ else
         public bool Minus => Direction == "minus";
 
         public List<StockBalanceDto> Available { get; set; } = [];
+
+        /// <summary>Партия, откуда взять (null — самая старая).</summary>
+        public int? BatchId { get; set; }
+
+        /// <summary>Партии в выбранном месте (или у сотрудника — для возврата).</summary>
+        public List<BatchStockDto> Batches { get; set; } = [];
+
+        /// <summary>Цена за единицу — для прихода и корректировки «+» (новая партия).</summary>
+        public decimal? UnitPrice { get; set; }
+    }
+
+    // ---------- Партии и цены ----------
+
+    /// <summary>Колонка «Партия» — там, где товар откуда-то берётся.</summary>
+    private bool ShowBatchColumn => type is MovementType.Issue or MovementType.Transfer or MovementType.Return or MovementType.Adjustment;
+
+    /// <summary>Колонка «Цена» — где поступает новая партия.</summary>
+    private bool ShowPriceColumn => type is MovementType.Receipt or MovementType.Adjustment;
+
+    private bool TakesBatch(LineModel line) => NeedsFrom(line) || FromEmployee;
+
+    private bool NeedsPrice(LineModel line) =>
+        type == MovementType.Receipt || (type == MovementType.Adjustment && !line.Minus);
+
+    private async Task OnDirectionChangedAsync(LineModel line)
+    {
+        await PrefillLocationsAsync(line);
+        await LoadBatchesAsync(line);
+    }
+
+    /// <summary>Партии позиции в месте «откуда» (или у сотрудника при возврате); выбор сбрасывается, если партии там нет.</summary>
+    private async Task LoadBatchesAsync(LineModel line)
+    {
+        line.Batches = [];
+        try
+        {
+            if (line.Item is not null && NeedsFrom(line) && line.FromId is int fromId)
+                line.Batches = await Api.GetBatchesAsync(line.Item.Id, locationId: fromId);
+            else if (line.Item is not null && FromEmployee && accountableId is int employeeId)
+                line.Batches = await Api.GetBatchesAsync(line.Item.Id, employeeId: employeeId);
+
+            // Для прихода — подсказка цены: последняя известная по позиции.
+            if (line.Item is not null && NeedsPrice(line) && line.UnitPrice is null)
+                line.UnitPrice = (await Api.GetBatchesAsync(line.Item.Id))
+                    .Where(b => b.UnitPrice is not null)
+                    .OrderByDescending(b => b.ReceivedAt)
+                    .FirstOrDefault()?.UnitPrice;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        if (line.BatchId is int chosen && line.Batches.All(b => b.BatchId != chosen))
+            line.BatchId = null;
+        StateHasChanged();
     }
 }

@@ -176,6 +176,16 @@ else
                                     @if (Row(line) is { } r)
                                     {
                                         <div class="line-hint">@r.UnitCode</div>
+                                        @if (BatchesOf(line).Count > 1 || line.BatchId is not null)
+                                        {
+                                            <select @bind="line.BatchId" class="batch-select" title="Партия">
+                                                <option value="">партия: самая старая</option>
+                                                @foreach (var b in BatchesOf(line))
+                                                {
+                                                    <option value="@b.BatchId">@Ui.Batch(b, r.UnitCode, seesPrices)</option>
+                                                }
+                                            </select>
+                                        }
                                     }
                                 </td>
                                 <td>
@@ -258,6 +268,7 @@ else
     private string? error;
 
     private bool isWarehouse;
+    private bool seesPrices;
     private int? myEmployeeId;
 
     private List<EmployeeDto> employees = [];
@@ -292,6 +303,7 @@ else
     {
         var user = AuthState is null ? null : (await AuthState).User;
         isWarehouse = user?.IsWarehouseStaff() == true;
+        seesPrices = user?.SeesPrices() == true;
         myEmployeeId = user?.EmployeeIdOf();
 
         try
@@ -321,7 +333,7 @@ else
                 periodTo = act.PeriodTo;
                 comment = act.Comment;
                 lines = act.Lines
-                    .Select(l => new LineModel { ItemId = l.ItemId, Quantity = l.Quantity, EquipmentId = l.EquipmentId, Usage = l.Usage, UsedOn = l.UsedOn })
+                    .Select(l => new LineModel { ItemId = l.ItemId, BatchId = l.BatchId, Quantity = l.Quantity, EquipmentId = l.EquipmentId, Usage = l.Usage, UsedOn = l.UsedOn })
                     .ToList();
             }
             else
@@ -345,6 +357,7 @@ else
     private async Task LoadCustodyAsync(bool keepLines)
     {
         custody = [];
+        batchesByItem.Clear();
         if (!keepLines)
             lines = [new()];
         if (employeeId is not int id)
@@ -358,6 +371,10 @@ else
         {
             error = ex.Message;
         }
+
+        // Партии позиций, уже стоящих в строках (при изменении акта).
+        foreach (var itemId in lines.Select(l => l.ItemId).OfType<int>().Distinct())
+            await LoadBatchesAsync(itemId);
     }
 
     // ---------- Строки ----------
@@ -370,8 +387,34 @@ else
     private IEnumerable<CustodyRowDto> CustodyChoices(LineModel line) =>
         custody.Where(c => Free(c) > 0 || c.ItemId == line.ItemId).OrderBy(c => c.ItemName);
 
-    private void OnItemChanged(LineModel line)
+    // ---------- Партии ----------
+
+    /// <summary>Партии позиции в подотчёте сотрудника (загружаются при выборе позиции).</summary>
+    private readonly Dictionary<int, List<BatchStockDto>> batchesByItem = new();
+
+    private List<BatchStockDto> BatchesOf(LineModel line) =>
+        line.ItemId is int itemId && batchesByItem.TryGetValue(itemId, out var list) ? list : [];
+
+    private async Task LoadBatchesAsync(int itemId)
     {
+        if (employeeId is not int emp || batchesByItem.ContainsKey(itemId))
+            return;
+        try
+        {
+            batchesByItem[itemId] = await Api.GetBatchesAsync(itemId, employeeId: emp);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task OnItemChanged(LineModel line)
+    {
+        line.BatchId = null;
+        if (line.ItemId is int itemId)
+            await LoadBatchesAsync(itemId);
+
         // По умолчанию — всё свободное по позиции (за вычетом других строк акта).
         if (Row(line) is { } row && line.Quantity <= 1)
         {
@@ -432,6 +475,8 @@ else
                         lines.Add(line);
                     }
                     line.ItemId = row.ItemId;
+                    line.BatchId = null;
+                    await LoadBatchesAsync(row.ItemId);
                     line.Quantity = 1;
                 }
             }
@@ -523,7 +568,8 @@ else
                 l.Quantity,
                 l.EquipmentId ?? (string.IsNullOrWhiteSpace(l.Usage) ? defaultEquipmentId : null),
                 string.IsNullOrWhiteSpace(l.Usage) ? defaultUsage : l.Usage,
-                l.UsedOn)).ToList());
+                l.UsedOn,
+                l.BatchId)).ToList());
 
         saving = true;
         try
@@ -552,6 +598,10 @@ else
     private sealed class LineModel
     {
         public int? ItemId { get; set; }
+
+        /// <summary>Партия из подотчёта; null — самая старая.</summary>
+        public int? BatchId { get; set; }
+
         public decimal Quantity { get; set; } = 1;
         public int? EquipmentId { get; set; }
         public string? Usage { get; set; }
