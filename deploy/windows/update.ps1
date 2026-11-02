@@ -5,14 +5,21 @@
 
     Запускать от имени администратора из папки репозитория:
         powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1
+    Дополнительная установка (этап для показа) — с её именем и веткой:
+        powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1 -Instance pr4 -Branch state-pr4
 #>
 param(
-    [string]$InstallDir = "C:\SmartWarehouse",
+    [string]$Instance = "",
+    [string]$InstallDir,
     [string]$Branch = "main"
 )
 
 $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$suffix = if ($Instance) { "-$Instance" } else { "" }
+if (-not $InstallDir) { $InstallDir = "C:\SmartWarehouse$suffix" }
+$apiService = "SmartWarehouse.Api$suffix"
+$webService = "SmartWarehouse.Web$suffix"
 
 Write-Host "==> Резервная копия перед обновлением" -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "backup.ps1") -InstallDir $InstallDir
@@ -33,7 +40,7 @@ $apiDir = Join-Path $InstallDir "api"
 $webDir = Join-Path $InstallDir "web"
 
 Write-Host "==> Остановка служб" -ForegroundColor Cyan
-Stop-Service "SmartWarehouse.Web", "SmartWarehouse.Api" -Force
+Stop-Service $webService, $apiService -Force
 
 try {
     Write-Host "==> Сборка" -ForegroundColor Cyan
@@ -45,7 +52,7 @@ try {
 finally {
     # Службы запускаются в любом случае — при неудачной сборке работает прежняя версия.
     Write-Host "==> Запуск служб" -ForegroundColor Cyan
-    Start-Service "SmartWarehouse.Api", "SmartWarehouse.Web"
+    Start-Service $apiService, $webService
 }
 
 Write-Host "Готово." -ForegroundColor Green

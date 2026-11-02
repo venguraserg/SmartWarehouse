@@ -43,6 +43,24 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddre
 
 Если порт 80 занят (например, IIS) — добавьте `-WebPort 8081`, сайт будет `http://<IP>:8081`.
 
+## Несколько версий на одном ПК (этапы для показа)
+
+Каждая версия ставится со своим именем (`-Instance`), портами и базой — рядом с основной, не мешая ей.
+Ветки этапов — `state-pr4`, `state-pr6-stock`, … (см. список веток на GitHub); в каждой есть эти скрипты.
+
+```powershell
+cd C:\SmartWarehouse-src
+git fetch origin
+git checkout state-pr4
+powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddress 192.168.1.10 -Instance pr4 -WebPort 8104 -ApiPort 5104
+```
+Сайт этапа: `http://192.168.1.10:8104`, папка `C:\SmartWarehouse-pr4`, база `smartwarehouse_pr4`.
+Следующий этап — так же, с другой веткой, именем и портами (например, `-Instance pr6 -WebPort 8106 -ApiPort 5106`).
+После установки этапов вернитесь на основную ветку: `git checkout main`.
+
+Удаление этапа: `deploy\windows\uninstall.ps1 -Instance pr4 -WebPort 8104` (база и папка остаются).
+В ранних этапах (до `state-pr11-accounts`) **нет входа по паролю** — любой в сети может менять данные; используйте их только для показа.
+
 ## Обновление
 Когда в `main` появились изменения (после мержа PR):
 ```powershell

@@ -15,20 +15,35 @@
 
 .PARAMETER DbPassword
     Пароль пользователя postgres, заданный при установке PostgreSQL. Если не указан — будет запрошен.
+
+.PARAMETER Instance
+    Имя установки, если на одном ПК нужно несколько версий (например, этапы для показа: pr4, pr6...).
+    Каждая получает свою папку (C:\SmartWarehouse-pr4), свою базу (smartwarehouse_pr4), свои службы и порты:
+        install.ps1 -ServerAddress 192.168.1.10 -Instance pr4 -WebPort 8104 -ApiPort 5104
 #>
 param(
     [Parameter(Mandatory = $true)][string]$ServerAddress,
     [string]$DbPassword,
-    [string]$InstallDir = "C:\SmartWarehouse",
+    [string]$Instance = "",
+    [string]$InstallDir,
     [int]$WebPort = 80,
     [int]$ApiPort = 5113,
-    [string]$DbName = "smartwarehouse",
+    [string]$DbName,
     [string]$BackupTime = "02:00",
     [int]$KeepBackupDays = 30
 )
 
 $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+
+# Имена для установки по умолчанию и для дополнительных (-Instance).
+if ($Instance -and $Instance -notmatch '^[A-Za-z0-9-]+$') { throw "Instance — только латинские буквы, цифры и дефис." }
+$suffix = if ($Instance) { "-$Instance" } else { "" }
+if (-not $InstallDir) { $InstallDir = "C:\SmartWarehouse$suffix" }
+if (-not $DbName) { $DbName = if ($Instance) { "smartwarehouse_" + $Instance.ToLowerInvariant().Replace('-', '_') } else { "smartwarehouse" } }
+$apiService = "SmartWarehouse.Api$suffix"
+$webService = "SmartWarehouse.Web$suffix"
+$titleSuffix = if ($Instance) { " ($Instance)" } else { "" }
 
 function Step($text) { Write-Host ""; Write-Host "==> $text" -ForegroundColor Cyan }
 
@@ -106,8 +121,8 @@ else {
 
 # ---------- Сборка и установка программы ----------
 $services = @(
-    @{ Name = "SmartWarehouse.Api"; Title = "SmartWarehouse — API склада"; Exe = Join-Path $apiDir "SmartWarehouse.API.exe" },
-    @{ Name = "SmartWarehouse.Web"; Title = "SmartWarehouse — веб-интерфейс склада"; Exe = Join-Path $webDir "SmartWarehouse.Web.exe" }
+    @{ Name = $apiService; Title = "SmartWarehouse — API склада$titleSuffix"; Exe = Join-Path $apiDir "SmartWarehouse.API.exe" },
+    @{ Name = $webService; Title = "SmartWarehouse — веб-интерфейс склада$titleSuffix"; Exe = Join-Path $webDir "SmartWarehouse.Web.exe" }
 )
 
 Step "Остановка служб (если уже установлены)"
@@ -135,14 +150,14 @@ foreach ($s in $services) {
     & sc.exe failure $s.Name reset= 86400 actions= restart/10000/restart/10000/restart/60000 | Out-Null
 }
 # Веб-интерфейс стартует после API, API — после PostgreSQL.
-if ($pgService) { & sc.exe config "SmartWarehouse.Api" depend= $pgService.Name | Out-Null }
-& sc.exe config "SmartWarehouse.Web" depend= "SmartWarehouse.Api" | Out-Null
+if ($pgService) { & sc.exe config $apiService depend= $pgService.Name | Out-Null }
+& sc.exe config $webService depend= $apiService | Out-Null
 
 foreach ($s in $services) { Start-Service $s.Name }
 
 # ---------- Брандмауэр ----------
 Step "Брандмауэр: входящие на порт $WebPort"
-$ruleName = "SmartWarehouse Web ($WebPort)"
+$ruleName = "SmartWarehouse Web$titleSuffix ($WebPort)"
 if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort $WebPort -Action Allow -Profile Any | Out-Null
 }
@@ -155,7 +170,7 @@ $action = New-ScheduledTaskAction -Execute "powershell.exe" `
 $trigger = New-ScheduledTaskTrigger -Daily -At $BackupTime
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-Register-ScheduledTask -TaskName "SmartWarehouse Backup" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName "SmartWarehouse Backup$suffix" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
 # ---------- Проверка ----------
 Step "Проверка"
@@ -163,7 +178,7 @@ $ok = $false
 for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
     Start-Sleep -Seconds 2
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:$WebPort/login" -UseBasicParsing -TimeoutSec 5
+        $r = Invoke-WebRequest -Uri "http://localhost:$WebPort/" -UseBasicParsing -TimeoutSec 5
         $ok = $r.StatusCode -eq 200
     }
     catch { }
@@ -171,7 +186,8 @@ for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
 
 Write-Host ""
 if ($ok) {
-    Write-Host "Готово. Сайт: $publicUrl  (первый вход: admin / admin123 — сразу смените пароль)" -ForegroundColor Green
+    Write-Host "Готово. Сайт: $publicUrl" -ForegroundColor Green
+    Write-Host "Если в этой версии есть вход: admin / admin123 — сразу смените пароль."
 }
 else {
     Write-Host "Службы установлены, но сайт пока не отвечает. Посмотрите журнал: Просмотр событий → Журналы Windows → Приложение (источники SmartWarehouse.*)." -ForegroundColor Yellow
