@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 @inject ApiClient Api
+@inject IJSRuntime JS
+@inject ScannerHub Scanner
+@implements IAsyncDisposable
 
 <div class="app">
     <aside class="sidebar">
@@ -73,6 +76,11 @@
     </main>
 </div>
 
+@if (scanMessage is not null)
+{
+    <div class="scan-toast @(scanFailed ? "scan-toast-error" : null)" role="status" @onclick="() => scanMessage = null">@scanMessage</div>
+}
+
 <div id="blazor-error-ui" data-nosnippet>
     Произошла ошибка. <a href="." class="reload">Обновить страницу</a>
     <span class="dismiss">✕</span>
@@ -83,6 +91,88 @@
 
     private bool menuOpen;
     private int actsToApprove;
+
+    private IJSObjectReference? scannerModule;
+    private DotNetObjectReference<MainLayout>? self;
+    private string? scanMessage;
+    private bool scanFailed;
+    private CancellationTokenSource? toastTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        // Ручной сканер (USB / Bluetooth) — на любой странице.
+        try
+        {
+            self = DotNetObjectReference.Create(this);
+            scannerModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/keyboard-scanner.js");
+            await scannerModule.InvokeVoidAsync("attach", self);
+        }
+        catch (JSException)
+        {
+            // без перехвата сканер просто пишет в поле, как клавиатура
+        }
+    }
+
+    /// <summary>Код с ручного сканера: сначала странице (документ добавит строку), иначе — открыть найденное.</summary>
+    [JSInvokable]
+    public async Task OnHardwareScan(string code)
+    {
+        try
+        {
+            if (await Scanner.DispatchAsync(code))
+                return;
+
+            var found = await Api.ScanAsync(code);
+            Nav.NavigateTo(found.Kind == ScanKind.Location
+                ? $"/l/{Uri.EscapeDataString(found.Code)}"
+                : $"/items/{found.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            await ShowScanMessageAsync(ex.Message, failed: true);
+        }
+    }
+
+    private async Task ShowScanMessageAsync(string message, bool failed)
+    {
+        toastTimer?.Cancel();
+        scanMessage = message;
+        scanFailed = failed;
+        StateHasChanged();
+
+        var timer = toastTimer = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), timer.Token);
+            scanMessage = null;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            // пришло новое сообщение
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        toastTimer?.Cancel();
+        try
+        {
+            if (scannerModule is not null)
+            {
+                await scannerModule.InvokeVoidAsync("detach");
+                await scannerModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // вкладка закрыта
+        }
+        self?.Dispose();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
