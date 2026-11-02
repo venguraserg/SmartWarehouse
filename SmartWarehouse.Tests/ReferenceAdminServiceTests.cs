@@ -109,7 +109,7 @@ public class ReferenceAdminServiceTests
     [Fact]
     public async Task Смена_кода_склада_меняет_коды_всех_мест()
     {
-        var result = await _service.UpdateWarehouseAsync(1, new UpdateWarehouseRequest("скз", "Склад запчастей", null));
+        var result = await _service.UpdateWarehouseAsync(1, new UpdateWarehouseRequest("whz", "Склад запчастей", null));
 
         Assert.Equal("WHZ", _repo.Warehouses[0].Code);
         Assert.Equal("WHZ-A-01-02", Code(Cell2));

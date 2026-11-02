@@ -99,7 +99,9 @@ public class LocationService(ILocationRepository repo) : ILocationService
     public async Task<LocationDto> GetByCodeAsync(string fullCode, CancellationToken ct = default)
     {
         var code = fullCode?.Trim().ToUpperInvariant() ?? string.Empty;
+        // Старая наклейка с кодом кириллицей (до перевода кодов в латиницу: СК1-A → WH1-A) тоже открывается.
         var location = await repo.GetLocationByFullCodeAsync(code, ct)
+            ?? (Transliteration.HasCyrillic(code) ? await repo.GetLocationByFullCodeAsync(Transliteration.ToLatin(code).ToUpperInvariant(), ct) : null)
             ?? throw new NotFoundException($"Место хранения «{code}» не найдено.");
         return ToDto(location);
     }
