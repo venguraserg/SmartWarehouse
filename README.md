@@ -129,6 +129,7 @@
 | GET | `/api/documents/{id}` | Документ со строками |
 | GET | `/api/stock` | Что лежит по факту: `warehouseId`, `location` (код места — с вложенными; можно без кода склада), `search`, `categoryId`, `belowMinimum` |
 | GET | `/api/stock/below-minimum` | Позиции ниже минимума и сколько пополнить |
+| PUT/DELETE | `/api/warehouses/{id}`, `/api/locations/{id}`, `/api/categories/{id}`, `/api/units/{id}`, `/api/equipment/{id}` | Исправление справочников (только администратор); удаляется только неиспользованное |
 | GET | `/api/scan?code=` | Что за код: ссылка с наклейки, код места, артикул или штрих-код позиции |
 | GET | `/api/labels/layouts` | Раскладки листов наклеек |
 | POST | `/api/labels` | PDF с наклейками (`kind`, `ids`, `layout`, `skip`, `copies`, `baseUrl`) |
