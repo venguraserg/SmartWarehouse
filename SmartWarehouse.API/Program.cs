@@ -70,7 +70,8 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
-    await db.Database.MigrateAsync();
+    // Миграции; база, созданная ранней версией без миграций, тоже подхватывается (см. DatabaseSetup).
+    await DatabaseSetup.MigrateAsync(db);
     await DbSeeder.SeedAsync(db);
 }
 
