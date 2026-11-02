@@ -6,6 +6,9 @@ using SmartWarehouse.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Запуск как служба Windows (сервер без Docker, см. deploy/windows). В Visual Studio и Docker ничего не меняет.
+builder.Host.UseWindowsService();
+
 // Адрес API: в разработке — http://localhost:5113 (appsettings.json),
 // в Docker — переменная окружения Api__BaseUrl=http://api:8080.
 var apiBaseUrl = builder.Configuration["Api:BaseUrl"]

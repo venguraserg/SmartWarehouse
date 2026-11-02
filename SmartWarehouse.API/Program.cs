@@ -13,6 +13,9 @@ using SmartWarehouse.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Запуск как служба Windows (сервер без Docker, см. deploy/windows). В Visual Studio и Docker ничего не меняет.
+builder.Host.UseWindowsService();
+
 // Строка подключения не хранится в репозитории: задаётся через user-secrets (разработка)
 // или переменную окружения ConnectionStrings__Default (сервер, Docker).
 var connectionString = builder.Configuration.GetConnectionString("Default")
@@ -67,7 +70,11 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
-    await db.Database.MigrateAsync();
+    // Без миграций (ранние версии) таблицы создаются по модели; дальше — обычные миграции.
+    if (db.Database.GetMigrations().Any())
+        await db.Database.MigrateAsync();
+    else
+        await db.Database.EnsureCreatedAsync();
     await DbSeeder.SeedAsync(db);
 }
 
