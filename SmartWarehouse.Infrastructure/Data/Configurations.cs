@@ -17,6 +17,7 @@ internal class CategoryConfiguration : IEntityTypeConfiguration<Category>
     {
         b.ToTable("categories");
         b.Property(x => x.Name).HasMaxLength(128).IsRequired();
+        b.Property(x => x.SkuPrefix).HasMaxLength(6);
         b.HasIndex(x => x.Name).IsUnique();
         b.Property(x => x.Description).HasMaxLength(1000);
     }

@@ -17,7 +17,7 @@
 @if (qr?.QrContent == QrContent.Code)
 {
     <p class="muted">
-        В QR — короткий код (<span class="mono">SWL-…</span>, <span class="mono">SWI-…</span>), без ссылки.
+        В QR — сам код места или артикул, без ссылки.
         <AuthorizeView Roles="@AppRoles.Admin">Изменить — в <a href="/admin/settings">настройках</a>.</AuthorizeView>
     </p>
 }

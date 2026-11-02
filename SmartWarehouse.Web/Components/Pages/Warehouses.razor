@@ -29,7 +29,7 @@
         <form style="margin-top: 1rem" @onsubmit="CreateWarehouseAsync" @onsubmit:preventDefault>
             <div class="field">
                 <label for="wh-code">Код нового склада <span class="req">*</span></label>
-                <CodeInput Id="wh-code" @bind-Value="newWarehouseCode" Placeholder="СК1" Invalid="@(WarehouseCodeError is not null)" />
+                <CodeInput Id="wh-code" @bind-Value="newWarehouseCode" Placeholder="WH1" Invalid="@(WarehouseCodeError is not null)" />
                 <FieldError Message="@WarehouseCodeError" />
                 <div class="field-hint">Только буквы и цифры. С него начинаются коды всех мест склада.</div>
             </div>

@@ -51,7 +51,7 @@ public interface ICatalogService
     Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default);
 
     /// <summary>Следующий свободный артикул вида «ЗЧ-000001» — подсказка для новой позиции.</summary>
-    Task<string> SuggestSkuAsync(CancellationToken ct = default);
+    Task<string> SuggestSkuAsync(int? categoryId = null, CancellationToken ct = default);
 
     /// <summary>Загружает или заменяет фото позиции. Формат определяется по содержимому файла.</summary>
     Task<ItemDto> SetImageAsync(int itemId, byte[] data, CancellationToken ct = default);

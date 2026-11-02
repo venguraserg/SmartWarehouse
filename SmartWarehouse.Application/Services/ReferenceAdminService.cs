@@ -220,6 +220,7 @@ public class ReferenceAdminService(IReferenceAdminRepository repo) : IReferenceA
 
         category.Name = name;
         category.Description = Clean(request.Description);
+        category.SkuPrefix = CodeRules.NormalizeSkuPrefix(request.SkuPrefix);
         await repo.SaveChangesAsync(ct);
         return new ReferenceChangeResult($"Категория «{name}» сохранена.");
     }

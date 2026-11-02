@@ -23,7 +23,7 @@
         </div>
         <div class="field">
             <label for="f-loc">Место (ячейка, полка, стеллаж)</label>
-            <input id="f-loc" type="search" list="locations-list" @bind="location" placeholder="СК1-A-01 или A-01-03" />
+            <input id="f-loc" type="search" list="locations-list" @bind="location" placeholder="WH1-A-01 или A-01-03" />
             <datalist id="locations-list">
                 @foreach (var l in allLocations)
                 {

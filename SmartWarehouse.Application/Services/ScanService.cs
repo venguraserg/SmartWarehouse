@@ -56,7 +56,16 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
         return await FindLocationAsync(raw, ct) ?? await FindItemAsync(raw, ct);
     }
 
-    private async Task<ScanResultDto?> FindLocationAsync(string code, CancellationToken ct)
+    // Коды переведены в латиницу (СК1 → WH1, ЗЧ- → SP-): старые наклейки и привычное написание тоже находятся.
+    private async Task<ScanResultDto?> FindLocationAsync(string code, CancellationToken ct) =>
+        await FindLocationExactAsync(code, ct)
+        ?? (Transliteration.HasCyrillic(code) ? await FindLocationExactAsync(Transliteration.ToLatin(code), ct) : null);
+
+    private async Task<ScanResultDto?> FindItemAsync(string code, CancellationToken ct) =>
+        await FindItemExactAsync(code, ct)
+        ?? (Transliteration.HasCyrillic(code) ? await FindItemExactAsync(Transliteration.ToLatin(code), ct) : null);
+
+    private async Task<ScanResultDto?> FindLocationExactAsync(string code, CancellationToken ct)
     {
         var normalized = LocationCodeMatch.Normalize(code);
         if (normalized is null)
@@ -84,7 +93,7 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
             : new ScanResultDto(ScanKind.Item, item.Sku, item.Id, item.Name, item.Sku);
     }
 
-    private async Task<ScanResultDto?> FindItemAsync(string code, CancellationToken ct)
+    private async Task<ScanResultDto?> FindItemExactAsync(string code, CancellationToken ct)
     {
         var item = await catalog.FindItemByCodeAsync(code, ct);
         return item is null
@@ -94,18 +103,13 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
 }
 
 /// <summary>
-/// Короткие коды для QR-наклеек без ссылки: SWL-15 — место хранения № 15, SWI-7 — позиция № 7.
-/// Только латиница и цифры (ручной сканер «печатает» их при любой раскладке, а русскую мы распознаём),
-/// и код не меняется, если место хранения переименовали.
+/// Короткие коды SWL-15 (место хранения № 15) и SWI-7 (позиция № 7) — так были устроены первые наклейки без ссылки.
+/// Сейчас в QR печатается сам код места или артикул, а эти коды только распознаются, чтобы такие наклейки продолжали работать.
 /// </summary>
 public static class LabelCodes
 {
     public const string LocationPrefix = "SWL-";
     public const string ItemPrefix = "SWI-";
-
-    public static string ForLocation(int id) => LocationPrefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-    public static string ForItem(int id) => ItemPrefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     public static bool TryParse(string text, out ScanKind kind, out int id)
     {

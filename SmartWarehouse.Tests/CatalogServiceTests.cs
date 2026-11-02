@@ -135,14 +135,45 @@ public class CatalogServiceTests
     [Fact]
     public async Task Подсказка_артикула_следующий_номер()
     {
-        Assert.Equal("ЗЧ-000001", await _service.SuggestSkuAsync());
+        Assert.Equal("SP-000001", await _service.SuggestSkuAsync());
 
-        await CreateItemAsync("ЗЧ-000007");
-        await CreateItemAsync("ЗЧ-000003");
-        await CreateItemAsync("ЗЧ-ABC");       // нечисловой хвост не мешает
+        await CreateItemAsync("SP-000007");
+        await CreateItemAsync("SP-000003");
+        await CreateItemAsync("SP-ABC");       // нечисловой хвост не мешает
         await CreateItemAsync("6205-2RS");     // чужие артикулы не учитываются
 
-        Assert.Equal("ЗЧ-000008", await _service.SuggestSkuAsync());
+        Assert.Equal("SP-000008", await _service.SuggestSkuAsync());
+    }
+
+    [Fact]
+    public async Task Подсказка_артикула_с_префиксом_категории()
+    {
+        _repo.Categories.Add(new Category { Id = 1, Name = "Подшипники", SkuPrefix = "BRG" });
+        _repo.Categories.Add(new Category { Id = 2, Name = "Прочее" });
+
+        await CreateItemAsync("BRG-000004");
+
+        Assert.Equal("BRG-000005", await _service.SuggestSkuAsync(1));
+        Assert.Equal("SP-000001", await _service.SuggestSkuAsync(2)); // без префикса — общий
+        Assert.Equal("SP-000001", await _service.SuggestSkuAsync(99));
+    }
+
+    [Fact]
+    public async Task Артикул_и_штрих_код_только_латиницей()
+    {
+        var item = await CreateItemAsync(" sp-000012 ");
+        Assert.Equal("SP-000012", item.Sku); // верхний регистр, без пробелов
+
+        await Assert.ThrowsAsync<DomainException>(() => CreateItemAsync("ЗЧ-000001"));
+        await Assert.ThrowsAsync<DomainException>(() => CreateItemAsync("6205 2RS"));
+        await Assert.ThrowsAsync<DomainException>(() => CreateItemAsync("-A1"));
+        await Assert.ThrowsAsync<DomainException>(() =>
+            _service.CreateItemAsync(new CreateItemRequest("BRG-9", "Подшипник", null, 1, 0, null, null, "ШК123")));
+
+        Assert.Equal("BRG", CodeRules.NormalizeSkuPrefix(" brg- "));
+        Assert.Null(CodeRules.NormalizeSkuPrefix(" "));
+        Assert.Throws<DomainException>(() => CodeRules.NormalizeSkuPrefix("ПШ"));
+        Assert.Throws<DomainException>(() => CodeRules.NormalizeSkuPrefix("BRG1"));
     }
 
     // ---------- Оборудование ----------

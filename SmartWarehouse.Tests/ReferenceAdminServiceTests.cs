@@ -9,7 +9,7 @@ namespace SmartWarehouse.Tests;
 
 public class ReferenceAdminServiceTests
 {
-    // Склад СК1: стеллаж A (полка 01: ячейки 01, 02), стеллаж B (пустой).
+    // Склад WH1: стеллаж A (полка 01: ячейки 01, 02), стеллаж B (пустой).
     private const int RackA = 1, ShelfA1 = 2, Cell1 = 3, Cell2 = 4, RackB = 5;
 
     private readonly FakeReferenceAdminRepository _repo = new();
@@ -17,8 +17,8 @@ public class ReferenceAdminServiceTests
 
     public ReferenceAdminServiceTests()
     {
-        _repo.Warehouses.Add(new Warehouse { Id = 1, Code = "СК1", Name = "Склад" });
-        _repo.Warehouses.Add(new Warehouse { Id = 2, Code = "СК2", Name = "Второй" });
+        _repo.Warehouses.Add(new Warehouse { Id = 1, Code = "WH1", Name = "Склад" });
+        _repo.Warehouses.Add(new Warehouse { Id = 2, Code = "WH2", Name = "Второй" });
         Add(RackA, null, LocationType.Rack, "A");
         Add(ShelfA1, RackA, LocationType.Shelf, "01");
         Add(Cell1, ShelfA1, LocationType.Cell, "01");
@@ -33,7 +33,7 @@ public class ReferenceAdminServiceTests
         _repo.Locations.Add(new StorageLocation
         {
             Id = id, WarehouseId = 1, ParentId = parentId, Type = type, Code = code,
-            FullCode = $"{parent?.FullCode ?? "СК1"}-{code}"
+            FullCode = $"{parent?.FullCode ?? "WH1"}-{code}"
         });
     }
 
@@ -46,9 +46,9 @@ public class ReferenceAdminServiceTests
     {
         var result = await _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackB, LocationType.Shelf, "01", null));
 
-        Assert.Equal("СК1-B-01", Code(ShelfA1));
-        Assert.Equal("СК1-B-01-01", Code(Cell1));
-        Assert.Equal("СК1-B-01-02", Code(Cell2));
+        Assert.Equal("WH1-B-01", Code(ShelfA1));
+        Assert.Equal("WH1-B-01-01", Code(Cell1));
+        Assert.Equal("WH1-B-01-02", Code(Cell2));
         Assert.Equal(RackB, _repo.Locations.Single(l => l.Id == ShelfA1).ParentId);
         Assert.Equal(3, result.ChangedLocationIds!.Count);
         Assert.Contains("перепечатайте", result.Message);
@@ -73,7 +73,7 @@ public class ReferenceAdminServiceTests
         await Assert.ThrowsAsync<DomainException>(() =>
             _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackA, LocationType.Cell, "01", null))); // внутри ячейки — ячейки
 
-        Assert.Equal("СК1-A-01", Code(ShelfA1));
+        Assert.Equal("WH1-A-01", Code(ShelfA1));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ReferenceAdminServiceTests
     {
         var taken = await Assert.ThrowsAsync<DomainException>(() =>
             _service.UpdateLocationAsync(Cell2, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", null)));
-        Assert.Contains("СК1-A-01-01", taken.Message);
+        Assert.Contains("WH1-A-01-01", taken.Message);
 
         // Товар хранится только в конечных местах — в место с товаром вложить нельзя.
         _repo.LocationsWithStock.Add(RackB);
@@ -111,12 +111,12 @@ public class ReferenceAdminServiceTests
     {
         var result = await _service.UpdateWarehouseAsync(1, new UpdateWarehouseRequest("скз", "Склад запчастей", null));
 
-        Assert.Equal("СКЗ", _repo.Warehouses[0].Code);
-        Assert.Equal("СКЗ-A-01-02", Code(Cell2));
-        Assert.Equal("СКЗ-B", Code(RackB));
+        Assert.Equal("WHZ", _repo.Warehouses[0].Code);
+        Assert.Equal("WHZ-A-01-02", Code(Cell2));
+        Assert.Equal("WHZ-B", Code(RackB));
         Assert.Equal(5, result.ChangedLocationIds!.Count);
 
-        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateWarehouseAsync(1, new UpdateWarehouseRequest("СК2", "x", null)));
+        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateWarehouseAsync(1, new UpdateWarehouseRequest("WH2", "x", null)));
         await Assert.ThrowsAsync<DomainException>(() => _service.DeleteWarehouseAsync(1)); // есть места
         await _service.DeleteWarehouseAsync(2);
     }
