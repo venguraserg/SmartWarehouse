@@ -242,3 +242,8 @@ tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; pa
               background: #1f2933; color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.25); cursor: pointer; }
 .scan-toast-error { background: var(--danger); }
 .scan-hint { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--muted); }
+
+/* ---------- Правка справочников (администратор) ---------- */
+.admin-panel { border-color: #f0d9a8; }
+.warn-text { color: var(--warn); }
+.row-actions { white-space: nowrap; text-align: right; }

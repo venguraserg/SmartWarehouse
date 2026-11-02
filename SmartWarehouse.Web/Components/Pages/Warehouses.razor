@@ -50,12 +50,60 @@
         }
         else
         {
+            @if (warehouseForm is not null)
+            {
+                <div class="panel admin-panel" style="margin-bottom: 1rem">
+                    <h2 style="margin-top: 0">Исправить склад <span class="tag tag-warn">администратор</span></h2>
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="whe-code">Код</label>
+                            <CodeInput Id="whe-code" @bind-Value="warehouseForm.Code" />
+                        </div>
+                        <div class="field">
+                            <label for="whe-name">Название</label>
+                            <input id="whe-name" type="text" @bind="warehouseForm.Name" maxlength="128" />
+                        </div>
+                    </div>
+                    @if (!string.Equals(warehouseForm.Code, warehouse.Code, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <p class="warn-text">⚠ Изменятся коды всех мест склада — их QR-наклейки нужно будет перепечатать.</p>
+                    }
+                    <div class="actions">
+                        <button class="btn btn-primary" type="button" disabled="@(busy || string.IsNullOrEmpty(warehouseForm.Code) || string.IsNullOrWhiteSpace(warehouseForm.Name))" @onclick="SaveWarehouseAsync">Сохранить</button>
+                        <button class="btn" type="button" @onclick="() => warehouseForm = null">Отмена</button>
+                        @if (tree.Count == 0)
+                        {
+                            if (confirmDeleteWarehouse)
+                            {
+                                <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteWarehouseAsync">Да, удалить склад @warehouse.Code</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-danger" type="button" @onclick="() => confirmDeleteWarehouse = true">Удалить склад</button>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (relabelIds.Count > 0)
+            {
+                <div class="alert alert-success">
+                    Изменились коды мест: @relabelIds.Count.
+                    <a href="/labels.pdf?kind=Location&layout=3x8&ids=@string.Join(',', relabelIds)" target="_blank" rel="noopener">Напечатать новые наклейки</a>
+                </div>
+            }
+
             <div class="grid-2">
                 <div class="panel">
                     <div class="toolbar" style="margin-bottom: .5rem">
                         <h2 style="margin: 0">@warehouse.Name</h2>
                         <span class="spacer"></span>
                         <a class="btn btn-sm" href="/stock?warehouse=@warehouse.Id">Остатки склада</a>
+                        @if (isAdmin)
+                        {
+                            <button class="btn btn-sm" type="button" @onclick="StartEditWarehouse">Изменить склад</button>
+                        }
                         <a class="btn btn-sm" href="/labels?warehouse=@warehouse.Id">Наклейки QR</a>
                         <button class="btn btn-sm" type="button" @onclick="() => SelectLocationAsync(null)" disabled="@(selected is null)">Верхний уровень</button>
                     </div>
@@ -153,6 +201,12 @@
                             }
                         </div>
                     }
+
+                    @if (isAdmin && selected is not null)
+                    {
+                        <LocationEditor Warehouse="warehouse" Tree="tree" Node="selected"
+                                        OnChanged="OnLocationChangedAsync" OnError="m => error = m" />
+                    }
                 </div>
             </div>
         }
@@ -160,6 +214,15 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool isAdmin;
+    private WarehouseForm? warehouseForm;
+    private bool confirmDeleteWarehouse;
+
+    /// <summary>Места, у которых после правки изменился код (для печати новых наклеек).</summary>
+    private List<int> relabelIds = [];
+
     private List<WarehouseDto> warehouses = [];
     private WarehouseDto? warehouse;
     private List<LocationNodeDto> tree = [];
@@ -207,6 +270,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+            isAdmin = (await AuthState).User.IsInRole(AppRoles.Admin);
+
         await LoadWarehousesAsync();
         if (warehouses.Count > 0)
             await SelectWarehouseAsync(warehouses[0]);
@@ -235,6 +301,8 @@
     private async Task SelectWarehouseAsync(WarehouseDto w)
     {
         warehouse = w;
+        warehouseForm = null;
+        relabelIds = [];
         selected = null;
         await ReloadTreeAsync();
         ResetNewType();
@@ -335,6 +403,89 @@
         {
             busy = false;
         }
+    }
+
+    // ---------- Правка (администратор) ----------
+
+    private void StartEditWarehouse()
+    {
+        if (warehouse is null) return;
+        confirmDeleteWarehouse = false;
+        warehouseForm = new WarehouseForm { Code = warehouse.Code, Name = warehouse.Name, Description = warehouse.Description };
+    }
+
+    private async Task SaveWarehouseAsync()
+    {
+        if (warehouse is null || warehouseForm is null) return;
+        await RunAdminAsync(async () =>
+        {
+            var result = await Api.UpdateWarehouseAsync(warehouse.Id,
+                new UpdateWarehouseRequest(warehouseForm.Code!, warehouseForm.Name!.Trim(), warehouseForm.Description));
+            var id = warehouse.Id;
+            warehouseForm = null;
+            await LoadWarehousesAsync();
+            warehouse = warehouses.FirstOrDefault(w => w.Id == id);
+            await ReloadTreeAsync();
+            relabelIds = result.ChangedLocationIds?.ToList() ?? [];
+            success = result.Message;
+        });
+    }
+
+    private async Task DeleteWarehouseAsync()
+    {
+        if (warehouse is null) return;
+        await RunAdminAsync(async () =>
+        {
+            var result = await Api.DeleteReferenceAsync("warehouses", warehouse.Id);
+            warehouseForm = null;
+            warehouse = null;
+            tree = [];
+            selected = null;
+            await LoadWarehousesAsync();
+            if (warehouses.Count > 0)
+                await SelectWarehouseAsync(warehouses[0]);
+            success = result.Message;
+        });
+    }
+
+    private async Task OnLocationChangedAsync((ReferenceChangeResult Result, bool Deleted) change)
+    {
+        error = null;
+        if (change.Deleted)
+        {
+            selected = null;
+            content = [];
+        }
+        await ReloadTreeAsync();
+        ResetNewType();
+        relabelIds = change.Result.ChangedLocationIds?.ToList() ?? [];
+        success = change.Result.Message;
+    }
+
+    private async Task RunAdminAsync(Func<Task> action)
+    {
+        error = success = null;
+        relabelIds = [];
+        busy = true;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private sealed class WarehouseForm
+    {
+        public string? Code { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
     }
 
     private static LocationNodeDto? Find(IEnumerable<LocationNodeDto> nodes, int id)

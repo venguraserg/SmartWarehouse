@@ -415,3 +415,20 @@ public enum LabelKind
 public record LabelRequest(LabelKind Kind, IReadOnlyList<int> Ids, string? Layout, int Skip = 0, string? BaseUrl = null, int Copies = 1);
 
 public record LabelLayoutDto(string Id, string Title, int Columns, int Rows, double WidthMm, double HeightMm);
+
+// ---------- Правка справочников (администратор) ----------
+
+public record UpdateWarehouseRequest(string Code, string Name, string? Description);
+
+/// <summary>Изменение места хранения: код, название, тип и куда вложено (ParentId = null — верхний уровень склада).</summary>
+public record UpdateLocationRequest(int? ParentId, LocationType Type, string Code, string? Name);
+
+public record UpdateCategoryRequest(string Name, string? Description);
+
+public record UpdateUnitRequest(string Code, string Name, bool IsFractional);
+
+public record UpdateEquipmentRequest(int? ParentId, string Code, string Name);
+
+/// <summary>Итог правки: что изменилось и что из этого следует (например, перепечатать наклейки).</summary>
+/// <param name="ChangedCodes">Места, у которых изменился полный код (их QR-наклейки нужно перепечатать).</param>
+public record ReferenceChangeResult(string Message, IReadOnlyList<int>? ChangedLocationIds = null);

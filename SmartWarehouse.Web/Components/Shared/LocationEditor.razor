@@ -1,0 +1,196 @@
+@* Исправление места хранения администратором: код, название, тип, куда вложено; удаление неиспользованного. *@
+@inject ApiClient Api
+
+<div class="panel admin-panel">
+    <h2 style="margin-top: 0">Исправить место <span class="tag tag-warn">администратор</span></h2>
+
+    <div class="field-row">
+        <div class="field">
+            <label for="ed-parent">Вложено в</label>
+            <select id="ed-parent" @bind="parentId">
+                <option value="">— верхний уровень склада @Warehouse.Code —</option>
+                @foreach (var (node, depth) in ParentChoices)
+                {
+                    <option value="@node.Id">@(new string(' ', depth * 3))@node.FullCode (@Ui.LocType(node.Type).ToLowerInvariant())</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="ed-type">Тип</label>
+            <select id="ed-type" @bind="type">
+                @foreach (var t in Enum.GetValues<LocationType>())
+                {
+                    <option value="@t">@Ui.LocType(t)</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="field-row">
+        <div class="field">
+            <label for="ed-code">Код</label>
+            <CodeInput Id="ed-code" @bind-Value="code" Invalid="@(Error is not null)" />
+        </div>
+        <div class="field">
+            <label for="ed-name">Название</label>
+            <input id="ed-name" type="text" @bind="name" maxlength="128" />
+        </div>
+    </div>
+    <FieldError Message="@Error" />
+
+    <p class="muted" style="margin: .25rem 0 .75rem">
+        Полный код: <span class="mono">@NewFullCode</span>
+        @if (NewFullCode != Node.FullCode)
+        {
+            <br />
+            <span class="warn-text">
+                ⚠ Изменится код этого места@(SubtreeSize > 1 ? $" и вложенных ({SubtreeSize - 1})" : "") —
+                их QR-наклейки нужно будет перепечатать, старые перестанут открываться.
+                История документов сохранится и будет показывать новый код.
+            </span>
+        }
+    </p>
+
+    <div class="actions">
+        <button class="btn btn-primary" type="button" disabled="@(busy || Error is not null || !Changed)" @onclick="SaveAsync">Сохранить</button>
+        @if (Node.Children.Count == 0)
+        {
+            if (confirmDelete)
+            {
+                <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить @Node.FullCode</button>
+                <button class="btn" type="button" @onclick="() => confirmDelete = false">Не удалять</button>
+            }
+            else
+            {
+                <button class="btn btn-danger" type="button" @onclick="() => confirmDelete = true">Удалить</button>
+            }
+        }
+    </div>
+    <div class="field-hint" style="margin-top: .5rem">
+        Удалить можно только пустое место без вложенных, через которое не проводились документы.
+        Если документы были — переименуйте или перенесите место.
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public WarehouseDto Warehouse { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<LocationNodeDto> Tree { get; set; } = [];
+    [Parameter, EditorRequired] public LocationNodeDto Node { get; set; } = null!;
+
+    /// <summary>Сохранено или удалено: результат (сообщение и изменившиеся места) и было ли удаление.</summary>
+    [Parameter] public EventCallback<(ReferenceChangeResult Result, bool Deleted)> OnChanged { get; set; }
+
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    private int? parentId;
+    private LocationType type;
+    private string? code;
+    private string? name;
+    private bool busy;
+    private bool confirmDelete;
+    private int loadedFor;
+
+    protected override void OnParametersSet()
+    {
+        if (loadedFor == Node.Id)
+            return;
+        loadedFor = Node.Id;
+        parentId = Node.ParentId;
+        type = Node.Type;
+        code = Node.Code;
+        name = Node.Name;
+        confirmDelete = false;
+    }
+
+    private List<(LocationNodeDto Node, int Depth)> All
+    {
+        get
+        {
+            var result = new List<(LocationNodeDto, int)>();
+            void Walk(IEnumerable<LocationNodeDto> nodes, int depth)
+            {
+                foreach (var n in nodes.OrderBy(n => n.Code))
+                {
+                    result.Add((n, depth));
+                    Walk(n.Children, depth + 1);
+                }
+            }
+            Walk(Tree, 0);
+            return result;
+        }
+    }
+
+    private HashSet<int> SubtreeIds
+    {
+        get
+        {
+            var ids = new HashSet<int>();
+            void Walk(LocationNodeDto n)
+            {
+                ids.Add(n.Id);
+                foreach (var c in n.Children) Walk(c);
+            }
+            Walk(Node);
+            return ids;
+        }
+    }
+
+    private int SubtreeSize => SubtreeIds.Count;
+
+    /// <summary>Куда можно вложить: не в себя и не во вложенные, только «выше» по типу.</summary>
+    private IEnumerable<(LocationNodeDto Node, int Depth)> ParentChoices =>
+        All.Where(x => !SubtreeIds.Contains(x.Node.Id) && x.Node.Type < type);
+
+    private LocationNodeDto? Parent => All.Select(x => x.Node).FirstOrDefault(n => n.Id == parentId);
+
+    private string NewFullCode => $"{Parent?.FullCode ?? Warehouse.Code}-{(string.IsNullOrEmpty(code) ? "…" : code)}";
+
+    private bool Changed =>
+        parentId != Node.ParentId || type != Node.Type || code != Node.Code || (name ?? "") != (Node.Name ?? "");
+
+    private string? Error =>
+        string.IsNullOrEmpty(code) ? "Укажите код."
+        : parentId is not null && Parent is null ? "Выберите, куда вложено."
+        : Parent is { } p && type <= p.Type ? $"В «{Ui.LocType(p.Type).ToLowerInvariant()}» можно вложить только место ниже по уровню."
+        : Node.Children.FirstOrDefault(c => c.Type <= type) is { } child ? $"Внутри есть «{Ui.LocType(child.Type).ToLowerInvariant()}» {child.Code} — выберите тип выше."
+        : All.Any(x => !SubtreeIds.Contains(x.Node.Id) && x.Node.FullCode == NewFullCode) ? $"Место {NewFullCode} уже есть."
+        : null;
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        try
+        {
+            var result = await Api.UpdateLocationAsync(Node.Id,
+                new UpdateLocationRequest(parentId, type, code!, string.IsNullOrWhiteSpace(name) ? null : name.Trim()));
+            loadedFor = 0; // после перезагрузки дерева поля заполнятся заново
+            await OnChanged.InvokeAsync((result, false));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            await OnError.InvokeAsync(ex.Message);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        busy = true;
+        try
+        {
+            var result = await Api.DeleteReferenceAsync("locations", Node.Id);
+            await OnChanged.InvokeAsync((result, true));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            confirmDelete = false;
+            await OnError.InvokeAsync(ex.Message);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}
