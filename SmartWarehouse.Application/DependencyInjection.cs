@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<IActService, ActService>();
         services.AddScoped<IScanService, ScanService>();
         services.AddScoped<IReferenceAdminService, ReferenceAdminService>();
+        services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<ILabelService, LabelService>();
         services.AddScoped<AccountService>();
         services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AccountService>());

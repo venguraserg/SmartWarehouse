@@ -1,0 +1,253 @@
+@page "/admin/settings"
+@attribute [Authorize(Roles = AppRoles.Admin)]
+@inject ApiClient Api
+
+<PageTitle>Настройки — склад</PageTitle>
+
+<h1>Настройки</h1>
+
+<Alert Error="@error" Success="@success" />
+
+@if (labels is null || act is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    @* ---------- Наклейки ---------- *@
+    <form class="panel ref-section" style="max-width: 820px" @onsubmit="SaveLabelsAsync" @onsubmit:preventDefault>
+        <h2 style="margin-top: 0">Наклейки с QR-кодами</h2>
+
+        <div class="field">
+            <label>Что зашивать в QR-код</label>
+            <label class="checkbox">
+                <input type="radio" name="qr" checked="@(labels.QrContent == QrContent.Code)" @onchange="() => labels.QrContent = QrContent.Code" />
+                Только код — <span class="mono">SWL-15</span> (место хранения), <span class="mono">SWI-7</span> (позиция)
+            </label>
+            <label class="checkbox">
+                <input type="radio" name="qr" checked="@(labels.QrContent == QrContent.Link)" @onchange="() => labels.QrContent = QrContent.Link" />
+                Ссылка на страницу приложения
+            </label>
+            <div class="field-hint">
+                Код понимают ручной сканер и сканер в приложении (в том числе на телефоне): сразу открывается ячейка
+                или позиция, а в документе — добавляется строка. Код короткий, QR мельче и читается надёжнее,
+                и он не меняется при переименовании места. Обычная камера телефона покажет просто текст.
+                Ссылку открывает и обычная камера телефона. Распознаются наклейки обоих видов, перепечатывать старые не нужно.
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="base-url">Адрес приложения для ссылок</label>
+            <input id="base-url" type="url" @bind="labels.BaseUrl" placeholder="http://sklad:8081" maxlength="200" />
+            <div class="field-hint">
+                Нужен для ссылок в QR-коде: адрес, по которому телефоны в сети предприятия открывают приложение
+                (IP или имя сервера). Пусто — адрес, по которому открыт сайт при печати.
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit" disabled="@busy">Сохранить</button>
+        </div>
+    </form>
+
+    @* ---------- Шаблон акта ---------- *@
+    <form class="panel ref-section" style="max-width: 820px; margin-top: 1rem" @onsubmit="SaveActAsync" @onsubmit:preventDefault>
+        <div class="page-head" style="margin-bottom: .5rem">
+            <h2 style="margin: 0">Акт на списание</h2>
+            <span class="spacer"></span>
+            <a class="btn btn-sm" href="/act-sample.pdf" target="_blank" rel="noopener" title="По сохранённому шаблону">Образец PDF</a>
+        </div>
+
+        <div class="field">
+            <label for="org">Организация / подразделение в шапке</label>
+            <input id="org" type="text" @bind="act.Organization" maxlength="300" placeholder="ОАО «Молочный комбинат», отдел эксплуатации" />
+        </div>
+
+        <div class="field">
+            <label for="subtitle">Строка под «АКТ №» <span class="req">*</span></label>
+            <input id="subtitle" type="text" @bind="act.Subtitle" maxlength="200" />
+        </div>
+
+        <div class="field">
+            <label for="intro">Текст перед таблицей <span class="req">*</span></label>
+            <textarea id="intro" rows="3" @bind="act.Intro" maxlength="2000"></textarea>
+        </div>
+
+        <div class="field">
+            <label for="approver">Должность в «УТВЕРЖДАЮ»</label>
+            <input id="approver" type="text" @bind="act.ApproverPosition" maxlength="200" />
+            <div class="field-hint">Пока акт не утверждён в программе. После утверждения печатаются должность и ФИО утвердившего.</div>
+        </div>
+
+        <h3>Комиссия</h3>
+        <label class="checkbox" style="margin-bottom: .6rem">
+            <input type="checkbox" @bind="act.ResponsibleSigns" /> Подпись материально ответственного лица (сотрудника, за которым числится)
+        </label>
+
+        <div class="field-row">
+            <div class="field">
+                <label for="chair-pos">Председатель — должность</label>
+                <input id="chair-pos" type="text" @bind="act.ChairPosition" maxlength="150" placeholder="Главный механик" />
+            </div>
+            <div class="field">
+                <label for="chair-name">Председатель — ФИО</label>
+                <input id="chair-name" type="text" @bind="act.ChairName" maxlength="150" placeholder="пусто — строка для подписи" />
+            </div>
+        </div>
+
+        <label>Члены комиссии</label>
+        <div class="table-wrap" style="margin-bottom: .5rem">
+            <table>
+                <thead><tr><th>Должность</th><th>ФИО</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in act.Members)
+                    {
+                        <tr>
+                            <td><input type="text" @bind="m.Position" maxlength="150" aria-label="Должность" /></td>
+                            <td><input type="text" @bind="m.Name" maxlength="150" aria-label="ФИО" /></td>
+                            <td class="row-actions">
+                                <button class="btn btn-sm" type="button" title="Убрать" @onclick="() => act.Members.Remove(m)">✕</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (act.Members.Count == 0)
+            {
+                <div class="empty">Никого — только пустые строки для подписи.</div>
+            }
+        </div>
+        <button class="btn btn-sm" type="button" disabled="@(act.Members.Count >= MaxMembers)" @onclick="() => act.Members.Add(new MemberModel())">+ Член комиссии</button>
+
+        <div class="field" style="margin-top: .75rem; max-width: 260px">
+            <label for="blank">Пустых строк для членов комиссии</label>
+            <input id="blank" type="number" min="0" max="10" @bind="act.BlankMembers" />
+            <div class="field-hint">Для тех, кого впишут от руки.</div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit" disabled="@busy">Сохранить</button>
+            <button class="btn" type="button" disabled="@busy" @onclick="ResetActAsync">Вернуть по умолчанию</button>
+        </div>
+    </form>
+}
+
+@code {
+    private const int MaxMembers = 10;
+
+    private LabelsModel? labels;
+    private ActModel? act;
+    private bool busy;
+    private string? error;
+    private string? success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            labels = LabelsModel.From(await Api.GetLabelSettingsAsync());
+            act = ActModel.From(await Api.GetActTemplateAsync());
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private Task SaveLabelsAsync() => RunAsync(async () =>
+    {
+        labels = LabelsModel.From(await Api.SaveLabelSettingsAsync(labels!.ToDto()));
+        return "Настройки наклеек сохранены.";
+    });
+
+    private Task SaveActAsync() => RunAsync(async () =>
+    {
+        act = ActModel.From(await Api.SaveActTemplateAsync(act!.ToDto()));
+        return "Шаблон акта сохранён. Он применяется ко всем актам при печати, в том числе к уже утверждённым.";
+    });
+
+    /// <summary>Значения по умолчанию: организация остаётся, остальное — как было изначально.</summary>
+    private Task ResetActAsync() => RunAsync(async () =>
+    {
+        var defaults = new ActTemplateDto(act!.Organization,
+            "на списание материальных ценностей",
+            "Комиссия в составе лиц, подписавших настоящий акт, установила, что перечисленные ниже материальные " +
+            "ценности, числящиеся за материально ответственным лицом, израсходованы (использованы) и подлежат списанию:",
+            "Руководитель", null, [], 3, true);
+        act = ActModel.From(await Api.SaveActTemplateAsync(defaults));
+        return "Шаблон акта возвращён к значениям по умолчанию.";
+    });
+
+    private async Task RunAsync(Func<Task<string>> action)
+    {
+        busy = true;
+        error = success = null;
+        try
+        {
+            success = await action();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private sealed class LabelsModel
+    {
+        public QrContent QrContent { get; set; }
+        public string? BaseUrl { get; set; }
+
+        public static LabelsModel From(LabelSettingsDto d) => new() { QrContent = d.QrContent, BaseUrl = d.BaseUrl };
+
+        public LabelSettingsDto ToDto() => new(QrContent, BaseUrl);
+    }
+
+    private sealed class MemberModel
+    {
+        public string? Position { get; set; }
+        public string? Name { get; set; }
+    }
+
+    private sealed class ActModel
+    {
+        public string? Organization { get; set; }
+        public string? Subtitle { get; set; }
+        public string? Intro { get; set; }
+        public string? ApproverPosition { get; set; }
+        public string? ChairPosition { get; set; }
+        public string? ChairName { get; set; }
+        public List<MemberModel> Members { get; set; } = [];
+        public int BlankMembers { get; set; }
+        public bool ResponsibleSigns { get; set; }
+
+        public static ActModel From(ActTemplateDto d) => new()
+        {
+            Organization = d.Organization,
+            Subtitle = d.Subtitle,
+            Intro = d.Intro,
+            ApproverPosition = d.ApproverPosition,
+            ChairPosition = d.Chair?.Position,
+            ChairName = d.Chair?.Name,
+            Members = d.Members.Select(m => new MemberModel { Position = m.Position, Name = m.Name }).ToList(),
+            BlankMembers = d.BlankMembers,
+            ResponsibleSigns = d.ResponsibleSigns
+        };
+
+        public ActTemplateDto ToDto() => new(
+            Organization,
+            Subtitle ?? "",
+            Intro ?? "",
+            ApproverPosition ?? "",
+            new CommissionMemberDto(ChairPosition, ChairName),
+            Members.Select(m => new CommissionMemberDto(m.Position, m.Name)).ToList(),
+            BlankMembers,
+            ResponsibleSigns);
+    }
+}

@@ -444,6 +444,44 @@ public record LabelRequest(LabelKind Kind, IReadOnlyList<int> Ids, string? Layou
 
 public record LabelLayoutDto(string Id, string Title, int Columns, int Rows, double WidthMm, double HeightMm);
 
+// ---------- Настройки (администратор) ----------
+
+/// <summary>Что зашивается в QR-код наклейки.</summary>
+public enum QrContent
+{
+    /// <summary>Короткий код (SWL-15, SWI-7): его понимают ручной сканер и сканер в приложении.</summary>
+    Code,
+
+    /// <summary>Ссылка на страницу приложения: открывается и обычной камерой телефона.</summary>
+    Link
+}
+
+/// <summary>Настройки наклеек.</summary>
+/// <param name="BaseUrl">Адрес приложения для ссылок (http://sklad:8081). Пусто — адрес, по которому открыт сайт.</param>
+public record LabelSettingsDto(QrContent QrContent, string? BaseUrl);
+
+/// <summary>Член комиссии в акте: должность и ФИО (что-то одно можно не указывать).</summary>
+public record CommissionMemberDto(string? Position, string? Name);
+
+/// <summary>Шаблон акта на списание.</summary>
+/// <param name="Organization">Организация / подразделение в шапке.</param>
+/// <param name="Subtitle">Строка под «АКТ №»: «на списание материальных ценностей».</param>
+/// <param name="Intro">Текст перед таблицей.</param>
+/// <param name="ApproverPosition">Должность в «УТВЕРЖДАЮ», пока акт не утверждён в программе.</param>
+/// <param name="Chair">Председатель комиссии; null — пустая строка для подписи.</param>
+/// <param name="Members">Члены комиссии, напечатанные заранее.</param>
+/// <param name="BlankMembers">Сколько ещё пустых строк для членов комиссии.</param>
+/// <param name="ResponsibleSigns">Подпись материально ответственного лица.</param>
+public record ActTemplateDto(
+    string? Organization,
+    string Subtitle,
+    string Intro,
+    string ApproverPosition,
+    CommissionMemberDto? Chair,
+    IReadOnlyList<CommissionMemberDto> Members,
+    int BlankMembers,
+    bool ResponsibleSigns);
+
 // ---------- Правка справочников (администратор) ----------
 
 public record UpdateWarehouseRequest(string Code, string Name, string? Description);

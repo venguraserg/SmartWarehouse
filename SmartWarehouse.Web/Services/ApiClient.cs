@@ -315,6 +315,28 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    // ---------- Настройки ----------
+
+    public Task<LabelSettingsDto> GetLabelSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<LabelSettingsDto>("api/settings/labels", ct);
+
+    public Task<LabelSettingsDto> SaveLabelSettingsAsync(LabelSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<LabelSettingsDto>(HttpMethod.Put, "api/settings/labels", settings, ct);
+
+    public Task<ActTemplateDto> GetActTemplateAsync(CancellationToken ct = default) =>
+        GetAsync<ActTemplateDto>("api/settings/act-template", ct);
+
+    public Task<ActTemplateDto> SaveActTemplateAsync(ActTemplateDto template, CancellationToken ct = default) =>
+        SendAsync<ActTemplateDto>(HttpMethod.Put, "api/settings/act-template", template, ct);
+
+    /// <summary>Образец акта по сохранённому шаблону (PDF).</summary>
+    public async Task<byte[]> GetActSampleAsync(CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Get, "api/settings/act-template/sample", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ---------- Акты на списание ----------
 
     public Task<List<ActSummaryDto>> GetActsAsync(ActScope scope = ActScope.Visible, ActStatus? status = null, int? employeeId = null, CancellationToken ct = default)

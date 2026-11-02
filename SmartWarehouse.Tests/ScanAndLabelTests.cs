@@ -12,6 +12,9 @@ public class ScanAndLabelTests
     private readonly FakeLocationRepository _locations = new();
     private readonly FakeCatalogRepository _catalog = new();
     private readonly FakeStockRepository _stock = new();
+    private readonly FakeSettingsRepository _settingsRepo = new();
+    private readonly CapturingLabelRenderer _captured = new();
+    private readonly SettingsService _settings;
     private readonly ScanService _scan;
     private readonly LabelService _labels;
 
@@ -29,7 +32,8 @@ public class ScanAndLabelTests
         _stock.Items.Add(bearing);
 
         _scan = new ScanService(_locations, _catalog);
-        _labels = new LabelService(_locations, _stock, new LabelPdfRenderer());
+        _settings = new SettingsService(_settingsRepo, new DocumentPrintOptions(null), new FixedTimeProvider(DateTimeOffset.UnixEpoch));
+        _labels = new LabelService(_locations, _stock, new LabelPdfRenderer(), _settings);
     }
 
     // ---------- Распознавание кода ----------
@@ -88,6 +92,64 @@ public class ScanAndLabelTests
         Assert.Equal("ЗЧ-000005", code);
 
         Assert.False(LabelLinks.TryParse("СК1-A-01", out _, out _));
+    }
+
+    // ---------- Короткие коды наклеек (без ссылки) ----------
+
+    [Theory]
+    [InlineData("SWL-11")]
+    [InlineData("swl-11")]       // Caps Lock
+    [InlineData("ЫЦД-11")]       // русская раскладка
+    [InlineData(" SWL-11 ")]
+    public async Task Ячейка_по_короткому_коду(string code)
+    {
+        var found = await _scan.ResolveAsync(code);
+
+        Assert.Equal(ScanKind.Location, found.Kind);
+        Assert.Equal(11, found.Id);
+        Assert.Equal("СК1-A-01", found.Code);
+    }
+
+    [Fact]
+    public async Task Позиция_по_короткому_коду_и_неизвестный_код()
+    {
+        var found = await _scan.ResolveAsync("SWI-5");
+        Assert.Equal(ScanKind.Item, found.Kind);
+        Assert.Equal(5, found.Id);
+
+        var missing = await Assert.ThrowsAsync<NotFoundException>(() => _scan.ResolveAsync("SWL-999"));
+        Assert.Contains("наклейки", missing.Message);
+        Assert.False(LabelCodes.TryParse("SWL-", out _, out _));
+        Assert.False(LabelCodes.TryParse("SWL-1a", out _, out _));
+        Assert.False(LabelCodes.TryParse("SWL--1", out _, out _));
+    }
+
+    [Fact]
+    public async Task В_QR_по_умолчанию_только_код_без_ссылки()
+    {
+        var labels = new LabelService(_locations, _stock, _captured, _settings);
+
+        await labels.RenderAsync(new LabelRequest(LabelKind.Location, [11], null, BaseUrl: "http://sklad:8081"));
+        await labels.RenderAsync(new LabelRequest(LabelKind.Item, [5], null, BaseUrl: "http://sklad:8081"));
+
+        Assert.Equal(["SWL-11", "SWI-5"], _captured.Labels.Select(l => l.Payload));
+        Assert.Equal("СК1-A-01", _captured.Labels[0].Code); // крупная подпись — как раньше
+        Assert.All(_captured.Labels, l => Assert.True(l.Payload.All(char.IsAscii)));
+    }
+
+    [Fact]
+    public async Task Ссылка_в_QR_с_адресом_из_настроек_или_сайта()
+    {
+        var labels = new LabelService(_locations, _stock, _captured, _settings);
+
+        await _settings.SaveLabelSettingsAsync(new LabelSettingsDto(QrContent.Link, null), "Админ");
+        await labels.RenderAsync(new LabelRequest(LabelKind.Location, [11], null, BaseUrl: "http://site:8081"));
+
+        await _settings.SaveLabelSettingsAsync(new LabelSettingsDto(QrContent.Link, " http://192.168.1.10:8081/ "), "Админ");
+        await labels.RenderAsync(new LabelRequest(LabelKind.Item, [5], null, BaseUrl: "http://site:8081"));
+
+        Assert.Equal("http://site:8081/l/%D0%A1%D0%9A1-A-01", _captured.Labels[0].Payload);
+        Assert.Equal("http://192.168.1.10:8081/i/%D0%97%D0%A7-000005", _captured.Labels[1].Payload);
     }
 
     // ---------- Наклейки ----------
@@ -161,5 +223,16 @@ public class ScanAndLabelTests
         Assert.Equal("http://sklad/l/A-01", KeyboardLayout.FromRussianLayout("реезЖ..ылдфв.д.Ф-01"));
         Assert.True(KeyboardLayout.HasRussianLetters("реез"));
         Assert.False(KeyboardLayout.HasRussianLetters("http://x/l/A"));
+    }
+}
+
+internal class CapturingLabelRenderer : ILabelPdfRenderer
+{
+    public List<LabelData> Labels { get; } = [];
+
+    public byte[] Render(IReadOnlyList<LabelData> labels, LabelLayout layout, int skip)
+    {
+        Labels.AddRange(labels);
+        return [1];
     }
 }

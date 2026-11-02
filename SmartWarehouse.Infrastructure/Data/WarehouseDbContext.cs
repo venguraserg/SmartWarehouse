@@ -21,6 +21,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<UserAccount> Users => Set<UserAccount>();
     public DbSet<WriteOffAct> WriteOffActs => Set<WriteOffAct>();
     public DbSet<WriteOffActLine> WriteOffActLines => Set<WriteOffActLine>();
+    public DbSet<AppSetting> Settings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

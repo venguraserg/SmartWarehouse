@@ -22,6 +22,7 @@ public record ActApprovalData(string Name, string? Position, DateTimeOffset At);
 /// <param name="Period">Период сводного акта текстом («с 01.10.2026 по 31.10.2026»).</param>
 /// <param name="Approval">Кто и когда утвердил; null — не утверждён (в шапке — пустые строки для подписи).</param>
 /// <param name="Watermark">Надпись поперёк страницы для неутверждённого акта («ЧЕРНОВИК»); null — без неё.</param>
+/// <param name="Template">Шаблон из настроек (тексты, комиссия); null — по умолчанию.</param>
 public record WriteOffActData(
     string Number,
     DateTimeOffset Date,
@@ -35,7 +36,8 @@ public record WriteOffActData(
     IReadOnlyList<WriteOffActLineData> Lines,
     ActApprovalData? Approval = null,
     string? Watermark = null,
-    string? DocumentNumber = null);
+    string? DocumentNumber = null,
+    ActTemplateDto? Template = null);
 
 /// <summary>Построение PDF (реализация — в Infrastructure).</summary>
 public interface IActPdfRenderer
@@ -50,6 +52,9 @@ public interface IActService
 
     /// <summary>Акт на списание (PDF). Неутверждённый — с надписью «ЧЕРНОВИК».</summary>
     Task<(byte[] Pdf, string FileName)> GetActPdfAsync(int actId, ActActor actor, CancellationToken ct = default);
+
+    /// <summary>Образец акта по текущему шаблону — проверить настройки.</summary>
+    Task<(byte[] Pdf, string FileName)> GetSampleAsync(CancellationToken ct = default);
 }
 
 public class ActService(
@@ -58,7 +63,7 @@ public class ActService(
     IEmployeeRepository employees,
     ICatalogRepository catalog,
     IActPdfRenderer renderer,
-    DocumentPrintOptions options) : IActService
+    ISettingsService settings) : IActService
 {
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
 
@@ -66,6 +71,7 @@ public class ActService(
     {
         var act = await acts.GetAsync(actId, actor, ct);
         var employee = await employees.GetAsync(act.EmployeeId, ct);
+        var template = await settings.GetActTemplateAsync(ct);
 
         string? period = (act.PeriodFrom, act.PeriodTo) switch
         {
@@ -78,7 +84,7 @@ public class ActService(
         var data = new WriteOffActData(
             act.Number,
             act.DecidedAt is { } decided && act.Status == ActStatus.Approved ? decided : act.SubmittedAt ?? act.UpdatedAt,
-            Organization(),
+            template.Organization,
             employee?.FullName ?? act.EmployeeName,
             employee?.Position ?? act.EmployeePosition,
             employee?.PersonnelNumber,
@@ -98,7 +104,8 @@ public class ActService(
                 ActStatus.Pending => "НА УТВЕРЖДЕНИИ",
                 _ => "ЧЕРНОВИК"
             },
-            act.DocumentNumber);
+            act.DocumentNumber,
+            template);
 
         return (renderer.RenderWriteOffAct(data), $"Акт_{act.Number}.pdf");
     }
@@ -123,11 +130,12 @@ public class ActService(
             equipment = found is null ? null : $"{found.Code} — {found.Name}";
         }
         var usage = string.Join("; ", new[] { equipment, doc.Comment }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var template = await settings.GetActTemplateAsync(ct);
 
         var data = new WriteOffActData(
             doc.Number,
             doc.OccurredAt,
-            Organization(),
+            template.Organization,
             employee?.FullName ?? doc.ReceivedBy ?? "—",
             employee?.Position,
             employee?.PersonnelNumber,
@@ -137,13 +145,34 @@ public class ActService(
             doc.Lines
                 .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, usage.Length == 0 ? null : usage,
                     actor.SeesPrices ? l.UnitPrice : null))
-                .ToList());
+                .ToList(),
+            Template: template);
 
         return (renderer.RenderWriteOffAct(data), $"Акт_{doc.Number}.pdf");
     }
 
-    private string? Organization() =>
-        string.IsNullOrWhiteSpace(options.Organization) ? null : options.Organization.Trim();
+    public async Task<(byte[] Pdf, string FileName)> GetSampleAsync(CancellationToken ct = default)
+    {
+        var template = await settings.GetActTemplateAsync(ct);
+        var data = new WriteOffActData(
+            "АС-000000",
+            DateTimeOffset.Now,
+            template.Organization,
+            "Иванов Иван Иванович",
+            "Слесарь-ремонтник",
+            "0001",
+            null,
+            "Наряд № 1",
+            null,
+            [
+                new WriteOffActLineData(1, "ЗЧ-000001", "Подшипник 6205-2RS", "шт", 2, "Насос центробежный; замена подшипников", 450m),
+                new WriteOffActLineData(2, "ЗЧ-000002", "Ремень приводной A-1250", "шт", 1, "Транспортёр ящиков", 820m)
+            ],
+            Watermark: "ОБРАЗЕЦ",
+            Template: template);
+
+        return (renderer.RenderWriteOffAct(data), "Образец_акта.pdf");
+    }
 
     /// <summary>Утвердивший — полным ФИО (в акте хранится краткое «Иванов И. П.»).</summary>
     private async Task<string> DecidedByFullAsync(ActDto act, CancellationToken ct) =>
