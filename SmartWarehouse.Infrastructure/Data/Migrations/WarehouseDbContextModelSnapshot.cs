@@ -170,6 +170,10 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int?>("CategoryId")
                         .HasColumnType("integer");
 
@@ -205,6 +209,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique();
 
                     b.HasIndex("CategoryId");
 
@@ -530,6 +537,136 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("warehouses", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffAct", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("DecidedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DecidedByPosition")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long?>("DocumentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExternalNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly?>("PeriodFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("PeriodTo")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ReturnRemark")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecidedById");
+
+                    b.HasIndex("DocumentId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("EmployeeId", "Status");
+
+                    b.ToTable("write_off_acts", (string)null);
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffActLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("Usage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateOnly?>("UsedOn")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("ActId", "LineNo")
+                        .IsUnique();
+
+                    b.ToTable("write_off_act_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_write_off_act_lines_quantity_positive", "\"Quantity\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Employee", b =>
                 {
                     b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Manager")
@@ -716,6 +853,57 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Navigation("Employee");
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffAct", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "DecidedByEmployee")
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "Document")
+                        .WithOne("Act")
+                        .HasForeignKey("SmartWarehouse.Domain.Entities.WriteOffAct", "DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DecidedByEmployee");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffActLine", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.WriteOffAct", "Act")
+                        .WithMany("Lines")
+                        .HasForeignKey("ActId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Act");
+
+                    b.Navigation("Equipment");
+
+                    b.Navigation("Item");
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
                 {
                     b.Navigation("Children");
@@ -728,6 +916,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.StockDocument", b =>
                 {
+                    b.Navigation("Act");
+
                     b.Navigation("Lines");
                 });
 
@@ -739,6 +929,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Warehouse", b =>
                 {
                     b.Navigation("Locations");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffAct", b =>
+                {
+                    b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618
         }
