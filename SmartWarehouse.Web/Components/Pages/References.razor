@@ -8,8 +8,8 @@
 
 <Alert Error="@error" Success="@success" />
 
-<div class="grid-2">
-    <section class="panel">
+@* Справочники — один под другим, на всю ширину. *@
+<section class="panel ref-section">
         <h2 style="margin-top: 0">Категории</h2>
         <form class="inline-form" @onsubmit="AddCategoryAsync" @onsubmit:preventDefault>
             <div class="field">
@@ -61,9 +61,9 @@
         {
             <p class="muted">Категорий пока нет.</p>
         }
-    </section>
+</section>
 
-    <section class="panel">
+<section class="panel ref-section">
         <h2 style="margin-top: 0">Единицы измерения</h2>
         <form class="inline-form" @onsubmit="AddUnitAsync" @onsubmit:preventDefault>
             <div class="field" style="max-width: 110px">
@@ -120,10 +120,9 @@
                 }
             </tbody>
         </table>
-    </section>
-</div>
+</section>
 
-<section class="panel" style="margin-top: 1rem">
+<section class="panel ref-section">
     <h2 style="margin-top: 0">Оборудование</h2>
     <p class="muted">Участки, установки и узлы — на них оформляется выдача запчастей.</p>
     <form class="inline-form" @onsubmit="AddEquipmentAsync" @onsubmit:preventDefault>
