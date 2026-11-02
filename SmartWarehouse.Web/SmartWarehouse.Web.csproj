@@ -11,4 +11,9 @@
     <ProjectReference Include="..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Запуск как служба Windows (deploy/windows). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
+
 </Project>
