@@ -107,7 +107,12 @@ public class StockServiceTests
         await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellA));
 
         Assert.Equal(8, Balance(CellA));
-        Assert.Single(_repo.Balances);
+        Assert.Equal(2, _repo.Balances.Count); // каждая строка прихода — своя партия
+
+        await Post(MovementType.Adjustment, Line(2, to: CellA) with { BatchId = 1 });
+
+        Assert.Equal(10, Balance(CellA));
+        Assert.Equal(2, _repo.Balances.Count); // в существующую партию — без новой строки остатка
     }
 
     [Fact]
