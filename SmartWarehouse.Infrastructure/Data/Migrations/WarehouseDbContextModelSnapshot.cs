@@ -22,6 +22,43 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.Batch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<long?>("ReceiptDocumentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceiptDocumentId");
+
+                    b.HasIndex("ItemId", "ReceivedAt");
+
+                    b.ToTable("batches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_batches_price_nonnegative", "\"UnitPrice\" IS NULL OR \"UnitPrice\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Category", b =>
                 {
                     b.Property<int>("Id")
@@ -111,6 +148,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("ItemId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("BatchId")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
@@ -121,7 +161,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.HasKey("EmployeeId", "ItemId");
+                    b.HasKey("EmployeeId", "ItemId", "BatchId");
+
+                    b.HasIndex("BatchId");
 
                     b.HasIndex("ItemId");
 
@@ -250,6 +292,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("LocationId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("BatchId")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
@@ -260,7 +305,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.HasKey("ItemId", "LocationId");
+                    b.HasKey("ItemId", "LocationId", "BatchId");
+
+                    b.HasIndex("BatchId");
 
                     b.HasIndex("LocationId");
 
@@ -332,6 +379,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<int>("BatchId")
+                        .HasColumnType("integer");
+
                     b.Property<long>("DocumentId")
                         .HasColumnType("bigint");
 
@@ -366,6 +416,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
 
                     b.HasIndex("FromEmployeeId");
 
@@ -632,6 +684,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("ActId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("BatchId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("EquipmentId")
                         .HasColumnType("integer");
 
@@ -654,6 +709,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BatchId");
+
                     b.HasIndex("EquipmentId");
 
                     b.HasIndex("ItemId");
@@ -665,6 +722,24 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         {
                             t.HasCheckConstraint("ck_write_off_act_lines_quantity_positive", "\"Quantity\" > 0");
                         });
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.Batch", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "ReceiptDocument")
+                        .WithMany()
+                        .HasForeignKey("ReceiptDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Item");
+
+                    b.Navigation("ReceiptDocument");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Employee", b =>
@@ -679,6 +754,12 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.EmployeeBalance", b =>
                 {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Batch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Employee")
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -690,6 +771,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Batch");
 
                     b.Navigation("Employee");
 
@@ -737,6 +820,12 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.StockBalance", b =>
                 {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Batch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
                         .WithMany("Balances")
                         .HasForeignKey("ItemId")
@@ -748,6 +837,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasForeignKey("LocationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Batch");
 
                     b.Navigation("Item");
 
@@ -780,6 +871,12 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.StockMovement", b =>
                 {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Batch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "Document")
                         .WithMany("Lines")
                         .HasForeignKey("DocumentId")
@@ -811,6 +908,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ToLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Batch");
 
                     b.Navigation("Document");
 
@@ -886,6 +985,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SmartWarehouse.Domain.Entities.Batch", "Batch")
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartWarehouse.Domain.Entities.Equipment", "Equipment")
                         .WithMany()
                         .HasForeignKey("EquipmentId")
@@ -898,6 +1002,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Act");
+
+                    b.Navigation("Batch");
 
                     b.Navigation("Equipment");
 
