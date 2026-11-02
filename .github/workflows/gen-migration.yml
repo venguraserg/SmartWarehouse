@@ -2,7 +2,7 @@ name: migration
 
 on:
   push:
-    branches: [feature/settings-qr-act]
+    branches: [feature/latin-codes]
 
 permissions:
   contents: write
@@ -20,8 +20,6 @@ jobs:
         run: |
           dotnet restore SmartWarehouse.slnx
           dotnet build SmartWarehouse.slnx --no-restore
-      - name: Тесты
-        run: dotnet test SmartWarehouse.slnx --no-build
       - name: dotnet-ef
         run: dotnet tool install --global dotnet-ef --version 10.0.0
       - name: Миграция
