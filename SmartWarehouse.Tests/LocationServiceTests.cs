@@ -14,7 +14,7 @@ public class LocationServiceTests
 
     public LocationServiceTests() => _service = new LocationService(_repo);
 
-    private async Task<int> WarehouseAsync(string code = "ск1") =>
+    private async Task<int> WarehouseAsync(string code = "wh1") =>
         (await _service.CreateWarehouseAsync(new CreateWarehouseRequest(code, "Склад запчастей", null))).Id;
 
     private Task<LocationDto> AddAsync(int warehouseId, int? parentId, LocationType type, string code) =>
@@ -101,7 +101,14 @@ public class LocationServiceTests
     {
         await WarehouseAsync("WH1");
 
-        await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("ск1"));
+        await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("wh1"));
+    }
+
+    [Fact]
+    public async Task Код_склада_только_латиницей()
+    {
+        var ex = await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("СК1"));
+        Assert.Contains("латинские", ex.Message);
     }
 
     [Fact]

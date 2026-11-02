@@ -16,6 +16,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                 type: "character varying(6)",
                 maxLength: 6,
                 nullable: true);
+
+            // Коды с кириллицей → латиница (СК1 → WH1, ЗЧ- → SP-): их вводит ручной сканер при любой раскладке.
+            migrationBuilder.Sql(SmartWarehouse.Infrastructure.Data.LatinCodesSql.Build());
         }
 
         /// <inheritdoc />
