@@ -37,11 +37,8 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
-    // Без миграций (ранние версии) таблицы создаются по модели; дальше — обычные миграции.
-    if (db.Database.GetMigrations().Any())
-        await db.Database.MigrateAsync();
-    else
-        await db.Database.EnsureCreatedAsync();
+    // Миграции; база, созданная ранней версией без миграций, тоже подхватывается (см. DatabaseSetup).
+    await DatabaseSetup.MigrateAsync(db);
     await DbSeeder.SeedAsync(db);
 }
 

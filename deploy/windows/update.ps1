@@ -5,13 +5,16 @@
 
     Запускать от имени администратора из папки репозитория:
         powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1
-    Дополнительная установка (этап для показа) — с её именем и веткой:
-        powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1 -Instance pr4 -Branch state-pr4
+    Другая ветка (например, следующий этап для показа):
+        powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1 -Branch state-pr6-stock
+    Дополнительная установка — с её именем:  ... update.ps1 -Instance pr4 -Branch state-pr4
+    Начать с пустой базы (все данные удаляются; перед этим делается резервная копия):  ... -ResetDatabase
 #>
 param(
     [string]$Instance = "",
     [string]$InstallDir,
-    [string]$Branch = "main"
+    [string]$Branch = "main",
+    [switch]$ResetDatabase
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,6 +44,27 @@ $webDir = Join-Path $InstallDir "web"
 
 Write-Host "==> Остановка служб" -ForegroundColor Cyan
 Stop-Service $webService, $apiService -Force
+
+if ($ResetDatabase) {
+    # Параметры подключения — из настроек API; база создаётся заново при запуске API.
+    $config = Get-Content (Join-Path $apiDir "appsettings.Production.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    $parts = @{}
+    foreach ($pair in $config.ConnectionStrings.Default.Split(';')) {
+        $kv = $pair.Split('=', 2)
+        if ($kv.Count -eq 2) { $parts[$kv[0].Trim().ToLowerInvariant()] = $kv[1].Trim() }
+    }
+    $psql = Get-ChildItem "C:\Program Files\PostgreSQL\*\bin\psql.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $psql) { throw "psql не найден." }
+    Write-Host "==> Удаление базы $($parts['database']) (копия сохранена в $InstallDir\backups)" -ForegroundColor Yellow
+    $env:PGPASSWORD = $parts["password"]
+    try {
+        & $psql.FullName -h $parts["host"] -U $parts["username"] -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS `"$($parts['database'])`" WITH (FORCE);"
+        if ($LASTEXITCODE -ne 0) { throw "Не удалось удалить базу." }
+    }
+    finally {
+        Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+    }
+}
 
 try {
     Write-Host "==> Сборка" -ForegroundColor Cyan

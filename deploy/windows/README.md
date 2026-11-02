@@ -43,6 +43,26 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddre
 
 Если порт 80 занят (например, IIS) — добавьте `-WebPort 8081`, сайт будет `http://<IP>:8081`.
 
+## Показ по этапам — один сервер, этапы по очереди
+
+Ветки этапов: `state-pr4` → `state-pr6-stock` → `state-pr7-employees` → `state-pr8-custody` → `state-pr11-accounts`
+→ `state-pr12-acts` → `main`. В каждой есть эти скрипты.
+
+Первый этап — обычная установка (шаг 4), но из ветки этапа:
+```powershell
+cd C:\SmartWarehouse-src
+git fetch origin
+git checkout state-pr4
+powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddress 192.168.1.10
+```
+Следующий этап — поверх предыдущего (копия базы → код ветки → сборка → перезапуск):
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1 -Branch state-pr6-stock
+```
+**Данные сохраняются** от этапа к этапу: база, созданная первыми этапами (без миграций), подхватывается миграциями
+начиная с `state-pr7-employees`. Начать этап с пустой базы — добавить `-ResetDatabase`.
+С `state-pr11-accounts` появляется вход: `admin` / `admin123`.
+
 ## Несколько версий на одном ПК (этапы для показа)
 
 Каждая версия ставится со своим именем (`-Instance`), портами и базой — рядом с основной, не мешая ей.
