@@ -64,6 +64,18 @@ internal class ItemImageConfiguration : IEntityTypeConfiguration<ItemImage>
     }
 }
 
+internal class AppSettingConfiguration : IEntityTypeConfiguration<AppSetting>
+{
+    public void Configure(EntityTypeBuilder<AppSetting> b)
+    {
+        b.ToTable("app_settings");
+        b.HasKey(x => x.Key);
+        b.Property(x => x.Key).HasMaxLength(64);
+        b.Property(x => x.Value).IsRequired();
+        b.Property(x => x.UpdatedBy).HasMaxLength(128);
+    }
+}
+
 internal class WarehouseConfiguration : IEntityTypeConfiguration<Warehouse>
 {
     public void Configure(EntityTypeBuilder<Warehouse> b)

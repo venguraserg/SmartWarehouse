@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddSingleton<IActPdfRenderer, ActPdfRenderer>();
         services.AddSingleton<ILabelPdfRenderer, LabelPdfRenderer>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<ISettingsRepository, SettingsRepository>();
         services.AddSingleton<SmartWarehouse.Application.Interfaces.IPasswordHasher, IdentityPasswordHasher>();
         return services;
     }

@@ -3,6 +3,7 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using PdfSharp.Drawing;
+using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Services;
 
 namespace SmartWarehouse.Infrastructure.Pdf;
@@ -15,6 +16,9 @@ public class ActPdfRenderer : IActPdfRenderer
     public byte[] RenderWriteOffAct(WriteOffActData data)
     {
         EmbeddedFontResolver.EnsureRegistered();
+        var template = data.Template ?? new ActTemplateDto(
+            data.Organization, SettingsService.DefaultSubtitle, SettingsService.DefaultIntro,
+            SettingsService.DefaultApproverPosition, null, [], 3, true);
 
         var document = new Document();
         document.Info.Title = $"Акт на списание {data.Number}";
@@ -40,14 +44,14 @@ public class ActPdfRenderer : IActPdfRenderer
             org.Format.SpaceAfter = Unit.FromPoint(12);
         }
 
-        AddApproval(section, data.Approval);
+        AddApproval(section, data.Approval, template.ApproverPosition);
 
         var title = section.AddParagraph($"АКТ № {data.Number}");
         title.Format.Alignment = ParagraphAlignment.Center;
         title.Format.Font.Size = 14;
         title.Format.Font.Bold = true;
 
-        var subtitle = section.AddParagraph("на списание материальных ценностей");
+        var subtitle = section.AddParagraph(template.Subtitle);
         subtitle.Format.Alignment = ParagraphAlignment.Center;
         subtitle.Format.Font.Size = 12;
 
@@ -65,9 +69,7 @@ public class ActPdfRenderer : IActPdfRenderer
         if (!string.IsNullOrWhiteSpace(data.ExternalNumber)) AddField(section, "Основание (наряд, заявка)", data.ExternalNumber!);
         if (!string.IsNullOrWhiteSpace(data.Comment)) AddField(section, "Примечание", data.Comment!);
 
-        var intro = section.AddParagraph(
-            "Комиссия в составе лиц, подписавших настоящий акт, установила, что перечисленные ниже материальные " +
-            "ценности, числящиеся за материально ответственным лицом, израсходованы (использованы) и подлежат списанию:");
+        var intro = section.AddParagraph(template.Intro);
         intro.Format.SpaceBefore = Unit.FromPoint(8);
         intro.Format.SpaceAfter = Unit.FromPoint(8);
         intro.Format.Alignment = ParagraphAlignment.Justify;
@@ -153,11 +155,16 @@ public class ActPdfRenderer : IActPdfRenderer
         signatures.AddColumn(Unit.FromCentimeter(4.5));
         signatures.AddColumn(Unit.FromCentimeter(6.5));
 
-        AddSignature(signatures, "Материально ответственное лицо", data.EmployeeFullName);
-        AddSignature(signatures, "Председатель комиссии", "");
-        AddSignature(signatures, "Члены комиссии:", "");
-        AddSignature(signatures, "", "");
-        AddSignature(signatures, "", "");
+        // Состав комиссии — из шаблона в настройках; незаполненные — пустые строки для подписи от руки.
+        if (template.ResponsibleSigns)
+            AddSignature(signatures, "Материально ответственное лицо", null, data.EmployeeFullName);
+        AddSignature(signatures, "Председатель комиссии", template.Chair?.Position, template.Chair?.Name ?? "");
+
+        var memberRows = template.Members.Select(m => (m.Position, m.Name ?? ""))
+            .Concat(Enumerable.Repeat(((string?)null, ""), template.BlankMembers))
+            .ToList();
+        for (var i = 0; i < memberRows.Count; i++)
+            AddSignature(signatures, i == 0 ? "Члены комиссии:" : "", memberRows[i].Item1, memberRows[i].Item2);
 
         // ---------- Подвал ----------
         var footer = section.Footers.Primary.AddParagraph(
@@ -177,11 +184,11 @@ public class ActPdfRenderer : IActPdfRenderer
     }
 
     /// <summary>«УТВЕРЖДАЮ» справа: заполнено, если акт утверждён в программе, иначе — строки для подписи.</summary>
-    private static void AddApproval(Section section, ActApprovalData? approval)
+    private static void AddApproval(Section section, ActApprovalData? approval, string position)
     {
         var text = approval is null
-            ? "УТВЕРЖДАЮ\nРуководитель\n\n______________ / ______________\n«____» ______________ 20___ г."
-            : $"УТВЕРЖДАЮ\n{approval.Position ?? "Руководитель"}\n\n______________ / {approval.Name}\n" +
+            ? $"УТВЕРЖДАЮ\n{position}\n\n______________ / ______________\n«____» ______________ 20___ г."
+            : $"УТВЕРЖДАЮ\n{approval.Position ?? position}\n\n______________ / {approval.Name}\n" +
               $"{approval.At.ToLocalTime().ToString("dd.MM.yyyy", Ru)}";
 
         var last = section.AddParagraph(text);
@@ -223,11 +230,19 @@ public class ActPdfRenderer : IActPdfRenderer
         p.Format.SpaceAfter = Unit.FromPoint(3);
     }
 
-    private static void AddSignature(Table table, string role, string name)
+    /// <param name="role">Роль в комиссии («Председатель комиссии»).</param>
+    /// <param name="position">Должность — мелко под ролью.</param>
+    private static void AddSignature(Table table, string role, string? position, string name)
     {
         var row = table.AddRow();
         row.TopPadding = Unit.FromPoint(10);
-        row.Cells[0].AddParagraph(role);
+        var cell = row.Cells[0].AddParagraph(role);
+        if (!string.IsNullOrWhiteSpace(position))
+        {
+            if (role.Length > 0)
+                cell.AddLineBreak();
+            cell.AddFormattedText(position, new Font { Size = 8.5 });
+        }
         row.Cells[1].AddParagraph("________________");
         row.Cells[1].Format.Alignment = ParagraphAlignment.Center;
         row.Cells[2].AddParagraph(string.IsNullOrEmpty(name) ? "/ ______________________ /" : $"/ {name} /");

@@ -102,8 +102,21 @@ app.MapGet("/act-pdf/{id:int}", async (int id, ApiClient api, CancellationToken 
     }
 }).RequireAuthorization();
 
-// Наклейки с QR-кодами (PDF). В QR — ссылка на это веб-приложение: App:PublicUrl из настроек,
-// а если не задан — адрес, по которому открыт сайт (за прокси https — см. ASPNETCORE_FORWARDEDHEADERS_ENABLED).
+// Образец акта по шаблону из настроек (администратор).
+app.MapGet("/act-sample.pdf", async (ApiClient api, CancellationToken ct) =>
+{
+    try
+    {
+        return Results.File(await api.GetActSampleAsync(ct), "application/pdf");
+    }
+    catch (ApiException ex)
+    {
+        return Results.Text(ex.Message, "text/plain; charset=utf-8", statusCode: (int)ex.Status);
+    }
+}).RequireAuthorization();
+
+// Наклейки с QR-кодами (PDF). В QR — короткий код или ссылка (настройки → «Наклейки»). Для ссылки, если адрес
+// в настройках не указан, — App:PublicUrl из файла настроек, а если и он не задан — адрес, по которому открыт сайт (за прокси https — см. ASPNETCORE_FORWARDEDHEADERS_ENABLED).
 app.MapGet("/labels.pdf", async (HttpContext context, ApiClient api, IConfiguration config, CancellationToken ct) =>
 {
     var q = context.Request.Query;

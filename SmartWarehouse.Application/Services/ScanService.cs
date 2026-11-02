@@ -30,6 +30,12 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
         if (found is null && KeyboardLayout.HasRussianLetters(raw))
             found = await TryResolveAsync(KeyboardLayout.FromRussianLayout(raw), ct);
 
+        if (found is null && (LabelCodes.TryParse(raw, out var shortKind, out _)
+                              || LabelCodes.TryParse(KeyboardLayout.FromRussianLayout(raw), out shortKind, out _)))
+            throw new NotFoundException(shortKind == ScanKind.Location
+                ? "Место хранения с этой наклейки не найдено (удалено?)."
+                : "Позиция с этой наклейки не найдена (удалена?).");
+
         return found ?? throw new NotFoundException(LabelLinks.TryParse(raw, out var kind, out var value)
             ? kind == ScanKind.Location
                 ? $"Место хранения «{value}» не найдено (наклейка от удалённого или переименованного места?)."
@@ -39,6 +45,10 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
 
     private async Task<ScanResultDto?> TryResolveAsync(string raw, CancellationToken ct)
     {
+        // Короткий код с нашей наклейки: SWL-15 (место хранения) или SWI-7 (позиция).
+        if (LabelCodes.TryParse(raw, out var codeKind, out var id))
+            return codeKind == ScanKind.Location ? await FindLocationByIdAsync(id, ct) : await FindItemByIdAsync(id, ct);
+
         // Ссылка с нашей наклейки: …/l/<код места> или …/i/<артикул>.
         if (LabelLinks.TryParse(raw, out var kind, out var value))
             return kind == ScanKind.Location ? await FindLocationAsync(value, ct) : await FindItemAsync(value, ct);
@@ -58,12 +68,62 @@ public class ScanService(ILocationRepository locations, ICatalogRepository catal
             : new ScanResultDto(ScanKind.Location, location.FullCode, location.Id, location.FullCode, location.Name);
     }
 
+    private async Task<ScanResultDto?> FindLocationByIdAsync(int id, CancellationToken ct)
+    {
+        var location = (await locations.GetLocationsAsync([id], ct)).FirstOrDefault();
+        return location is null
+            ? null
+            : new ScanResultDto(ScanKind.Location, location.FullCode, location.Id, location.FullCode, location.Name);
+    }
+
+    private async Task<ScanResultDto?> FindItemByIdAsync(int id, CancellationToken ct)
+    {
+        var item = await catalog.GetItemAsync(id, ct);
+        return item is null
+            ? null
+            : new ScanResultDto(ScanKind.Item, item.Sku, item.Id, item.Name, item.Sku);
+    }
+
     private async Task<ScanResultDto?> FindItemAsync(string code, CancellationToken ct)
     {
         var item = await catalog.FindItemByCodeAsync(code, ct);
         return item is null
             ? null
             : new ScanResultDto(ScanKind.Item, item.Sku, item.Id, item.Name, item.Sku);
+    }
+}
+
+/// <summary>
+/// Короткие коды для QR-наклеек без ссылки: SWL-15 — место хранения № 15, SWI-7 — позиция № 7.
+/// Только латиница и цифры (ручной сканер «печатает» их при любой раскладке, а русскую мы распознаём),
+/// и код не меняется, если место хранения переименовали.
+/// </summary>
+public static class LabelCodes
+{
+    public const string LocationPrefix = "SWL-";
+    public const string ItemPrefix = "SWI-";
+
+    public static string ForLocation(int id) => LocationPrefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    public static string ForItem(int id) => ItemPrefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    public static bool TryParse(string text, out ScanKind kind, out int id)
+    {
+        kind = default;
+        id = 0;
+        var value = text.Trim();
+        foreach (var (prefix, k) in new[] { (LocationPrefix, ScanKind.Location), (ItemPrefix, ScanKind.Item) })
+        {
+            if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(value.AsSpan(prefix.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out id)
+                && id > 0)
+            {
+                kind = k;
+                return true;
+            }
+        }
+        id = 0;
+        return false;
     }
 }
 

@@ -249,3 +249,13 @@ public interface IWriteOffActRepository
     /// <summary>Сохраняет все изменения (акт и проведённый документ) одной транзакцией.</summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }
+
+/// <summary>Настройки приложения (по разделам, значение — JSON).</summary>
+public interface ISettingsRepository
+{
+    Task<AppSetting?> GetAsync(string key, CancellationToken ct = default);
+
+    void Add(AppSetting setting);
+
+    Task SaveChangesAsync(CancellationToken ct = default);
+}

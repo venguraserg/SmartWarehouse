@@ -42,7 +42,7 @@ public interface ILabelService
     Task<(byte[] Pdf, string FileName)> RenderAsync(LabelRequest request, CancellationToken ct = default);
 }
 
-public class LabelService(ILocationRepository locations, IStockRepository stock, ILabelPdfRenderer renderer) : ILabelService
+public class LabelService(ILocationRepository locations, IStockRepository stock, ILabelPdfRenderer renderer, ISettingsService settings) : ILabelService
 {
     public const int MaxLabels = 1000;
 
@@ -59,17 +59,26 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         if ((long)ids.Count * request.Copies > MaxLabels)
             throw new DomainException($"За один раз — не больше {MaxLabels} наклеек.");
 
-        var baseUrl = NormalizeBaseUrl(request.BaseUrl);
+        // В QR — короткий код или ссылка (см. настройки). Адрес для ссылок — из настроек, а если не задан — адрес сайта из запроса.
+        var options = await settings.GetLabelSettingsAsync(ct);
+        var requestUrl = NormalizeBaseUrl(request.BaseUrl);
+        var payload = options.QrContent == QrContent.Link
+            ? new Payloads(code => LabelLinks.ForLocation(options.BaseUrl ?? requestUrl, code), sku => LabelLinks.ForItem(options.BaseUrl ?? requestUrl, sku))
+            : null;
+
         var labels = request.Kind == LabelKind.Location
-            ? await LocationLabelsAsync(ids, baseUrl, ct)
-            : await ItemLabelsAsync(ids, baseUrl, ct);
+            ? await LocationLabelsAsync(ids, payload, ct)
+            : await ItemLabelsAsync(ids, payload, ct);
 
         var copies = labels.SelectMany(l => Enumerable.Repeat(l, request.Copies)).ToList();
         var name = request.Kind == LabelKind.Location ? "Наклейки_ячейки" : "Наклейки_номенклатура";
         return (renderer.Render(copies, layout, request.Skip), $"{name}.pdf");
     }
 
-    private async Task<List<LabelData>> LocationLabelsAsync(List<int> ids, string? baseUrl, CancellationToken ct)
+    /// <summary>Как строить ссылку для QR; null — короткий код.</summary>
+    private sealed record Payloads(Func<string, string> Location, Func<string, string> Item);
+
+    private async Task<List<LabelData>> LocationLabelsAsync(List<int> ids, Payloads? payload, CancellationToken ct)
     {
         var found = (await locations.GetLocationsAsync(ids, ct)).ToDictionary(l => l.Id);
         var missing = ids.Where(id => !found.ContainsKey(id)).ToList();
@@ -80,14 +89,14 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         return found.Values
             .OrderBy(l => l.FullCode, StringComparer.Ordinal)
             .Select(l => new LabelData(
-                LabelLinks.ForLocation(baseUrl, l.FullCode),
+                payload?.Location(l.FullCode) ?? LabelCodes.ForLocation(l.Id),
                 l.FullCode,
                 l.Name,
                 $"{LocationService.TypeName(l.Type)}, склад {l.Warehouse.Code}"))
             .ToList();
     }
 
-    private async Task<List<LabelData>> ItemLabelsAsync(List<int> ids, string? baseUrl, CancellationToken ct)
+    private async Task<List<LabelData>> ItemLabelsAsync(List<int> ids, Payloads? payload, CancellationToken ct)
     {
         var found = await stock.GetItemsAsync(ids, ct);
         var missing = ids.Where(id => !found.ContainsKey(id)).ToList();
@@ -96,7 +105,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
 
         return ids
             .Select(id => found[id])
-            .Select(i => new LabelData(LabelLinks.ForItem(baseUrl, i.Sku), i.Sku, i.Name, i.Unit.Code))
+            .Select(i => new LabelData(payload?.Item(i.Sku) ?? LabelCodes.ForItem(i.Id), i.Sku, i.Name, i.Unit.Code))
             .ToList();
     }
 

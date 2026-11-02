@@ -8,23 +8,30 @@
 
 <h1>Наклейки с QR-кодами</h1>
 <p class="muted" style="margin-top: -.5rem">
-    Печать на листы A4 с самоклеящимися наклейками. QR-код открывает страницу ячейки или позиции
-    обычной камерой телефона; его же распознаёт сканер в приложении.
+    Печать на листы A4 с самоклеящимися наклейками. QR-код распознают ручной сканер и сканер в приложении:
+    сразу открывается ячейка или позиция, а в документе добавляется строка.
 </p>
 
 <Alert Error="@error" />
 
-@if (LinkBase is { } link && IsLocalHost(link))
+@if (qr?.QrContent == QrContent.Code)
+{
+    <p class="muted">
+        В QR — короткий код (<span class="mono">SWL-…</span>, <span class="mono">SWI-…</span>), без ссылки.
+        <AuthorizeView Roles="@AppRoles.Admin">Изменить — в <a href="/admin/settings">настройках</a>.</AuthorizeView>
+    </p>
+}
+else if (qr is not null && LinkBase is { } link && IsLocalHost(link))
 {
     <div class="alert alert-error">
         В QR-коды попадёт адрес <span class="mono">@link</span> — телефоны его не откроют.
-        Откройте сайт по адресу, который видят телефоны (IP или имя сервера), или задайте <span class="mono">App:PublicUrl</span>
-        в настройках веб-приложения. Сканер внутри приложения такие наклейки всё равно распознает.
+        Укажите адрес приложения в <a href="/admin/settings">настройках</a> (IP или имя сервера) или откройте сайт по такому адресу.
+        Сканер внутри приложения такие наклейки всё равно распознает.
     </div>
 }
-else if (LinkBase is { } shown)
+else if (qr is not null && LinkBase is { } shown)
 {
-    <p class="muted">Ссылки в QR-кодах: <span class="mono">@shown</span>/l/… и /i/…</p>
+    <p class="muted">В QR — ссылки: <span class="mono">@shown</span>/l/… и /i/…</p>
 }
 
 <div class="toolbar">
@@ -145,9 +152,12 @@ else
     private readonly HashSet<int> chosen = [];
     private string? error;
 
-    /// <summary>Адрес, который попадёт в ссылки QR-кодов (как в /labels.pdf).</summary>
+    private LabelSettingsDto? qr;
+
+    /// <summary>Адрес, который попадёт в ссылки QR-кодов: из настроек, иначе как в /labels.pdf.</summary>
     private string? LinkBase =>
-        string.IsNullOrWhiteSpace(Config["App:PublicUrl"]) ? Nav.BaseUri.TrimEnd('/') : Config["App:PublicUrl"]!.TrimEnd('/');
+        !string.IsNullOrWhiteSpace(qr?.BaseUrl) ? qr.BaseUrl.TrimEnd('/')
+        : string.IsNullOrWhiteSpace(Config["App:PublicUrl"]) ? Nav.BaseUri.TrimEnd('/') : Config["App:PublicUrl"]!.TrimEnd('/');
 
     private static bool IsLocalHost(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.IsLoopback || uri.Host == "localhost");
@@ -172,6 +182,7 @@ else
         try
         {
             layouts = await Api.GetLabelLayoutsAsync();
+            qr = await Api.GetLabelSettingsAsync();
             warehouses = await Api.GetWarehousesAsync();
             warehouseId = warehouses.Any(w => w.Id == WarehouseParam) ? WarehouseParam : warehouses.FirstOrDefault()?.Id;
             await LoadLocationsAsync();
