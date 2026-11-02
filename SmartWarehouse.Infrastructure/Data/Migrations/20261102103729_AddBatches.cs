@@ -117,6 +117,24 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                 table: "batches",
                 column: "ReceiptDocumentId");
 
+            // Остатки и движения до введения цен — по одной партии «без цены» на позицию;
+            // цену такой партии администратор может указать в карточке позиции.
+            migrationBuilder.Sql("""
+                INSERT INTO batches ("ItemId", "UnitPrice", "ReceivedAt", "ReceiptDocumentId", "Note")
+                SELECT i, NULL, now(), NULL, 'Остаток до введения цен'
+                FROM (
+                    SELECT "ItemId" AS i FROM stock_movements
+                    UNION SELECT "ItemId" FROM stock_balances
+                    UNION SELECT "ItemId" FROM employee_balances
+                    UNION SELECT "ItemId" FROM write_off_act_lines
+                ) used;
+
+                UPDATE stock_movements m SET "BatchId" = b."Id" FROM batches b WHERE b."ItemId" = m."ItemId" AND m."BatchId" = 0;
+                UPDATE stock_balances s SET "BatchId" = b."Id" FROM batches b WHERE b."ItemId" = s."ItemId" AND s."BatchId" = 0;
+                UPDATE employee_balances e SET "BatchId" = b."Id" FROM batches b WHERE b."ItemId" = e."ItemId" AND e."BatchId" = 0;
+                UPDATE write_off_act_lines l SET "BatchId" = b."Id" FROM batches b WHERE b."ItemId" = l."ItemId" AND l."BatchId" IS NULL;
+                """);
+
             migrationBuilder.AddForeignKey(
                 name: "FK_employee_balances_batches_BatchId",
                 table: "employee_balances",
