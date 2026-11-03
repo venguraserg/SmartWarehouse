@@ -28,7 +28,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         return await db.Locations
             .AsNoTracking()
             .Where(x => list.Contains(x.Id))
-            .Select(x => new LocationInfo(x.Id, x.FullCode, x.Children.Any()))
+            .Select(x => new LocationInfo(x.Id, x.FullCode, x.Children.Any(), x.Name))
             .ToDictionaryAsync(x => x.Id, ct);
     }
 

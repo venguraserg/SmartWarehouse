@@ -14,7 +14,7 @@ public partial class AccountService(IUserRepository repo, IPasswordHasher hasher
     public const int MinPasswordLength = 6;
     public const string InitialAdminLogin = "admin";
 
-    private const UserRole AllRoles = UserRole.Employee | UserRole.Manager | UserRole.Storekeeper | UserRole.Admin;
+    private const UserRole AllRoles = UserRole.Employee | UserRole.Manager | UserRole.Storekeeper | UserRole.Admin | UserRole.ShiftLead;
 
     [GeneratedRegex("^[a-z0-9._-]{3,32}$")]
     private static partial Regex LoginPattern();
@@ -160,8 +160,8 @@ public partial class AccountService(IUserRepository repo, IPasswordHasher hasher
 
         if (employeeId is not int empId)
         {
-            if ((roles & (UserRole.Employee | UserRole.Manager)) != 0)
-                throw new DomainException("Для ролей «Сотрудник» и «Руководитель» укажите сотрудника: подотчёт и акты ведутся по нему.");
+            if ((roles & (UserRole.Employee | UserRole.Manager | UserRole.ShiftLead)) != 0)
+                throw new DomainException("Для ролей «Сотрудник», «Руководитель» и «Старший смены» укажите сотрудника: подотчёт, акты и выдачи ведутся по нему.");
             return null;
         }
 

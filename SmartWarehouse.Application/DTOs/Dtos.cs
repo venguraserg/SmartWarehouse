@@ -221,7 +221,9 @@ public record DocumentLineDto(
     string? ToLocation,
     int? BatchId = null,
     decimal? UnitPrice = null,
-    DateTimeOffset? BatchDate = null);
+    DateTimeOffset? BatchDate = null,
+    string? FromLocationName = null,
+    string? ToLocationName = null);
 
 public record DocumentDto(
     long Id,
@@ -303,7 +305,8 @@ public record StockRowDto(
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
 
-public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false);
+/// <param name="LocationName">Описание места («Подшипники 62xx») — по нему место узнают в списках.</param>
+public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false, string? LocationName = null);
 
 /// <summary>Партия позиции и сколько её в выбранном месте (у сотрудника, всего).</summary>
 /// <param name="Reserved">У сотрудника: сколько из этого — в актах на утверждении.</param>
@@ -359,7 +362,9 @@ public record ActLineDto(
     DateOnly? UsedOn,
     int? BatchId = null,
     decimal? UnitPrice = null,
-    DateTimeOffset? BatchDate = null);
+    DateTimeOffset? BatchDate = null,
+    string? FromLocationName = null,
+    string? ToLocationName = null);
 
 /// <summary>Что текущий пользователь может сделать с актом.</summary>
 public record ActPermissions(bool Edit, bool Submit, bool Recall, bool Decide);

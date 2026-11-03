@@ -18,7 +18,7 @@ public class LocationServiceTests
         (await _service.CreateWarehouseAsync(new CreateWarehouseRequest(code, "Склад запчастей", null))).Id;
 
     private Task<LocationDto> AddAsync(int warehouseId, int? parentId, LocationType type, string code) =>
-        _service.AddLocationAsync(warehouseId, new CreateLocationRequest(parentId, type, code, null));
+        _service.AddLocationAsync(warehouseId, new CreateLocationRequest(parentId, type, code, $"Место {code}"));
 
     [Fact]
     public async Task Полный_код_собирается_из_всех_уровней_в_верхнем_регистре()
@@ -102,6 +102,19 @@ public class LocationServiceTests
         await WarehouseAsync("WH1");
 
         await Assert.ThrowsAsync<DomainException>(() => WarehouseAsync("wh1"));
+    }
+
+    [Fact]
+    public async Task Описание_места_обязательно()
+    {
+        var wh = await WarehouseAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            _service.AddLocationAsync(wh, new CreateLocationRequest(null, LocationType.Rack, "A", "  ")));
+        Assert.Contains("описание", ex.Message);
+
+        var rack = await _service.AddLocationAsync(wh, new CreateLocationRequest(null, LocationType.Rack, "A", " Подшипники "));
+        Assert.Equal("Подшипники", rack.Name);
     }
 
     [Fact]

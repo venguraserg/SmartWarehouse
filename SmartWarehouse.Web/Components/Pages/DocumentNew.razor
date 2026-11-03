@@ -1,5 +1,5 @@
 @page "/documents/new/{Kind}"
-@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@attribute [Authorize(Roles = AppRoles.Issuing)]
 @inject ApiClient Api
 @inject BrowserStore Store
 @inject NavigationManager Nav
@@ -16,7 +16,11 @@
 
 <Alert Error="@error" />
 
-@if (type is null)
+@if (notAllowed)
+{
+    <p>Старший смены оформляет только <a href="/documents/new/Issue">выдачу со склада</a> и <a href="/documents/new/Return">возврат</a>. Остальное — кладовщик.</p>
+}
+else if (type is null)
 {
     <p>Неизвестный тип документа. <a href="/documents">К списку документов</a></p>
 }
@@ -202,7 +206,7 @@ else
                                             <option value="">@(line.Item is null ? "сначала позицию" : line.Available.Count == 0 ? "нет на складе" : "— выберите —")</option>
                                             @foreach (var a in line.Available)
                                             {
-                                                <option value="@a.LocationId">@a.LocationCode (@Ui.Qty(a.Quantity))</option>
+                                                <option value="@a.LocationId">@Ui.Place(a.LocationName, a.LocationCode) — @Ui.Qty(a.Quantity)</option>
                                             }
                                         </select>
                                     }
@@ -219,9 +223,9 @@ else
                                     {
                                         <select @bind="line.ToId">
                                             <option value="">— выберите —</option>
-                                            @foreach (var l in leaves)
+                                            @foreach (var l in leaves.OrderBy(l => l.Name ?? "\uffff").ThenBy(l => l.FullCode))
                                             {
-                                                <option value="@l.Id">@l.FullCode</option>
+                                                <option value="@l.Id">@Ui.Place(l.Name, l.FullCode)</option>
                                             }
                                         </select>
                                     }
@@ -326,6 +330,10 @@ else
 @code {
     [Parameter] public string Kind { get; set; } = "";
 
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool notAllowed;
+
     /// <summary>Сотрудник подставляется сразу (переход «Списать» / «Вернуть» из карточки сотрудника).</summary>
     [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
 
@@ -423,6 +431,12 @@ else
     {
         // Компонент переиспользуется при переходе между типами — начинаем документ заново.
         type = Enum.TryParse<MovementType>(Kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : null;
+
+        // Старший смены (без роли кладовщика) — только выдача и возврат.
+        notAllowed = type is not (null or MovementType.Issue or MovementType.Return or MovementType.WriteOff)
+                     && AuthState is not null && !(await AuthState).User.IsWarehouseStaff();
+        if (notAllowed)
+            return;
 
         // Списание оформляется актом на списание (с утверждением руководителем).
         if (type == MovementType.WriteOff)

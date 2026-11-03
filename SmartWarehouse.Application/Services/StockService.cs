@@ -38,7 +38,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 line.LineNo, item.Id, item.Sku, item.Name, item.Unit.Code, line.Quantity,
                 line.FromLocationId is int f ? Locations[f].FullCode : null,
                 line.ToLocationId is int t ? Locations[t].FullCode : null,
-                line.Batch.Id, line.Batch.UnitPrice, line.Batch.ReceivedAt);
+                line.Batch.Id, line.Batch.UnitPrice, line.Batch.ReceivedAt,
+                line.FromLocationId is int fn ? Locations[fn].Name : null,
+                line.ToLocationId is int tn ? Locations[tn].Name : null);
         });
     }
 
@@ -370,7 +372,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         return ToDto(document, line => new DocumentLineDto(
             line.LineNo, line.ItemId, line.Item.Sku, line.Item.Name, line.Item.Unit.Code, line.Quantity,
             line.FromLocation?.FullCode, line.ToLocation?.FullCode,
-            line.BatchId, line.Batch?.UnitPrice, line.Batch?.ReceivedAt));
+            line.BatchId, line.Batch?.UnitPrice, line.Batch?.ReceivedAt,
+            line.FromLocation?.Name, line.ToLocation?.Name));
     }
 
     public async Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, CancellationToken ct = default)
@@ -388,11 +391,11 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         await EnsureItemExistsAsync(itemId, ct);
         var balances = await repo.GetBalancesForItemAsync(itemId, ct);
         return balances
-            .GroupBy(b => (b.LocationId, b.Location.FullCode))
+            .GroupBy(b => (b.LocationId, b.Location.FullCode, b.Location.Name))
             .Select(g =>
             {
                 var (value, incomplete) = Valuation.Of(g.Select(b => (b.Quantity, b.Batch?.UnitPrice)));
-                return new StockBalanceDto(g.Key.LocationId, g.Key.FullCode, g.Sum(b => b.Quantity), value, incomplete);
+                return new StockBalanceDto(g.Key.LocationId, g.Key.FullCode, g.Sum(b => b.Quantity), value, incomplete, g.Key.Name);
             })
             .OrderBy(b => b.LocationCode)
             .ToList();

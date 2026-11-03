@@ -16,9 +16,13 @@ public static class Roles
     public const string Manager = nameof(UserRole.Manager);
     public const string Storekeeper = nameof(UserRole.Storekeeper);
     public const string Admin = nameof(UserRole.Admin);
+    public const string ShiftLead = nameof(UserRole.ShiftLead);
 
     /// <summary>Складские операции и справочники склада.</summary>
     public const string Warehouse = Storekeeper + "," + Admin;
+
+    /// <summary>Выдача со склада и приём возврата: кладовщик, администратор и старший смены.</summary>
+    public const string Issuing = Warehouse + "," + ShiftLead;
 }
 
 /// <summary>Имена собственных утверждений (claims) в токене.</summary>
@@ -125,7 +129,11 @@ public static class CurrentUserExtensions
     public static bool SeesPrices(this ClaimsPrincipal user) =>
         user.IsInRole(Roles.Manager) || user.IsInRole(Roles.Storekeeper) || user.IsInRole(Roles.Admin);
 
-    /// <summary>Видит весь подотчёт: кладовщик и администратор.</summary>
+    /// <summary>Видит весь подотчёт: кладовщик, администратор и старший смены (принимает возврат у любого).</summary>
     public static bool SeesAllCustody(this ClaimsPrincipal user) =>
+        user.IsInRole(Roles.Storekeeper) || user.IsInRole(Roles.Admin) || user.IsInRole(Roles.ShiftLead);
+
+    /// <summary>Полные складские права (приход, перемещение, корректировка): кладовщик и администратор.</summary>
+    public static bool IsWarehouseStaff(this ClaimsPrincipal user) =>
         user.IsInRole(Roles.Storekeeper) || user.IsInRole(Roles.Admin);
 }

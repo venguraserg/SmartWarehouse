@@ -66,6 +66,19 @@ internal static partial class CodeRules
         return prefix;
     }
 
+    public const int MaxLocationDescriptionLength = 128;
+
+    /// <summary>Описание места хранения обязательно: по нему место выбирают в складских операциях («Подшипники 62xx»).</summary>
+    public static string LocationDescription(string? value)
+    {
+        var description = value?.Trim();
+        if (string.IsNullOrEmpty(description))
+            throw new DomainException("Место хранения: укажите описание — по нему место видно в списках («Подшипники 62xx», «Ремни приводные»).");
+        if (description.Length > MaxLocationDescriptionLength)
+            throw new DomainException($"Описание места — не длиннее {MaxLocationDescriptionLength} символов.");
+        return description;
+    }
+
     /// <summary>Штрих-код: латиница, цифры и знаки, без пробелов и кириллицы.</summary>
     public static bool IsValidBarcode(string barcode) => BarcodePattern().IsMatch(barcode);
 }
