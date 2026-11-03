@@ -32,3 +32,16 @@
         try { el.setSelectionRange(start, end); } catch { /* поле без выделения */ }
     }, true);
 })();
+
+// Быстрое создание элемента справочника (.quick-add) стоит внутри формы документа или позиции:
+// Enter в его поле не должен отправлять всю форму (провести документ) — он нажимает «Создать» самого блока.
+(function () {
+    document.addEventListener("keydown", e => {
+        if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement)) return;
+        const box = e.target.closest(".quick-add");
+        if (!box) return;
+        e.preventDefault();
+        const create = box.querySelector("button.btn-primary:not([disabled])");
+        if (create) create.click();
+    }, true);
+})();

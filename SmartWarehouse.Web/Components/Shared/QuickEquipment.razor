@@ -1,0 +1,68 @@
+@* Быстрое создание оборудования (участок → установка → узел) из документа или акта, не уходя со страницы. *@
+@inject ApiClient Api
+
+<div class="quick-add">
+    <div class="quick-add-title">Новое оборудование</div>
+    <div class="inline-form">
+        <div class="field">
+            <label for="qe-parent">Входит в</label>
+            <select id="qe-parent" @bind="parentId" @bind:after="SuggestCode">
+                <option value="">— верхний уровень (участок) —</option>
+                @foreach (var (e, depth) in EquipmentTree.Flatten(All))
+                {
+                    <option value="@e.Id">@(new string('\u00A0', depth * 3))@e.Code — @e.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="max-width: 150px">
+            <label for="qe-code">Код <span class="req">*</span></label>
+            <input id="qe-code" type="text" @bind="code" @bind:event="oninput" maxlength="64" />
+        </div>
+        <div class="field">
+            <label for="qe-name">Наименование <span class="req">*</span></label>
+            <input id="qe-name" type="text" @bind="name" @bind:event="oninput" maxlength="256" placeholder="Насос центробежный" />
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))" @onclick="CreateAsync">Создать</button>
+        <button class="btn btn-sm" type="button" @onclick="OnCancel">Отмена</button>
+    </div>
+    <FieldError Message="@error" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<EquipmentDto> All { get; set; } = [];
+    [Parameter] public EventCallback<EquipmentDto> OnCreated { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private int? parentId;
+    private string? code;
+    private string? name;
+    private bool busy;
+    private string? error;
+
+    protected override void OnInitialized() => SuggestCode();
+
+    private void SuggestCode()
+    {
+        var parentCode = All.FirstOrDefault(e => e.Id == parentId)?.Code;
+        code = Codes.NextEquipmentCode(parentCode, All.Select(e => e.Code));
+    }
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var created = await Api.CreateEquipmentAsync(new CreateEquipmentRequest(parentId, code!.Trim(), name!.Trim()));
+            await OnCreated.InvokeAsync(created);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

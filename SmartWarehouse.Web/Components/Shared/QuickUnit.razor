@@ -1,0 +1,50 @@
+@* Быстрое создание единицы измерения из формы, не уходя со страницы. *@
+@inject ApiClient Api
+
+<div class="quick-add">
+    <div class="quick-add-title">Новая единица измерения</div>
+    <div class="inline-form">
+        <div class="field" style="max-width: 110px">
+            <label for="qu-code">Обозначение <span class="req">*</span></label>
+            <input id="qu-code" type="text" @bind="code" @bind:event="oninput" maxlength="16" placeholder="компл" />
+        </div>
+        <div class="field">
+            <label for="qu-name">Название <span class="req">*</span></label>
+            <input id="qu-name" type="text" @bind="name" @bind:event="oninput" maxlength="64" placeholder="комплект" />
+        </div>
+        <label class="checkbox" style="margin-bottom: .5rem"><input type="checkbox" @bind="fractional" /> дробное количество</label>
+        <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))" @onclick="CreateAsync">Создать</button>
+        <button class="btn btn-sm" type="button" @onclick="OnCancel">Отмена</button>
+    </div>
+    <FieldError Message="@error" />
+</div>
+
+@code {
+    [Parameter] public EventCallback<UnitDto> OnCreated { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string? code;
+    private string? name;
+    private bool fractional;
+    private bool busy;
+    private string? error;
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var created = await Api.CreateUnitAsync(new CreateUnitRequest(code!.Trim(), name!.Trim(), fractional));
+            await OnCreated.InvokeAsync(created);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

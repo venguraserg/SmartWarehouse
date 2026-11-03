@@ -87,13 +87,23 @@ else
                 {
                     <div class="field">
                         <label for="eq">@(type == MovementType.WriteOff ? "Оборудование (куда установлено)" : "Оборудование")</label>
-                        <select id="eq" @bind="equipmentId">
-                            <option value="">— не указано —</option>
-                            @foreach (var e in equipment)
+                        <div class="select-with-add">
+                            <select id="eq" @bind="equipmentId">
+                                <option value="">— не указано —</option>
+                                @foreach (var e in equipment)
+                                {
+                                    <option value="@e.Item.Id">@(new string('\u00A0', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                                }
+                            </select>
+                            @if (isStaff)
                             {
-                                <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                                <button class="btn btn-sm" type="button" title="Новое оборудование" @onclick="() => quickEquipment = !quickEquipment">+</button>
                             }
-                        </select>
+                        </div>
+                        @if (quickEquipment)
+                        {
+                            <QuickEquipment All="@equipment.Select(e => e.Item).ToList()" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
+                        }
                     </div>
                 }
             </div>
@@ -131,7 +141,8 @@ else
         @* ---------- Новая позиция прямо из прихода: документ остаётся заполненным ---------- *@
         @if (newItem is not null)
         {
-            <form class="panel" style="margin-bottom: 1rem; border-color: var(--accent)" @onsubmit="CreateNewItemAsync" @onsubmit:preventDefault>
+            @* Не <form>: блок стоит внутри формы документа (вложенные формы недопустимы). Enter — «Создать» (js/latin-input.js). *@
+            <div class="panel quick-add" style="margin-bottom: 1rem">
                 <h2 style="margin-top: 0">Новая позиция номенклатуры</h2>
                 <p class="muted" style="margin-top: -.5rem">
                     Приход не теряется: после создания позиция сразу встанет в строку. Остальное (фото, описание) — потом в карточке позиции.
@@ -143,15 +154,22 @@ else
                     </div>
                     <div class="field">
                         <label for="ni-cat">Категория</label>
-                        <select id="ni-cat" @bind="newItem.CategoryId" @bind:after="SuggestNewSkuAsync">
-                            <option value="">— без категории —</option>
-                            @foreach (var c in categories)
-                            {
-                                <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
-                            }
-                        </select>
+                        <div class="select-with-add">
+                            <select id="ni-cat" @bind="newItem.CategoryId" @bind:after="SuggestNewSkuAsync">
+                                <option value="">— без категории —</option>
+                                @foreach (var c in categories)
+                                {
+                                    <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
+                                }
+                            </select>
+                            <button class="btn btn-sm" type="button" title="Новая категория" @onclick="() => quickCategory = !quickCategory">+</button>
+                        </div>
                     </div>
                 </div>
+                @if (quickCategory)
+                {
+                    <QuickCategory OnCreated="OnCategoryCreatedAsync" OnCancel="() => quickCategory = false" />
+                }
                 <div class="field-row">
                     <div class="field">
                         <label for="ni-sku">Артикул <span class="req">*</span></label>
@@ -162,12 +180,15 @@ else
                     </div>
                     <div class="field">
                         <label for="ni-unit">Единица <span class="req">*</span></label>
-                        <select id="ni-unit" @bind="newItem.UnitId">
-                            @foreach (var u in units)
-                            {
-                                <option value="@u.Id">@u.Code — @u.Name</option>
-                            }
-                        </select>
+                        <div class="select-with-add">
+                            <select id="ni-unit" @bind="newItem.UnitId">
+                                @foreach (var u in units)
+                                {
+                                    <option value="@u.Id">@u.Code — @u.Name</option>
+                                }
+                            </select>
+                            <button class="btn btn-sm" type="button" title="Новая единица" @onclick="() => quickUnit = !quickUnit">+</button>
+                        </div>
                     </div>
                     <div class="field">
                         <label for="ni-barcode">Штрих-код с упаковки</label>
@@ -178,12 +199,21 @@ else
                         <input id="ni-min" type="number" min="0" step="any" @bind="newItem.MinStock" />
                     </div>
                 </div>
+                @if (quickUnit)
+                {
+                    <QuickUnit OnCreated="OnUnitCreated" OnCancel="() => quickUnit = false" />
+                }
                 <FieldError Message="@newItemError" />
                 <div class="actions">
-                    <button class="btn btn-primary" type="submit" disabled="@(saving || string.IsNullOrWhiteSpace(newItem.Name) || string.IsNullOrWhiteSpace(newItem.Sku) || newItem.UnitId == 0)">Создать и подставить в приход</button>
+                    <button class="btn btn-primary" type="button" @onclick="CreateNewItemAsync" disabled="@(saving || string.IsNullOrWhiteSpace(newItem.Name) || string.IsNullOrWhiteSpace(newItem.Sku) || newItem.UnitId == 0)">Создать и подставить в приход</button>
                     <button class="btn" type="button" @onclick="() => newItem = null">Отмена</button>
                 </div>
-            </form>
+            </div>
+        }
+
+        @if (quickLocationLine is not null)
+        {
+            <QuickLocation OnCreated="OnLocationCreatedAsync" OnCancel="() => quickLocationLine = null" />
         }
 
         <datalist id="items-list">
@@ -286,13 +316,19 @@ else
                                 <td>
                                     @if (NeedsTo(line))
                                     {
-                                        <select @bind="line.ToId">
-                                            <option value="">— выберите —</option>
-                                            @foreach (var l in leaves.OrderBy(l => l.Name ?? "\uffff").ThenBy(l => l.FullCode))
+                                        <div class="select-with-add">
+                                            <select @bind="line.ToId">
+                                                <option value="">— выберите —</option>
+                                                @foreach (var l in leaves.OrderBy(l => l.Name ?? "\uffff").ThenBy(l => l.FullCode))
+                                                {
+                                                    <option value="@l.Id">@Ui.Place(l.Name, l.FullCode)</option>
+                                                }
+                                            </select>
+                                            @if (isStaff)
                                             {
-                                                <option value="@l.Id">@Ui.Place(l.Name, l.FullCode)</option>
+                                                <button class="btn btn-sm" type="button" title="Новое место хранения" @onclick="() => quickLocationLine = ReferenceEquals(quickLocationLine, line) ? null : line">+</button>
                                             }
-                                        </select>
+                                        </div>
                                     }
                                     else
                                     {
@@ -399,6 +435,68 @@ else
 
     private bool notAllowed;
 
+    /// <summary>Кладовщик или администратор: может заводить элементы справочников прямо из документа.</summary>
+    private bool isStaff;
+
+    private bool quickEquipment;
+    private bool quickCategory;
+    private bool quickUnit;
+
+    /// <summary>Строка, для которой создаётся новое место «куда».</summary>
+    private LineModel? quickLocationLine;
+
+    private async Task OnEquipmentCreatedAsync(EquipmentDto created)
+    {
+        try
+        {
+            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        equipmentId = created.Id;
+        quickEquipment = false;
+    }
+
+    private async Task OnCategoryCreatedAsync(CategoryDto created)
+    {
+        categories.Add(created);
+        categories = categories.OrderBy(c => c.Name).ToList();
+        quickCategory = false;
+        if (newItem is not null)
+        {
+            newItem.CategoryId = created.Id;
+            await SuggestNewSkuAsync();
+        }
+    }
+
+    private void OnUnitCreated(UnitDto created)
+    {
+        units.Add(created);
+        fractionalByUnit[created.Code] = created.IsFractional;
+        quickUnit = false;
+        if (newItem is not null)
+            newItem.UnitId = created.Id;
+    }
+
+    private async Task OnLocationCreatedAsync(LocationDto created)
+    {
+        var line = quickLocationLine;
+        quickLocationLine = null;
+        try
+        {
+            leaves = await Api.GetLeafLocationsAsync(); // место, куда вложили, могло перестать быть конечным
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        if (line is not null && lines.Contains(line))
+            line.ToId = created.Id;
+        scanInfo = $"Место {created.FullCode} «{created.Name}» создано.";
+    }
+
     /// <summary>Сотрудник подставляется сразу (переход «Списать» / «Вернуть» из карточки сотрудника).</summary>
     [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
 
@@ -498,8 +596,8 @@ else
         type = Enum.TryParse<MovementType>(Kind, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : null;
 
         // Старший смены (без роли кладовщика) — только выдача и возврат.
-        notAllowed = type is not (null or MovementType.Issue or MovementType.Return or MovementType.WriteOff)
-                     && AuthState is not null && !(await AuthState).User.IsWarehouseStaff();
+        isStaff = AuthState is not null && (await AuthState).User.IsWarehouseStaff();
+        notAllowed = type is not (null or MovementType.Issue or MovementType.Return or MovementType.WriteOff) && !isStaff;
         if (notAllowed)
             return;
 
