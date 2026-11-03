@@ -5,6 +5,7 @@ using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Enums;
+using SmartWarehouse.Domain.Exceptions;
 
 namespace SmartWarehouse.API.Controllers;
 

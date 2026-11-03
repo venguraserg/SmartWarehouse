@@ -131,13 +131,13 @@ else if (error is null)
 
 @code {
     /// <summary>Место в строке документа: описание, под ним код.</summary>
-    private static RenderFragment PlaceCell(string? name, string? code)
+    private static RenderFragment PlaceCell(string? name, string? fullCode)
     {
-        if (code is null)
+        if (fullCode is null)
             return @<span class="muted">—</span>;
         if (string.IsNullOrWhiteSpace(name))
-            return @<span class="mono">@code</span>;
-        return @<span>@name<br /><span class="line-hint mono">@code</span></span>;
+            return @<span class="mono">@fullCode</span>;
+        return @<span>@name<br /><span class="line-hint mono">@fullCode</span></span>;
     }
 
     [Parameter] public long Id { get; set; }

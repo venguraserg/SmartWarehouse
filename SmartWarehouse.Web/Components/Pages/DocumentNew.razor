@@ -128,6 +128,64 @@ else
             <div class="alert alert-success" role="status">@scanInfo</div>
         }
 
+        @* ---------- Новая позиция прямо из прихода: документ остаётся заполненным ---------- *@
+        @if (newItem is not null)
+        {
+            <form class="panel" style="margin-bottom: 1rem; border-color: var(--accent)" @onsubmit="CreateNewItemAsync" @onsubmit:preventDefault>
+                <h2 style="margin-top: 0">Новая позиция номенклатуры</h2>
+                <p class="muted" style="margin-top: -.5rem">
+                    Приход не теряется: после создания позиция сразу встанет в строку. Остальное (фото, описание) — потом в карточке позиции.
+                </p>
+                <div class="field-row">
+                    <div class="field" style="grid-column: span 2">
+                        <label for="ni-name">Наименование <span class="req">*</span></label>
+                        <input id="ni-name" type="text" @bind="newItem.Name" @bind:event="oninput" maxlength="256" placeholder="Подшипник 6205-2RS" />
+                    </div>
+                    <div class="field">
+                        <label for="ni-cat">Категория</label>
+                        <select id="ni-cat" @bind="newItem.CategoryId" @bind:after="SuggestNewSkuAsync">
+                            <option value="">— без категории —</option>
+                            @foreach (var c in categories)
+                            {
+                                <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="ni-sku">Артикул <span class="req">*</span></label>
+                        <div class="input-with-btn">
+                            <input id="ni-sku" type="text" @bind="newItem.Sku" @bind:event="oninput" maxlength="64" data-latin="upper" autocomplete="off" spellcheck="false" />
+                            <button class="btn btn-sm" type="button" title="Следующий свободный номер" @onclick="() => SuggestNewSkuAsync(force: true)">↻</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="ni-unit">Единица <span class="req">*</span></label>
+                        <select id="ni-unit" @bind="newItem.UnitId">
+                            @foreach (var u in units)
+                            {
+                                <option value="@u.Id">@u.Code — @u.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="ni-barcode">Штрих-код с упаковки</label>
+                        <input id="ni-barcode" type="text" @bind="newItem.Barcode" maxlength="64" data-latin data-scanner="off" autocomplete="off" spellcheck="false" />
+                    </div>
+                    <div class="field">
+                        <label for="ni-min">Минимальный остаток</label>
+                        <input id="ni-min" type="number" min="0" step="any" @bind="newItem.MinStock" />
+                    </div>
+                </div>
+                <FieldError Message="@newItemError" />
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit" disabled="@(saving || string.IsNullOrWhiteSpace(newItem.Name) || string.IsNullOrWhiteSpace(newItem.Sku) || newItem.UnitId == 0)">Создать и подставить в приход</button>
+                    <button class="btn" type="button" @onclick="() => newItem = null">Отмена</button>
+                </div>
+            </form>
+        }
+
         <datalist id="items-list">
             @foreach (var label in ItemChoices)
             {
@@ -181,7 +239,14 @@ else
                                 }
                                 else if (!string.IsNullOrWhiteSpace(line.ItemText))
                                 {
-                                    <div class="line-hint" style="color: var(--danger)">Позиция не найдена — выберите из списка.</div>
+                                    <div class="line-hint" style="color: var(--danger)">
+                                        Позиция не найдена — выберите из списка@(CanCreateItems ? "" : ".")
+                                        @if (CanCreateItems)
+                                        {
+                                            <span>или </span>
+                                            <button class="btn btn-sm" type="button" @onclick="() => StartNewItemAsync(line, line.ItemText, null)">+ создать новую</button>
+                                        }
+                                    </div>
                                 }
                                 @if (ShowLineError(line))
                                 {
@@ -467,7 +532,8 @@ else
                     .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
                 leaves = await Api.GetLeafLocationsAsync();
                 equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
-                fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+                units = await Api.GetUnitsAsync();
+                fractionalByUnit = units.ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
                 allEmployees = await Api.GetEmployeesAsync(includeInactive: true);
                 activeEmployees = allEmployees.Where(e => e.IsActive).ToList();
                 custodyHolders = (await Api.GetCustodyAsync()).Select(r => r.EmployeeId).ToHashSet();
@@ -758,6 +824,15 @@ else
         {
             found = await Api.ScanAsync(code);
         }
+        catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound && CanCreateItems)
+        {
+            // В приходе незнакомый штрих-код — сразу предлагаем завести позицию с этим штрих-кодом.
+            scanInfo = null;
+            error = null;
+            await StartNewItemAsync(null, null, code.Trim());
+            StateHasChanged();
+            return true;
+        }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             scanInfo = null;
@@ -894,6 +969,118 @@ else
         {
             scanInfo = $"Ячейка {found.Code}";
         }
+    }
+
+    // ---------- Новая позиция из прихода ----------
+
+    /// <summary>Заводить позиции на ходу можно в приходе (его оформляет кладовщик или администратор).</summary>
+    private bool CanCreateItems => type == MovementType.Receipt;
+
+    private NewItemModel? newItem;
+    private LineModel? newItemLine;
+    private string? newItemError;
+    private string? newItemSuggestedSku;
+    private List<UnitDto> units = [];
+    private List<CategoryDto> categories = [];
+
+    /// <param name="line">Строка, куда подставить позицию; null — первая пустая или новая.</param>
+    /// <param name="text">Что ввели в строке: похоже на артикул — в артикул, иначе в наименование.</param>
+    /// <param name="barcode">Отсканированный незнакомый штрих-код.</param>
+    private async Task StartNewItemAsync(LineModel? line, string? text, string? barcode)
+    {
+        newItemLine = line;
+        newItemError = null;
+        text = text?.Trim();
+        var looksLikeSku = !string.IsNullOrEmpty(text) && !text.Contains(' ') && text.Any(char.IsDigit);
+
+        newItem = new NewItemModel
+        {
+            Name = looksLikeSku ? null : text,
+            Barcode = barcode,
+            UnitId = units.FirstOrDefault(u => u.Code == "шт")?.Id ?? units.FirstOrDefault()?.Id ?? 0
+        };
+        try
+        {
+            if (categories.Count == 0)
+                categories = await Api.GetCategoriesAsync();
+            var lastCategory = await Store.GetIntAsync("item.category");
+            newItem.CategoryId = categories.Any(c => c.Id == lastCategory) ? lastCategory : null;
+            if (looksLikeSku)
+                newItem.Sku = text!.ToUpperInvariant();
+            else
+                await SuggestNewSkuAsync(force: true);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            newItemError = ex.Message;
+        }
+    }
+
+    private Task SuggestNewSkuAsync() => SuggestNewSkuAsync(force: false);
+
+    /// <summary>Свободный артикул по категории; введённый вручную не перезаписывается (кроме кнопки ↻).</summary>
+    private async Task SuggestNewSkuAsync(bool force)
+    {
+        if (newItem is null || (!force && !string.IsNullOrWhiteSpace(newItem.Sku) && newItem.Sku != newItemSuggestedSku))
+            return;
+        try
+        {
+            newItem.Sku = newItemSuggestedSku = await Api.GetNextSkuAsync(newItem.CategoryId);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            newItemError = ex.Message;
+        }
+    }
+
+    private async Task CreateNewItemAsync()
+    {
+        if (newItem is null)
+            return;
+        saving = true;
+        newItemError = null;
+        try
+        {
+            var item = await Api.CreateItemAsync(new CreateItemRequest(
+                newItem.Sku!.Trim(), newItem.Name!.Trim(), newItem.CategoryId, newItem.UnitId,
+                Math.Max(0, newItem.MinStock), null, null, string.IsNullOrWhiteSpace(newItem.Barcode) ? null : newItem.Barcode.Trim()));
+
+            var label = $"{item.Sku} · {item.Name}";
+            itemsByLabel[label] = item;
+
+            var line = newItemLine is not null && lines.Contains(newItemLine)
+                ? newItemLine
+                : lines.FirstOrDefault(l => l.Item is null && string.IsNullOrWhiteSpace(l.ItemText));
+            if (line is null)
+            {
+                line = new LineModel();
+                lines.Add(line);
+            }
+            line.ItemText = label;
+            await OnItemChangedAsync(line);
+
+            scanInfo = $"Позиция {item.Sku} «{item.Name}» создана и добавлена в приход — укажите количество, цену и место.";
+            newItem = null;
+            newItemLine = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            newItemError = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private sealed class NewItemModel
+    {
+        public string? Name { get; set; }
+        public string? Sku { get; set; }
+        public int? CategoryId { get; set; }
+        public int UnitId { get; set; }
+        public string? Barcode { get; set; }
+        public decimal MinStock { get; set; }
     }
 
     private sealed class LineModel
