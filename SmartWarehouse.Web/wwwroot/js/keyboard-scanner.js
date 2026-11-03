@@ -19,6 +19,8 @@ let savedValue = null;
 
 export function attach(ref) {
     dotnet = ref;
+    // Код из приложения для Android (камера, сканер ТСД) — тем же путём (см. android-app.js).
+    window.swHardwareScan = code => dotnet?.invokeMethodAsync("OnHardwareScan", code).catch(() => { /* страница закрыта */ });
     if (!attached) {
         document.addEventListener("keydown", onKeyDown, true);
         attached = true;
@@ -27,6 +29,7 @@ export function attach(ref) {
 
 export function detach() {
     dotnet = null;
+    window.swHardwareScan = null;
     reset();
 }
 

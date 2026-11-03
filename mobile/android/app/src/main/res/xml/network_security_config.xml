@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Сервер в сети предприятия обычно работает по http (без сертификата) — разрешаем. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Сертификат, выданный своим центром сертификации и установленный на телефон. -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

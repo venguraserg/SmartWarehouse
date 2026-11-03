@@ -65,6 +65,10 @@
                         <div class="nav-user-name">@context.User.DisplayNameOf()</div>
                         <div class="nav-user-actions">
                             <a href="/account/password">Сменить пароль</a>
+                            @if (isNativeApp)
+                            {
+                                <button type="button" class="link-button" onclick="swApp.openSettings()">Настройки приложения</button>
+                            }
                             <form action="/account/logout" method="post">
                                 <AntiforgeryToken />
                                 <button type="submit" class="link-button">Выйти</button>
@@ -76,10 +80,18 @@
         </nav>
     </aside>
 
-    <main class="content">
+    <main class="content @(isNativeApp ? "with-fab" : null)">
         @Body
     </main>
 </div>
+
+@* В приложении для Android — кнопка камеры на каждой странице: код идёт туда же, куда код ручного сканера. *@
+@if (isNativeApp)
+{
+    <AuthorizeView>
+        <button type="button" class="scan-fab" title="Сканировать камерой" aria-label="Сканировать камерой" onclick="swApp.scan()">📷</button>
+    </AuthorizeView>
+}
 
 @if (scanMessage is not null)
 {
@@ -95,6 +107,9 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool menuOpen;
+
+    /// <summary>Сайт открыт в приложении «Склад» для Android (там есть сканирование камерой и сканер ТСД).</summary>
+    private bool isNativeApp;
     private int actsToApprove;
 
     private IJSObjectReference? scannerModule;
@@ -111,6 +126,9 @@
         // Ручной сканер (USB / Bluetooth) — на любой странице.
         try
         {
+            isNativeApp = await JS.InvokeAsync<bool>("swApp.isNative");
+            if (isNativeApp)
+                StateHasChanged();
             self = DotNetObjectReference.Create(this);
             scannerModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/keyboard-scanner.js");
             await scannerModule.InvokeVoidAsync("attach", self);
