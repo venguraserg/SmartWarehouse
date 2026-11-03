@@ -39,14 +39,21 @@
             </div>
             <div class="field">
                 <label for="unit">Единица измерения <span class="req">*</span></label>
-                <select id="unit" @bind="form.UnitId">
-                    @foreach (var u in units)
-                    {
-                        <option value="@u.Id">@u.Code — @u.Name</option>
-                    }
-                </select>
+                <div class="select-with-add">
+                    <select id="unit" @bind="form.UnitId">
+                        @foreach (var u in units)
+                        {
+                            <option value="@u.Id">@u.Code — @u.Name</option>
+                        }
+                    </select>
+                    <button class="btn btn-sm" type="button" title="Новая единица" @onclick="() => quickUnit = !quickUnit">+</button>
+                </div>
             </div>
         </div>
+        @if (quickUnit)
+        {
+            <QuickUnit OnCreated="OnUnitCreated" OnCancel="() => quickUnit = false" />
+        }
 
         <div class="field">
             <label for="name">Наименование <span class="req">*</span></label>
@@ -57,13 +64,20 @@
 
         <div class="field">
             <label for="category">Категория</label>
-            <select id="category" @bind="form.CategoryId" @bind:after="OnCategoryChangedAsync">
-                <option value="">— без категории —</option>
-                @foreach (var c in categories)
-                {
-                    <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
-                }
-            </select>
+            <div class="select-with-add">
+                <select id="category" @bind="form.CategoryId" @bind:after="OnCategoryChangedAsync">
+                    <option value="">— без категории —</option>
+                    @foreach (var c in categories)
+                    {
+                        <option value="@c.Id">@c.Name@(string.IsNullOrEmpty(c.SkuPrefix) ? "" : $" ({c.SkuPrefix})")</option>
+                    }
+                </select>
+                <button class="btn btn-sm" type="button" title="Новая категория" @onclick="() => quickCategory = !quickCategory">+</button>
+            </div>
+            @if (quickCategory)
+            {
+                <QuickCategory OnCreated="OnCategoryCreatedAsync" OnCancel="() => quickCategory = false" />
+            }
         </div>
 
         <div class="field-row">
@@ -127,6 +141,23 @@ else if (error is null)
     private readonly ItemForm form = new();
     private List<UnitDto> units = [];
     private List<CategoryDto> categories = [];
+    private bool quickCategory;
+    private bool quickUnit;
+
+    private async Task OnCategoryCreatedAsync(CategoryDto created)
+    {
+        categories = categories.Append(created).OrderBy(c => c.Name).ToList();
+        quickCategory = false;
+        form.CategoryId = created.Id;
+        await OnCategoryChangedAsync();
+    }
+
+    private void OnUnitCreated(UnitDto created)
+    {
+        units = units.Append(created).ToList();
+        quickUnit = false;
+        form.UnitId = created.Id;
+    }
     private bool loaded;
     private bool saving;
     private string? error;

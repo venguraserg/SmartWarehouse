@@ -27,6 +27,10 @@ public static class Ui
         _ => "tag-neutral"
     };
 
+    /// <summary>Место хранения для списков: описание впереди, код — следом («Подшипники 62xx · WH1-A-01-03»).</summary>
+    public static string Place(string? name, string code) =>
+        string.IsNullOrWhiteSpace(name) ? code : $"{name} · {code}";
+
     public static string LocType(LocationType type) => type switch
     {
         LocationType.Zone => "Зона",

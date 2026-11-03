@@ -90,7 +90,13 @@
                         @foreach (var b in balances)
                         {
                             <tr>
-                                <td class="mono"><a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@b.LocationCode</a></td>
+                                <td>
+                                    <a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@(b.LocationName ?? b.LocationCode)</a>
+                                    @if (b.LocationName is not null)
+                                    {
+                                        <div class="line-hint mono">@b.LocationCode</div>
+                                    }
+                                </td>
                                 <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
                                 @if (seesPrices)
                                 {

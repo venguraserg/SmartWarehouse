@@ -5,6 +5,7 @@ using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Enums;
+using SmartWarehouse.Domain.Exceptions;
 
 namespace SmartWarehouse.API.Controllers;
 
@@ -34,9 +35,13 @@ public class DocumentsController(IStockService stock) : ControllerBase
     /// Списание так не проводится — только утверждением акта на списание (api/acts).
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = Roles.Warehouse)]
+    [Authorize(Roles = Roles.Issuing)]
     public async Task<ActionResult<DocumentDto>> Post(CreateDocumentRequest request, CancellationToken ct)
     {
+        // Старший смены (без роли кладовщика) — только выдача и возврат.
+        if (!User.IsWarehouseStaff() && request.Type is not (MovementType.Issue or MovementType.Return))
+            throw new ForbiddenException("Старший смены проводит только выдачу со склада и возврат на склад. Остальное — кладовщик.");
+
         // «Кто проводит» по умолчанию — сотрудник, под чьей учётной записью вошли.
         if (request.PerformedById is null && string.IsNullOrWhiteSpace(request.PerformedBy) && User.EmployeeId() is int me)
             request = request with { PerformedById = me };

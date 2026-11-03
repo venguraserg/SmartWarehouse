@@ -44,7 +44,7 @@ public class ReferenceAdminServiceTests
     [Fact]
     public async Task Перенос_полки_в_другой_стеллаж_меняет_коды_всего_поддерева()
     {
-        var result = await _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackB, LocationType.Shelf, "01", null));
+        var result = await _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackB, LocationType.Shelf, "01", "Описание"));
 
         Assert.Equal("WH1-B-01", Code(ShelfA1));
         Assert.Equal("WH1-B-01-01", Code(Cell1));
@@ -67,11 +67,11 @@ public class ReferenceAdminServiceTests
     public async Task Нельзя_вложить_в_себя_во_вложенное_или_вверх_по_уровню()
     {
         await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(RackA, new UpdateLocationRequest(Cell1, LocationType.Rack, "A", null)));   // во вложенное
+            _service.UpdateLocationAsync(RackA, new UpdateLocationRequest(Cell1, LocationType.Rack, "A", "Описание")));   // во вложенное
         await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(RackB, new UpdateLocationRequest(Cell1, LocationType.Rack, "B", null)));   // стеллаж в ячейку
+            _service.UpdateLocationAsync(RackB, new UpdateLocationRequest(Cell1, LocationType.Rack, "B", "Описание")));   // стеллаж в ячейку
         await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackA, LocationType.Cell, "01", null))); // внутри ячейки — ячейки
+            _service.UpdateLocationAsync(ShelfA1, new UpdateLocationRequest(RackA, LocationType.Cell, "01", "Описание"))); // внутри ячейки — ячейки
 
         Assert.Equal("WH1-A-01", Code(ShelfA1));
     }
@@ -80,14 +80,14 @@ public class ReferenceAdminServiceTests
     public async Task Нельзя_занять_существующий_код_и_вложить_в_место_с_товаром()
     {
         var taken = await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(Cell2, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", null)));
+            _service.UpdateLocationAsync(Cell2, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", "Описание")));
         Assert.Contains("WH1-A-01-01", taken.Message);
 
         // Товар хранится только в конечных местах — в место с товаром вложить нельзя.
         _repo.LocationsWithStock.Add(RackB);
         Add(99, null, LocationType.Shelf, "X");
         var stock = await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(99, new UpdateLocationRequest(RackB, LocationType.Shelf, "X", null)));
+            _service.UpdateLocationAsync(99, new UpdateLocationRequest(RackB, LocationType.Shelf, "X", "Описание")));
         Assert.Contains("товар", stock.Message);
     }
 
@@ -102,6 +102,13 @@ public class ReferenceAdminServiceTests
 
         await _service.DeleteLocationAsync(Cell2);
         Assert.DoesNotContain(_repo.Locations, l => l.Id == Cell2);
+    }
+
+    [Fact]
+    public async Task Без_описания_место_не_сохраняется()
+    {
+        await Assert.ThrowsAsync<DomainException>(() =>
+            _service.UpdateLocationAsync(Cell1, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", " ")));
     }
 
     // ---------- Склады ----------

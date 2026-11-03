@@ -16,7 +16,7 @@ public record DocumentHeader(StockDocument Document, int LineCount);
 public record StockFilter(int? WarehouseId, string? LocationCode, string? Search, int? CategoryId, bool BelowMinimum);
 
 /// <summary>Краткие сведения о месте хранения для проверок при проведении документа.</summary>
-public record LocationInfo(int Id, string FullCode, bool HasChildren);
+public record LocationInfo(int Id, string FullCode, bool HasChildren, string? Name = null);
 
 /// <summary>Выдача позиции сотруднику (строка документа выдачи).</summary>
 public record IssueRecord(int EmployeeId, int ItemId, DateTimeOffset OccurredAt, decimal Quantity);

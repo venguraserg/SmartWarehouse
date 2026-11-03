@@ -159,10 +159,11 @@
                                     </div>
                                 </div>
                                 <div class="field">
-                                    <label for="loc-name">Название (необязательно)</label>
-                                    <input id="loc-name" type="text" @bind="newName" maxlength="128" />
+                                    <label for="loc-name">Описание <span class="req">*</span></label>
+                                    <input id="loc-name" type="text" @bind="newName" @bind:event="oninput" maxlength="128" placeholder="Подшипники 62xx" />
+                                    <div class="field-hint">По описанию место выбирают в складских операциях; код — для наклейки и сканера.</div>
                                 </div>
-                                <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || busy)">
+                                <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || string.IsNullOrWhiteSpace(newName) || busy)">
                                     Добавить @(selected is null ? "" : "внутрь")
                                 </button>
                                 <p class="muted" style="margin-bottom: 0">
@@ -383,7 +384,7 @@
 
     private async Task AddLocationAsync()
     {
-        if (warehouse is null || LocationCodeError is not null) return;
+        if (warehouse is null || LocationCodeError is not null || string.IsNullOrWhiteSpace(newName)) return;
         error = success = null;
         busy = true;
         try

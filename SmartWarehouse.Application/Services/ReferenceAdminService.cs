@@ -85,6 +85,7 @@ public class ReferenceAdminService(IReferenceAdminRepository repo) : IReferenceA
             throw new DomainException($"Неизвестный тип места хранения: {request.Type}.");
 
         var code = CodeRules.NormalizePart(request.Code, "Место хранения");
+        var description = CodeRules.LocationDescription(request.Name);
         var warehouse = await repo.GetWarehouseAsync(location.WarehouseId, ct)
             ?? throw new NotFoundException($"Склад {location.WarehouseId} не найден.");
         var all = await repo.GetWarehouseLocationsAsync(location.WarehouseId, ct);
@@ -110,7 +111,7 @@ public class ReferenceAdminService(IReferenceAdminRepository repo) : IReferenceA
             throw new DomainException(
                 $"Внутри лежит «{LocationService.TypeName(wrongChild.Type)}» {wrongChild.Code} — тип «{LocationService.TypeName(request.Type)}» для этого места не подходит.");
 
-        self.Name = Clean(request.Name);
+        self.Name = description;
         self.Type = request.Type;
 
         var prefix = parent?.FullCode ?? warehouse.Code;

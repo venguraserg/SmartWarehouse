@@ -38,6 +38,16 @@ public class AccountServiceTests
         Assert.True(admin.MustChangePassword);
     }
 
+    [Fact]
+    public async Task Старший_смены_назначается_только_сотруднику()
+    {
+        var user = await CreateAsync(roles: UserRole.Employee | UserRole.ShiftLead);
+        Assert.True(_repo.Users[0].Has(UserRole.ShiftLead));
+        Assert.Equal(UserRole.Employee | UserRole.ShiftLead, user.Roles);
+
+        await Assert.ThrowsAsync<DomainException>(() => CreateAsync("lead2", employee: null, roles: UserRole.ShiftLead));
+    }
+
     // ---------- Вход ----------
 
     [Fact]

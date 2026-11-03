@@ -88,13 +88,23 @@ else
             <div class="field-row">
                 <div class="field">
                     <label for="def-eq">Оборудование — для всех строк</label>
-                    <select id="def-eq" @bind="defaultEquipmentId">
-                        <option value="">— не указано —</option>
-                        @foreach (var e in equipment)
+                    <div class="select-with-add">
+                        <select id="def-eq" @bind="defaultEquipmentId">
+                            <option value="">— не указано —</option>
+                            @foreach (var e in equipment)
+                            {
+                                <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                            }
+                        </select>
+                        @if (isWarehouse)
                         {
-                            <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
+                            <button class="btn btn-sm" type="button" title="Новое оборудование" @onclick="() => quickEquipment = !quickEquipment">+</button>
                         }
-                    </select>
+                    </div>
+                    @if (quickEquipment)
+                    {
+                        <QuickEquipment All="@equipment.Select(e => e.Item).ToList()" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
+                    }
                 </div>
                 <div class="field" style="grid-column: span 2">
                     <label for="def-usage">Куда использовано — для всех строк</label>
@@ -259,6 +269,23 @@ else
     [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool quickEquipment;
+
+    /// <summary>Новое оборудование из акта (кладовщик, администратор): сразу выбирается «для всех строк».</summary>
+    private async Task OnEquipmentCreatedAsync(EquipmentDto created)
+    {
+        try
+        {
+            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        defaultEquipmentId = created.Id;
+        quickEquipment = false;
+    }
 
     private ActDto? act;
     private int? savedId;

@@ -91,8 +91,8 @@
                         <td class="num">@line.LineNo</td>
                         <td class="mono"><a href="/items/@line.ItemId">@line.Sku</a></td>
                         <td>@line.ItemName</td>
-                        <td class="mono">@(line.FromLocation ?? "—")</td>
-                        <td class="mono">@(line.ToLocation ?? "—")</td>
+                        <td>@PlaceCell(line.FromLocationName, line.FromLocation)</td>
+                        <td>@PlaceCell(line.ToLocationName, line.ToLocation)</td>
                         <td class="num">
                             @Ui.Qty(line.Quantity) @line.UnitCode
                             @if (line.BatchDate is { } batchDate)
@@ -130,6 +130,16 @@ else if (error is null)
 }
 
 @code {
+    /// <summary>Место в строке документа: описание, под ним код.</summary>
+    private static RenderFragment PlaceCell(string? name, string? fullCode)
+    {
+        if (fullCode is null)
+            return @<span class="muted">—</span>;
+        if (string.IsNullOrWhiteSpace(name))
+            return @<span class="mono">@fullCode</span>;
+        return @<span>@name<br /><span class="line-hint mono">@fullCode</span></span>;
+    }
+
     [Parameter] public long Id { get; set; }
 
     private DocumentDto? doc;

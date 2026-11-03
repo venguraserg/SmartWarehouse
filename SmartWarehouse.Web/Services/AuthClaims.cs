@@ -12,9 +12,13 @@ public static class AppRoles
     public const string Manager = nameof(UserRole.Manager);
     public const string Storekeeper = nameof(UserRole.Storekeeper);
     public const string Admin = nameof(UserRole.Admin);
+    public const string ShiftLead = nameof(UserRole.ShiftLead);
 
     /// <summary>Складские операции и справочники склада.</summary>
     public const string Warehouse = Storekeeper + "," + Admin;
+
+    /// <summary>Выдача со склада и приём возврата — ещё и старший смены.</summary>
+    public const string Issuing = Warehouse + "," + ShiftLead;
 
     public static string Title(UserRole role) => role switch
     {
@@ -22,6 +26,7 @@ public static class AppRoles
         UserRole.Manager => "Руководитель",
         UserRole.Storekeeper => "Кладовщик",
         UserRole.Admin => "Администратор",
+        UserRole.ShiftLead => "Старший смены",
         _ => role.ToString()
     };
 }

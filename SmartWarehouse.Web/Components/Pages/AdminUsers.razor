@@ -59,7 +59,8 @@
             <FieldError Message="@RolesError" />
             <div class="field-hint">
                 Сотрудник — свой подотчёт и акты; руководитель — ещё и подчинённые, утверждение актов;
-                кладовщик — складские операции и справочники; администратор — всё и пользователи.
+                старший смены — в смены без кладовщика выдаёт со склада (и себе) и принимает возврат;
+                кладовщик — все складские операции и справочники; администратор — всё и пользователи.
             </div>
         </div>
 
@@ -164,7 +165,7 @@ else
 }
 
 @code {
-    private static readonly UserRole[] RoleChoices = [UserRole.Employee, UserRole.Manager, UserRole.Storekeeper, UserRole.Admin];
+    private static readonly UserRole[] RoleChoices = [UserRole.Employee, UserRole.Manager, UserRole.ShiftLead, UserRole.Storekeeper, UserRole.Admin];
 
     private List<UserDto>? users;
     private List<EmployeeDto> employees = [];
@@ -198,8 +199,8 @@ else
     private string? RolesError => form is not null && form.Roles == UserRole.None ? "Выберите хотя бы одну роль." : null;
 
     private string? EmployeeError =>
-        form is not null && form.EmployeeId is null && (form.Roles & (UserRole.Employee | UserRole.Manager)) != 0
-            ? "Для ролей «Сотрудник» и «Руководитель» выберите сотрудника."
+        form is not null && form.EmployeeId is null && (form.Roles & (UserRole.Employee | UserRole.Manager | UserRole.ShiftLead)) != 0
+            ? "Для ролей «Сотрудник», «Руководитель» и «Старший смены» выберите сотрудника."
             : null;
 
     private string? PasswordError =>

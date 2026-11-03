@@ -1,0 +1,48 @@
+@* Быстрое создание категории из формы (новая позиция, приход), не уходя со страницы. *@
+@inject ApiClient Api
+
+<div class="quick-add">
+    <div class="quick-add-title">Новая категория</div>
+    <div class="inline-form">
+        <div class="field">
+            <label for="qc-name">Название <span class="req">*</span></label>
+            <input id="qc-name" type="text" @bind="name" @bind:event="oninput" maxlength="128" placeholder="Подшипники" />
+        </div>
+        <div class="field" style="max-width: 130px">
+            <label for="qc-prefix">Префикс артикула</label>
+            <input id="qc-prefix" type="text" @bind="prefix" maxlength="6" placeholder="BRG" data-latin="upper" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(name))" @onclick="CreateAsync">Создать</button>
+        <button class="btn btn-sm" type="button" @onclick="OnCancel">Отмена</button>
+    </div>
+    <FieldError Message="@error" />
+</div>
+
+@code {
+    [Parameter] public EventCallback<CategoryDto> OnCreated { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string? name;
+    private string? prefix;
+    private bool busy;
+    private string? error;
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var created = await Api.CreateCategoryAsync(new CreateCategoryRequest(name!.Trim(), null, prefix));
+            await OnCreated.InvokeAsync(created);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

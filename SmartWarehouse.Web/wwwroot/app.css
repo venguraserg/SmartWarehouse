@@ -127,6 +127,11 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .req { color: var(--danger); }
 .inline-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
 .inline-form .field { margin-bottom: 0; flex: 1; min-width: 140px; }
+/* Быстрое создание элемента справочника прямо из формы (приход, акт, позиция) */
+.quick-add { border: 1px dashed var(--accent); border-radius: var(--radius); padding: .6rem .75rem; margin: .5rem 0 .75rem; background: #f7f9fd; }
+.quick-add-title { font-weight: 600; font-size: .9rem; margin-bottom: .4rem; }
+.select-with-add { display: flex; gap: .35rem; align-items: center; }
+.select-with-add select { flex: 1; min-width: 0; }
 
 /* ===== Кнопки ===== */
 .btn {

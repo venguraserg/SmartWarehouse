@@ -39,6 +39,7 @@ public class LocationService(ILocationRepository repo) : ILocationService
             throw new DomainException($"Неизвестный тип места хранения: {request.Type}.");
 
         var code = CodeRules.NormalizePart(request.Code, "Место хранения");
+        var name = CodeRules.LocationDescription(request.Name);
         var prefix = warehouse.Code;
 
         if (request.ParentId is int parentId)
@@ -71,7 +72,7 @@ public class LocationService(ILocationRepository repo) : ILocationService
             Type = request.Type,
             Code = code,
             FullCode = fullCode,
-            Name = request.Name?.Trim()
+            Name = name
         };
 
         repo.AddLocation(location);

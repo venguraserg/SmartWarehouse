@@ -38,7 +38,7 @@ internal class FakeStockRepository : IStockRepository
         var set = ids.ToHashSet();
         return Task.FromResult<IReadOnlyDictionary<int, LocationInfo>>(
             Locations.Where(x => set.Contains(x.Id))
-                .ToDictionary(x => x.Id, x => new LocationInfo(x.Id, x.FullCode, Locations.Any(c => c.ParentId == x.Id))));
+                .ToDictionary(x => x.Id, x => new LocationInfo(x.Id, x.FullCode, Locations.Any(c => c.ParentId == x.Id), x.Name)));
     }
 
     public Task<bool> EquipmentExistsAsync(int equipmentId, CancellationToken ct = default) =>
