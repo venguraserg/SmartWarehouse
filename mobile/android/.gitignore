@@ -3,3 +3,6 @@ build/
 local.properties
 *.iml
 .idea/
+
+# Ключ подписи внутреннего приложения — хранится в репозитории (см. README), хотя *.keystore в корневом .gitignore.
+!app/smartwarehouse.keystore
