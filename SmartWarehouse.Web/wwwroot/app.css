@@ -256,3 +256,13 @@ tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; pa
 .row-actions { white-space: nowrap; text-align: right; }
 .ref-section + .ref-section { margin-top: 1rem; }
 .ref-section table { width: 100%; }
+
+/* Кнопка камеры в приложении для Android — внизу справа на каждой странице */
+.scan-fab {
+    position: fixed; right: 16px; bottom: 16px; z-index: 900;
+    width: 60px; height: 60px; border-radius: 50%; border: none;
+    background: var(--accent); color: #fff; font-size: 1.6rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .25); cursor: pointer;
+}
+.scan-fab:active { transform: scale(.95); }
+.content.with-fab { padding-bottom: 92px; } /* кнопка камеры не закрывает кнопки внизу страницы */
