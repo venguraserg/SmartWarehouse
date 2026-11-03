@@ -27,9 +27,19 @@ public static class Ui
         _ => "tag-neutral"
     };
 
-    /// <summary>Место хранения для списков: описание впереди, код — следом («Подшипники 62xx · WH1-A-01-03»).</summary>
+    /// <summary>Место хранения для списков: описание впереди, код — следом («Ячейка с подшипниками · WH1-A-01-03»).</summary>
     public static string Place(string? name, string code) =>
         string.IsNullOrWhiteSpace(name) ? code : $"{name} · {code}";
+
+    /// <summary>Подсказка к описанию места: что это за место и что в нём лежит — из описаний собирается путь в приходе.</summary>
+    public static string LocationDescriptionHint(LocationType type) => type switch
+    {
+        LocationType.Zone => "Помещение или зона: «Склад запчастей», «Холодный склад»",
+        LocationType.Rack => "Какой стеллаж: «Стеллаж у ворот», «Стеллаж электрики»",
+        LocationType.Shelf => "Какая полка: «Верхняя полка», «Полка с ремнями»",
+        LocationType.Cell => "Что здесь хранится: «Подшипники», «Сальники и манжеты»",
+        _ => "Что это за место и что в нём хранится"
+    };
 
     public static string LocType(LocationType type) => type switch
     {

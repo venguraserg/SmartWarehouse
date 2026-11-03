@@ -68,12 +68,12 @@ internal static partial class CodeRules
 
     public const int MaxLocationDescriptionLength = 128;
 
-    /// <summary>Описание места хранения обязательно: по нему место выбирают в складских операциях («Подшипники 62xx»).</summary>
+    /// <summary>Описание места хранения обязательно: из описаний уровней собирается подпись места в складских операциях.</summary>
     public static string LocationDescription(string? value)
     {
         var description = value?.Trim();
         if (string.IsNullOrEmpty(description))
-            throw new DomainException("Место хранения: укажите описание — по нему место видно в списках («Подшипники 62xx», «Ремни приводные»).");
+            throw new DomainException("Место хранения: укажите описание — что это за место и что в нём хранится («Стеллаж у ворот», «Подшипники»). По описаниям место выбирают в приходе и выдаче.");
         if (description.Length > MaxLocationDescriptionLength)
             throw new DomainException($"Описание места — не длиннее {MaxLocationDescriptionLength} символов.");
         return description;

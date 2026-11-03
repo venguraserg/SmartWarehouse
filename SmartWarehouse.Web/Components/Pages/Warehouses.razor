@@ -160,8 +160,11 @@
                                 </div>
                                 <div class="field">
                                     <label for="loc-name">Описание <span class="req">*</span></label>
-                                    <input id="loc-name" type="text" @bind="newName" @bind:event="oninput" maxlength="128" placeholder="Подшипники 62xx" />
-                                    <div class="field-hint">По описанию место выбирают в складских операциях; код — для наклейки и сканера.</div>
+                                    <input id="loc-name" type="text" @bind="newName" @bind:event="oninput" maxlength="128" placeholder="@Ui.LocationDescriptionHint(newType)" />
+                                    <div class="field-hint">
+                                        Что это за место и что в нём хранится. В приходе и выдаче место выбирают по описаниям всех уровней:
+                                        «Склад запчастей › Стеллаж у ворот › Подшипники». Код — для наклейки и сканера.
+                                    </div>
                                 </div>
                                 <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || string.IsNullOrWhiteSpace(newName) || busy)">
                                     Добавить @(selected is null ? "" : "внутрь")

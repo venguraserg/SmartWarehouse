@@ -305,7 +305,7 @@ public record StockRowDto(
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
 
-/// <param name="LocationName">Описание места («Подшипники 62xx») — по нему место узнают в списках.</param>
+/// <param name="LocationName">Описание места («Подшипники») — по нему место узнают в списках.</param>
 public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false, string? LocationName = null);
 
 /// <summary>Партия позиции и сколько её в выбранном месте (у сотрудника, всего).</summary>

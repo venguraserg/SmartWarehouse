@@ -211,11 +211,6 @@ else
             </div>
         }
 
-        @if (quickLocationLine is not null)
-        {
-            <QuickLocation OnCreated="OnLocationCreatedAsync" OnCancel="() => quickLocationLine = null" />
-        }
-
         <datalist id="items-list">
             @foreach (var label in ItemChoices)
             {
@@ -235,11 +230,11 @@ else
                         }
                         @if (ShowFromColumn)
                         {
-                            <th style="min-width: 190px">Откуда</th>
+                            <th style="min-width: 240px">Откуда</th>
                         }
                         @if (ShowToColumn)
                         {
-                            <th style="min-width: 170px">Куда</th>
+                            <th style="min-width: 240px">Куда</th>
                         }
                         @if (ShowBatchColumn)
                         {
@@ -301,7 +296,7 @@ else
                                             <option value="">@(line.Item is null ? "сначала позицию" : line.Available.Count == 0 ? "нет на складе" : "— выберите —")</option>
                                             @foreach (var a in line.Available)
                                             {
-                                                <option value="@a.LocationId">@Ui.Place(a.LocationName, a.LocationCode) — @Ui.Qty(a.Quantity)</option>
+                                                <option value="@a.LocationId" title="@a.LocationCode">@PlacePath(a.LocationId, a.LocationCode) — @Ui.Qty(a.Quantity)</option>
                                             }
                                         </select>
                                     }
@@ -316,19 +311,13 @@ else
                                 <td>
                                     @if (NeedsTo(line))
                                     {
-                                        <div class="select-with-add">
-                                            <select @bind="line.ToId">
-                                                <option value="">— выберите —</option>
-                                                @foreach (var l in leaves.OrderBy(l => l.Name ?? "\uffff").ThenBy(l => l.FullCode))
-                                                {
-                                                    <option value="@l.Id">@Ui.Place(l.Name, l.FullCode)</option>
-                                                }
-                                            </select>
-                                            @if (isStaff)
+                                        <select @bind="line.ToId" class="place-select">
+                                            <option value="">— выберите —</option>
+                                            @foreach (var l in leaves.OrderBy(l => PlacePath(l.Id), StringComparer.CurrentCultureIgnoreCase))
                                             {
-                                                <button class="btn btn-sm" type="button" title="Новое место хранения" @onclick="() => quickLocationLine = ReferenceEquals(quickLocationLine, line) ? null : line">+</button>
+                                                <option value="@l.Id" title="@l.FullCode">@PlacePath(l.Id)</option>
                                             }
-                                        </div>
+                                        </select>
                                     }
                                     else
                                     {
@@ -442,8 +431,11 @@ else
     private bool quickCategory;
     private bool quickUnit;
 
-    /// <summary>Строка, для которой создаётся новое место «куда».</summary>
-    private LineModel? quickLocationLine;
+    /// <summary>Место хранения — строкой из описаний: «Склад запчастей › Стеллаж у ворот › Подшипники».</summary>
+    private Dictionary<int, string> placePaths = [];
+
+    private string PlacePath(int locationId, string? fallback = null) =>
+        placePaths.TryGetValue(locationId, out var path) ? path : fallback ?? locationId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private async Task OnEquipmentCreatedAsync(EquipmentDto created)
     {
@@ -478,23 +470,6 @@ else
         quickUnit = false;
         if (newItem is not null)
             newItem.UnitId = created.Id;
-    }
-
-    private async Task OnLocationCreatedAsync(LocationDto created)
-    {
-        var line = quickLocationLine;
-        quickLocationLine = null;
-        try
-        {
-            leaves = await Api.GetLeafLocationsAsync(); // место, куда вложили, могло перестать быть конечным
-        }
-        catch (Exception ex) when (ex is ApiException or HttpRequestException)
-        {
-            error = ex.Message;
-        }
-        if (line is not null && lines.Contains(line))
-            line.ToId = created.Id;
-        scanInfo = $"Место {created.FullCode} «{created.Name}» создано.";
     }
 
     /// <summary>Сотрудник подставляется сразу (переход «Списать» / «Вернуть» из карточки сотрудника).</summary>
@@ -628,7 +603,7 @@ else
                 itemsByLabel = items
                     .Where(i => i.IsActive)
                     .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
-                leaves = await Api.GetLeafLocationsAsync();
+                (leaves, placePaths) = await Api.GetPlacesAsync();
                 equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
                 units = await Api.GetUnitsAsync();
                 fractionalByUnit = units.ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);

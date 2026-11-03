@@ -32,7 +32,7 @@
         </div>
         <div class="field">
             <label for="ed-name">Описание <span class="req">*</span></label>
-            <input id="ed-name" type="text" @bind="name" @bind:event="oninput" maxlength="128" placeholder="Подшипники 62xx" />
+            <input id="ed-name" type="text" @bind="name" @bind:event="oninput" maxlength="128" placeholder="@Ui.LocationDescriptionHint(type)" />
         </div>
     </div>
     <FieldError Message="@Error" />
