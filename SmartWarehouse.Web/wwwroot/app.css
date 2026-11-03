@@ -132,6 +132,7 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .quick-add-title { font-weight: 600; font-size: .9rem; margin-bottom: .4rem; }
 .select-with-add { display: flex; gap: .35rem; align-items: center; }
 .select-with-add select { flex: 1; min-width: 0; }
+.place-select { max-width: 360px; }
 
 /* ===== Кнопки ===== */
 .btn {

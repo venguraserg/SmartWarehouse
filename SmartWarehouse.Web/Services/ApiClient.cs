@@ -261,23 +261,32 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<LocationDto> GetLocationByCodeAsync(string fullCode, CancellationToken ct = default) =>
         GetAsync<LocationDto>($"api/locations/by-code/{Uri.EscapeDataString(fullCode.Trim())}", ct);
 
-    /// <summary>Все конечные места всех складов (куда можно класть товар) — для выпадающих списков.</summary>
-    public async Task<List<LocationNodeDto>> GetLeafLocationsAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Конечные места (куда кладут товар) и подписи всех мест строкой из описаний по дереву:
+    /// «Склад запчастей › Стеллаж у ворот › Подшипники». Склад указывается, если складов несколько;
+    /// уровень без описания подписывается типом и кодом («стеллаж A»).
+    /// </summary>
+    public async Task<(List<LocationNodeDto> Leaves, Dictionary<int, string> Paths)> GetPlacesAsync(CancellationToken ct = default)
     {
-        var result = new List<LocationNodeDto>();
-        foreach (var warehouse in await GetWarehousesAsync(ct))
+        var leaves = new List<LocationNodeDto>();
+        var paths = new Dictionary<int, string>();
+        var warehouses = await GetWarehousesAsync(ct);
+        foreach (var warehouse in warehouses)
         {
             var tree = await GetLocationTreeAsync(warehouse.Id, ct);
-            CollectLeaves(tree, result);
+            Walk(tree, warehouses.Count > 1 ? warehouse.Name : null);
         }
-        return result.OrderBy(l => l.FullCode).ToList();
+        return (leaves, paths);
 
-        static void CollectLeaves(IEnumerable<LocationNodeDto> nodes, List<LocationNodeDto> into)
+        void Walk(IEnumerable<LocationNodeDto> nodes, string? parentPath)
         {
             foreach (var node in nodes)
             {
-                if (node.Children.Count == 0) into.Add(node);
-                else CollectLeaves(node.Children, into);
+                var label = string.IsNullOrWhiteSpace(node.Name) ? $"{Ui.LocType(node.Type).ToLowerInvariant()} {node.Code}" : node.Name.Trim();
+                var path = parentPath is null ? label : $"{parentPath} › {label}";
+                paths[node.Id] = path;
+                if (node.Children.Count == 0) leaves.Add(node);
+                else Walk(node.Children, path);
             }
         }
     }
