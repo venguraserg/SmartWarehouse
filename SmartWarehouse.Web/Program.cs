@@ -18,7 +18,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient<ApiClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(30);
+    // Обычные запросы — 30 с (ApiClient.DefaultTimeout), загрузка остатков из Excel — дольше (свой срок в запросе).
+    client.Timeout = Timeout.InfiniteTimeSpan;
 });
 
 builder.Services.AddScoped<BrowserStore>();

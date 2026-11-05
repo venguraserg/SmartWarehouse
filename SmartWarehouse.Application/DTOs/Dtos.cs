@@ -198,7 +198,17 @@ public record LocationContentDto(int ItemId, string Sku, string Name, string Uni
 /// </summary>
 /// <param name="BatchId">Партия: откуда взять (иначе — самая старая) или к какой добавить при корректировке «+».</param>
 /// <param name="UnitPrice">Цена за единицу — обязательна для прихода и корректировки «+» без партии (создаётся новая партия).</param>
-public record DocumentLineRequest(int ItemId, decimal Quantity, int? FromLocationId, int? ToLocationId, int? BatchId = null, decimal? UnitPrice = null);
+/// <param name="BatchDate">Дата новой партии (приход), если не дата документа — например, при вводе остатков из 1С.</param>
+/// <param name="BatchNote">Примечание новой партии: документ поступления «ТТН 3834079 от 27.05.2026».</param>
+public record DocumentLineRequest(
+    int ItemId,
+    decimal Quantity,
+    int? FromLocationId,
+    int? ToLocationId,
+    int? BatchId = null,
+    decimal? UnitPrice = null,
+    DateTimeOffset? BatchDate = null,
+    string? BatchNote = null);
 
 public record CreateDocumentRequest(
     MovementType Type,

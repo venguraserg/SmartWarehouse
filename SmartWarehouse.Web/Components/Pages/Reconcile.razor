@@ -1,0 +1,261 @@
+@page "/reconcile"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@using System.Globalization
+@using System.Text
+@inject ApiClient Api
+
+<PageTitle>Сверка с 1С — склад</PageTitle>
+
+<h1>Сверка с 1С</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Загрузите «Сальдовые ведомости ТМЦ» из 1С (можно все МОЛ сразу). Остатки МОЛ склада сравниваются со складом приложения,
+    остальных МОЛ — с подотчётом сотрудника (по фамилии и инициалам).
+</p>
+
+<Alert Error="@error" />
+
+<div class="panel ref-section" style="max-width: 820px">
+    <div class="field-row">
+        <div class="field">
+            <label for="files">Файлы 1С (.xlsx)</label>
+            <InputFile id="files" accept=".xlsx" multiple OnChange="OnFilesAsync" disabled="@busy" />
+            @if (files.Count > 0)
+            {
+                <div class="field-hint">Выбрано: @files.Count (@string.Join(", ", files.Select(f => f.Name).Take(4))@(files.Count > 4 ? "…" : ""))</div>
+            }
+        </div>
+        @if (result is not null)
+        {
+            <div class="field">
+                <label for="mol">МОЛ склада</label>
+                <select id="mol" @bind="warehouseMol" @bind:after="RunAsync">
+                    @foreach (var m in result.Mols)
+                    {
+                        <option value="@m.Mol">@m.Mol (@m.Batches парт.)</option>
+                    }
+                </select>
+            </div>
+        }
+    </div>
+    <div class="actions">
+        <button class="btn btn-primary" type="button" disabled="@(busy || files.Count == 0)" @onclick="RunAsync">Сверить</button>
+    </div>
+    @if (busy)
+    {
+        <p class="loading">Сверка…</p>
+    }
+</div>
+
+@if (result is { } r)
+{
+    <h2>Результат@(r.AsOf is null ? "" : $" на {r.AsOf}")</h2>
+
+    <div class="chips" style="margin-bottom: .75rem">
+        <button class="btn btn-sm @(filter is null ? "btn-primary" : null)" type="button" @onclick="() => filter = null">Все (@r.Rows.Count)</button>
+        @foreach (var s in Order)
+        {
+            var count = r.Rows.Count(x => x.Status == s);
+            <button class="btn btn-sm @(filter == s ? "btn-primary" : null)" type="button" disabled="@(count == 0)" @onclick="() => filter = s">@Title(s) (@count)</button>
+        }
+        <a class="btn btn-sm" href="@CsvHref" download="@CsvFileName">Скачать для Excel</a>
+    </div>
+
+    @if (r.Notes.Count > 0)
+    {
+        <ul class="muted">
+            @foreach (var n in r.Notes)
+            {
+                <li>@n</li>
+            }
+        </ul>
+    }
+
+    <details style="margin-bottom: 1rem">
+        <summary>МОЛ из файлов (@r.Mols.Count)</summary>
+        <div class="table-wrap" style="max-width: 820px">
+            <table>
+                <thead><tr><th>МОЛ в 1С</th><th>В приложении</th><th class="num">Партий</th><th class="num">Стоимость, руб.</th></tr></thead>
+                <tbody>
+                    @foreach (var m in r.Mols)
+                    {
+                        <tr>
+                            <td>@m.Mol</td>
+                            <td>
+                                @if (m.EmployeeId is int eid)
+                                {
+                                    <a href="/employees/@eid">@m.Place</a>
+                                }
+                                else
+                                {
+                                    <span class="@(m.Place is null ? "tag tag-out" : null)">@(m.Place ?? "не найден")</span>
+                                }
+                            </td>
+                            <td class="num">@m.Batches</td>
+                            <td class="num">@Ui.Money(m.Value)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </details>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Статус</th>
+                    <th>Код</th>
+                    <th>Наименование</th>
+                    <th>Где</th>
+                    <th class="num">1С</th>
+                    <th class="num">Приложение</th>
+                    <th class="num">Разница</th>
+                    <th class="num">Стоимость 1С</th>
+                    <th class="num">Стоимость прил.</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var x in Visible.Take(MaxShown))
+                {
+                    <tr>
+                        <td><span class="tag @TagClass(x.Status)">@Title(x.Status)</span></td>
+                        <td class="mono">
+                            @if (x.ItemId is int id)
+                            {
+                                <a href="/items/@id">@x.Code</a>
+                            }
+                            else
+                            {
+                                <text>@x.Code</text>
+                            }
+                        </td>
+                        <td>@x.Name</td>
+                        <td>@x.Place<div class="line-hint">@x.Mol</div></td>
+                        <td class="num">@Ui.Qty(x.Qty1C) @x.Unit</td>
+                        <td class="num">@Ui.Qty(x.QtyApp)</td>
+                        <td class="num">@(x.QtyApp - x.Qty1C is var d && d != 0 ? (d > 0 ? "+" : "") + Ui.Qty(d) : "")</td>
+                        <td class="num">@(x.Value1C is decimal v1 ? Ui.Money(v1) : "")</td>
+                        <td class="num">@(x.ValueApp is decimal v2 ? Ui.Money(v2) : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Visible.Count() > MaxShown)
+    {
+        <p class="muted">Показаны первые @MaxShown — полный список в «Скачать для Excel».</p>
+    }
+}
+
+@code {
+    private const long MaxBytes = 30 * 1024 * 1024;
+    private const int MaxShown = 1000;
+
+    private static readonly ReconcileStatus[] Order =
+        [ReconcileStatus.QtyDiffers, ReconcileStatus.OnlyIn1C, ReconcileStatus.OnlyInApp, ReconcileStatus.ValueDiffers, ReconcileStatus.Match];
+
+    private readonly List<(byte[] Data, string Name)> files = [];
+    private ReconcileResultDto? result;
+    private string? warehouseMol;
+    private ReconcileStatus? filter;
+    private bool busy;
+    private string? error;
+
+    private IEnumerable<ReconcileRowDto> Visible => (result?.Rows ?? []).Where(r => filter is null || r.Status == filter);
+
+    private static string Title(ReconcileStatus s) => s switch
+    {
+        ReconcileStatus.Match => "Совпадает",
+        ReconcileStatus.ValueDiffers => "Стоимость расходится",
+        ReconcileStatus.QtyDiffers => "Количество расходится",
+        ReconcileStatus.OnlyIn1C => "Есть только в 1С",
+        ReconcileStatus.OnlyInApp => "Нет в 1С",
+        _ => s.ToString()
+    };
+
+    private static string TagClass(ReconcileStatus s) => s switch
+    {
+        ReconcileStatus.Match => "tag-in",
+        ReconcileStatus.ValueDiffers => "tag-warn",
+        _ => "tag-out"
+    };
+
+    private async Task OnFilesAsync(InputFileChangeEventArgs e)
+    {
+        error = null;
+        files.Clear();
+        result = null;
+        warehouseMol = null;
+        busy = true;
+        try
+        {
+            foreach (var f in e.GetMultipleFiles(50))
+            {
+                if (f.Size > MaxBytes)
+                {
+                    error = $"«{f.Name}» больше 30 МБ.";
+                    continue;
+                }
+                using var buffer = new MemoryStream();
+                await using (var stream = f.OpenReadStream(MaxBytes))
+                    await stream.CopyToAsync(buffer);
+                files.Add((buffer.ToArray(), f.Name));
+            }
+        }
+        catch (IOException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (files.Count == 0)
+            return;
+        busy = true;
+        error = null;
+        try
+        {
+            result = await Api.ReconcileAsync(files, warehouseMol);
+            warehouseMol = result.WarehouseMol;
+            filter = result.Rows.Any(r => r.Status != ReconcileStatus.Match) ? null : ReconcileStatus.Match;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    // ---------- Выгрузка для Excel (CSV, «;») ----------
+
+    private string CsvFileName => $"сверка_1С_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv";
+
+    private string CsvHref
+    {
+        get
+        {
+            var ru = CultureInfo.GetCultureInfo("ru-RU");
+            var sb = new StringBuilder("﻿");
+            sb.AppendLine("Статус;Код;Наименование;Ед.;МОЛ в 1С;Где в приложении;Кол-во 1С;Кол-во приложение;Разница;Стоимость 1С;Стоимость приложение");
+            foreach (var x in Visible)
+            {
+                sb.AppendLine(string.Join(';',
+                    Csv(Title(x.Status)), Csv(x.Code), Csv(x.Name), Csv(x.Unit), Csv(x.Mol), Csv(x.Place),
+                    x.Qty1C.ToString("0.###", ru), x.QtyApp.ToString("0.###", ru), (x.QtyApp - x.Qty1C).ToString("0.###", ru),
+                    x.Value1C?.ToString("0.00", ru) ?? "", x.ValueApp?.ToString("0.00", ru) ?? ""));
+            }
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
+        }
+    }
+
+    private static string Csv(string? value) =>
+        string.IsNullOrEmpty(value) ? "" : $"\"{value.Replace("\"", "\"\"")}\"";
+}

@@ -70,6 +70,34 @@ internal class FakeStockRepository : IStockRepository
             .GroupBy(l => l.BatchId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity)));
 
+    public Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ItemTotal>>(Balances
+            .Where(b => b.Quantity != 0)
+            .GroupBy(b => b.ItemId)
+            .Select(g =>
+            {
+                var item = Items.First(i => i.Id == g.Key);
+                return new ItemTotal(g.Key, item.Sku, item.Name, item.Unit?.Code ?? "",
+                    g.Sum(b => b.Quantity), g.Sum(b => b.Quantity * (BatchOf(b.BatchId)?.UnitPrice ?? 0)),
+                    g.Any(b => BatchOf(b.BatchId)?.UnitPrice is null));
+            })
+            .ToList());
+
+    public Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<CustodyTotal>>(EmployeeBalances
+            .Where(b => b.Quantity != 0)
+            .GroupBy(b => (b.EmployeeId, b.ItemId))
+            .Select(g =>
+            {
+                var item = Items.First(i => i.Id == g.Key.ItemId);
+                return new CustodyTotal(g.Key.EmployeeId, g.Key.ItemId, item.Sku, item.Name, item.Unit?.Code ?? "",
+                    g.Sum(b => b.Quantity), g.Sum(b => b.Quantity * (BatchOf(b.BatchId)?.UnitPrice ?? 0)),
+                    g.Any(b => BatchOf(b.BatchId)?.UnitPrice is null));
+            })
+            .ToList());
+
+    private Batch? BatchOf(int id) => Batches.FirstOrDefault(b => b.Id == id);
+
     public Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default)
     {
         IEnumerable<(int BatchId, decimal Quantity)> amounts = locationId is int l

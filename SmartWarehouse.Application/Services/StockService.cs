@@ -230,7 +230,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (decimal.Round(price, 4) != price)
                     throw new DomainException($"Строка {n}: цена — не больше 4 знаков после запятой.");
                 var key = --nextTempKey;
-                newBatches[key] = new Batch { ItemId = line.ItemId, UnitPrice = price, ReceivedAt = now };
+                var note = string.IsNullOrWhiteSpace(line.BatchNote) ? null : line.BatchNote.Trim();
+                if (note is { Length: > 256 })
+                    note = note[..256];
+                newBatches[key] = new Batch { ItemId = line.ItemId, UnitPrice = price, ReceivedAt = line.BatchDate ?? now, Note = note };
                 taken.Add((key, line.Quantity));
             }
 

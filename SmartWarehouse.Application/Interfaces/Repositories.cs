@@ -64,6 +64,12 @@ public interface IStockRepository
     Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
 
     /// <summary>Партии позиции с остатком: в месте, у сотрудника или везде (склад + подотчёт).</summary>
+    /// <summary>Остатки на складе по позициям (все места) — для сверки с 1С.</summary>
+    Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default);
+
+    /// <summary>Подотчёт по сотрудникам и позициям — для сверки с 1С.</summary>
+    Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
 
     /// <summary>
