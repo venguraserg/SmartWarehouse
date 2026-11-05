@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddSingleton<ILabelPdfRenderer, LabelPdfRenderer>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISettingsRepository, SettingsRepository>();
+        services.AddSingleton<IImportFileReader, Import.ExcelImportReader>();
         services.AddSingleton<SmartWarehouse.Application.Interfaces.IPasswordHasher, IdentityPasswordHasher>();
         return services;
     }

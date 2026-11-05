@@ -49,12 +49,24 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return token;
     }
 
+    /// <summary>Сколько ждать ответа API (кроме долгих операций — импорт из Excel).</summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>Отправка запроса с токеном.</summary>
-    private async Task<HttpResponseMessage> SendRawAsync(HttpRequestMessage request, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendRawAsync(HttpRequestMessage request, CancellationToken ct, TimeSpan? timeout = null)
     {
         if (await TokenAsync() is { } bearer)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        return await http.SendAsync(request, ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout ?? DefaultTimeout);
+        try
+        {
+            return await http.SendAsync(request, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new HttpRequestException("Сервер не ответил вовремя. Попробуйте ещё раз.");
+        }
     }
 
     private Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string url, CancellationToken ct, HttpContent? content = null) =>
@@ -322,6 +334,37 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         using var response = await SendRawAsync(HttpMethod.Post, "api/labels", ct, JsonContent.Create(request, options: Json));
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    // ---------- Импорт и сверка с 1С ----------
+
+    /// <summary>Начальные остатки: проверка (apply=false) или загрузка.</summary>
+    public async Task<OpeningImportResult> ImportOpeningAsync(byte[] data, string fileName, int warehouseId, bool apply, CancellationToken ct = default)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(XlsxContent(data), "file", fileName);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/import/opening?warehouseId={warehouseId}&apply={(apply ? "true" : "false")}") { Content = content };
+        using var response = await SendRawAsync(request, ct, TimeSpan.FromMinutes(15));
+        return await ReadAsync<OpeningImportResult>(response, ct);
+    }
+
+    /// <summary>Сверка с сальдовыми ведомостями 1С.</summary>
+    public async Task<ReconcileResultDto> ReconcileAsync(IEnumerable<(byte[] Data, string FileName)> files, string? warehouseMol, CancellationToken ct = default)
+    {
+        using var content = new MultipartFormDataContent();
+        foreach (var (data, name) in files)
+            content.Add(XlsxContent(data), "files", name);
+        var url = "api/import/reconcile" + (string.IsNullOrWhiteSpace(warehouseMol) ? "" : "?warehouseMol=" + Uri.EscapeDataString(warehouseMol));
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        using var response = await SendRawAsync(request, ct, TimeSpan.FromMinutes(5));
+        return await ReadAsync<ReconcileResultDto>(response, ct);
+    }
+
+    private static ByteArrayContent XlsxContent(byte[] data)
+    {
+        var file = new ByteArrayContent(data);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return file;
     }
 
     // ---------- Настройки ----------

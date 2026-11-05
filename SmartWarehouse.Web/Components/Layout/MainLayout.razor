@@ -53,11 +53,13 @@
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
                         <NavLink href="/references">Справочники</NavLink>
                         <NavLink href="/labels">Наклейки QR</NavLink>
+                        <NavLink href="/reconcile">Сверка с 1С</NavLink>
                     </AuthorizeView>
 
                     <AuthorizeView Roles="@AppRoles.Admin" Context="admin">
                         <div class="nav-group">Администрирование</div>
                         <NavLink href="/admin/users">Пользователи</NavLink>
+                        <NavLink href="/admin/import">Импорт остатков</NavLink>
                         <NavLink href="/admin/settings">Настройки</NavLink>
                     </AuthorizeView>
 

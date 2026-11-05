@@ -67,6 +67,56 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         return rows.ToDictionary(r => r.BatchId, r => r.Quantity);
     }
 
+    public async Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default)
+    {
+        var totals = await db.StockBalances
+            .Where(b => b.Quantity != 0)
+            .GroupBy(b => b.ItemId)
+            .Select(g => new
+            {
+                ItemId = g.Key,
+                Quantity = g.Sum(b => b.Quantity),
+                Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
+                Incomplete = g.Any(b => b.Batch.UnitPrice == null)
+            })
+            .ToListAsync(ct);
+        var items = await ItemNamesAsync(totals.Select(t => t.ItemId), ct);
+        return totals
+            .Select(t => new ItemTotal(t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
+                t.Quantity, decimal.Round(t.Value, 2), t.Incomplete))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default)
+    {
+        var totals = await db.EmployeeBalances
+            .Where(b => b.Quantity != 0)
+            .GroupBy(b => new { b.EmployeeId, b.ItemId })
+            .Select(g => new
+            {
+                g.Key.EmployeeId,
+                g.Key.ItemId,
+                Quantity = g.Sum(b => b.Quantity),
+                Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
+                Incomplete = g.Any(b => b.Batch.UnitPrice == null)
+            })
+            .ToListAsync(ct);
+        var items = await ItemNamesAsync(totals.Select(t => t.ItemId), ct);
+        return totals
+            .Select(t => new CustodyTotal(t.EmployeeId, t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
+                t.Quantity, decimal.Round(t.Value, 2), t.Incomplete))
+            .ToList();
+    }
+
+    private async Task<Dictionary<int, (string Sku, string Name, string Unit)>> ItemNamesAsync(IEnumerable<int> ids, CancellationToken ct)
+    {
+        var list = ids.Distinct().ToList();
+        return await db.Items
+            .Where(i => list.Contains(i.Id))
+            .Select(i => new { i.Id, i.Sku, i.Name, Unit = i.Unit.Code })
+            .ToDictionaryAsync(i => i.Id, i => (i.Sku, i.Name, i.Unit), ct);
+    }
+
     public async Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default)
     {
         List<(int BatchId, decimal Quantity)> amounts;
