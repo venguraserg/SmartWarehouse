@@ -81,6 +81,22 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddre
 Удаление этапа: `deploy\windows\uninstall.ps1 -Instance pr4 -WebPort 8104` (база и папка остаются).
 В ранних этапах (до `state-pr11-accounts`) **нет входа по паролю** — любой в сети может менять данные; используйте их только для показа.
 
+## Вторая независимая копия (учебная / тестовая)
+
+Рядом с основной можно держать ещё одну копию со своей базой — например, учебную из `main`,
+чтобы учиться и пробовать, не трогая рабочие данные:
+```powershell
+cd C:\SmartWarehouse-src
+git checkout main
+powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -ServerAddress 192.168.1.10 -Instance train -WebPort 8200 -ApiPort 5200
+```
+Сайт: `http://192.168.1.10:8200` (вход `admin` / `admin123`), папка `C:\SmartWarehouse-train`, база `smartwarehouse_train`,
+свои службы «… (train)» и свои резервные копии. Вход в одну копию не выкидывает из другой (cookie у копий разные).
+
+Обновление учебной копии: `update.ps1 -Instance train` (ветка `main`).
+Обновление основной — как обычно: `update.ps1` или `update.ps1 -Branch <ветка>`.
+Обе берут код из одной папки `C:\SmartWarehouse-src`, скрипт сам переключает ветку перед сборкой.
+
 ## Обновление
 Когда в `main` появились изменения (после мержа PR):
 ```powershell

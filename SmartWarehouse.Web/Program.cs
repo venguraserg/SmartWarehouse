@@ -28,10 +28,15 @@ builder.Services.AddScoped<ScannerHub>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("Custody").Get<CustodyOptions>() ?? new CustodyOptions());
 
 // ---------- Вход: зашифрованная cookie с токеном API ----------
+// Браузер не различает cookie по порту: у копий приложения на одном сервере (основная на :80, учебная на :8200)
+// имена cookie должны быть разными, иначе вход в одну выкидывает из другой. Суффикс — порт сайта
+// (или Auth:CookieSuffix в настройках); у основной установки на порту 80 — без суффикса, как раньше.
+var cookieSuffix = builder.Configuration["Auth:CookieSuffix"] ?? CookieNames.PortSuffix(builder.Configuration["Urls"]);
+builder.Services.AddAntiforgery(options => options.Cookie.Name = "sw.af" + cookieSuffix);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.Cookie.Name = "sw.auth";
+        options.Cookie.Name = "sw.auth" + cookieSuffix;
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.LoginPath = "/login";
