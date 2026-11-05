@@ -69,7 +69,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public async Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default)
     {
-        var totals = await db.StockBalances
+        var totals = await db.Balances
             .Where(b => b.Quantity != 0)
             .GroupBy(b => b.ItemId)
             .Select(g => new
