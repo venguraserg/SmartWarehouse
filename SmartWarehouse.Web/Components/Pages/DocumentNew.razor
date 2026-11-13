@@ -62,9 +62,34 @@ else
                         }
                     </div>
                 }
+                @if (type == MovementType.Receipt)
+                {
+                    <div class="field">
+                        <label for="book">Вид учёта</label>
+                        <select id="book" @bind="bookKind">
+                            <option value="off">Вне учёта — б/у, снятое с оборудования, прочее</option>
+                            <option value="book">Учётное (есть в 1С)</option>
+                        </select>
+                        <div class="field-hint">
+                            @if (offBook)
+                            {
+                                <span>В 1С не числится: цена необязательна, в сверку с 1С не попадает.</span>
+                            }
+                            else
+                            {
+                                <span>Учётное лучше принимать <a href="/receiving">по накладной из 1С</a> — без ручного ввода и ошибок.</span>
+                            }
+                        </div>
+                    </div>
+                }
                 <div class="field">
-                    <label for="ext">@ExternalLabel</label>
-                    <input id="ext" type="text" @bind="externalNumber" maxlength="128" />
+                    <label for="ext">@ExternalLabel@(RequiresNumber ? " *" : "")</label>
+                    <input id="ext" type="text" @bind="externalNumber" @bind:event="oninput" maxlength="128"
+                           class="@(showErrors && NumberError is not null ? "invalid" : null)" />
+                    @if (showErrors)
+                    {
+                        <FieldError Message="@NumberError" />
+                    }
                 </div>
                 <div class="field">
                     <label for="who">@(type == MovementType.WriteOff ? "Кто оформляет (кладовщик)" : "Кто проводит")</label>
@@ -350,7 +375,7 @@ else
                                     @if (NeedsPrice(line))
                                     {
                                         <input type="number" min="0" step="0.01" @bind="line.UnitPrice"
-                                               class="@(showErrors && line.UnitPrice is null ? "invalid" : null)" placeholder="0,00" />
+                                               class="@(showErrors && line.UnitPrice is null && !PriceOptional ? "invalid" : null)" placeholder="@(PriceOptional ? "необязательно" : "0,00")" />
                                     }
                                     else
                                     {
@@ -490,6 +515,21 @@ else
     private HashSet<int> custodyHolders = [];
 
     private string? externalNumber;
+
+    /// <summary>Ручной приход по умолчанию — вне учёта (б/у и прочее); учётное приходит по накладной из 1С.</summary>
+    private string bookKind = "off";
+
+    private bool offBook => bookKind == "off";
+
+    /// <summary>Приход вне учёта: цена необязательна.</summary>
+    private bool PriceOptional => type == MovementType.Receipt && offBook;
+
+    /// <summary>Учётное вручную — только с номером документа (по нему потом сверяться с 1С).</summary>
+    private bool RequiresNumber => type == MovementType.Receipt && !offBook;
+
+    private string? NumberError => RequiresNumber && string.IsNullOrWhiteSpace(externalNumber)
+        ? "Для учётного прихода укажите номер и дату документа — как в 1С."
+        : null;
     private string? performedBy;
     private int? performedById;
     private int? accountableId;
@@ -798,7 +838,7 @@ else
 
         if (NeedsPrice(line))
         {
-            if (line.UnitPrice is null)
+            if (line.UnitPrice is null && !PriceOptional)
                 return "Укажите цену за единицу.";
             if (line.UnitPrice < 0)
                 return "Цена не может быть отрицательной.";
@@ -823,7 +863,7 @@ else
         error = null;
         showErrors = true;
 
-        if (LinesWithErrors.Count > 0 || AccountableError is not null || UsageError is not null)
+        if (LinesWithErrors.Count > 0 || AccountableError is not null || UsageError is not null || NumberError is not null)
             return;
 
         var request = new CreateDocumentRequest(
@@ -840,7 +880,8 @@ else
                 TakesBatch(l) ? l.BatchId : null,
                 NeedsPrice(l) ? l.UnitPrice : null)).ToList(),
             PerformedById: performedById,
-            ReceivedById: UsesAccountable ? accountableId : null);
+            ReceivedById: UsesAccountable ? accountableId : null,
+            OffBook: PriceOptional);
 
         saving = true;
         try
@@ -1215,7 +1256,7 @@ else
                 line.Batches = await Api.GetBatchesAsync(line.Item.Id, employeeId: employeeId);
 
             // Для прихода — подсказка цены: последняя известная по позиции.
-            if (line.Item is not null && NeedsPrice(line) && line.UnitPrice is null)
+            if (line.Item is not null && NeedsPrice(line) && line.UnitPrice is null && !PriceOptional)
                 line.UnitPrice = (await Api.GetBatchesAsync(line.Item.Id))
                     .Where(b => b.UnitPrice is not null)
                     .OrderByDescending(b => b.ReceivedAt)

@@ -64,7 +64,28 @@ public interface IStockRepository
     Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
 
     /// <summary>Партии позиции с остатком: в месте, у сотрудника или везде (склад + подотчёт).</summary>
-    /// <summary>Остатки на складе по позициям (все места) — для сверки с 1С.</summary>
+    // ---------- Приёмка по накладным ----------
+
+    /// <summary>Приход с таким номером документа уже есть (накладная уже загружена).</summary>
+    Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default);
+
+    /// <summary>Остатки в месте по партиям (с позицией, единицей, партией) — что ждёт размещения в «Приёмке».</summary>
+    Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default);
+
+    /// <summary>Учётные партии, введённые вручную, которые ещё есть на складе — чтобы предупредить о задвоении при загрузке накладной.</summary>
+    Task<IReadOnlyList<ManualBatch>> ListManualAccountedAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
+
+    /// <summary>Сколько пришло этой партией (по документу прихода).</summary>
+    Task<decimal> GetBatchReceivedAsync(int batchId, CancellationToken ct = default);
+
+    void AddDiscrepancy(ReceiptDiscrepancy discrepancy);
+
+    Task<ReceiptDiscrepancy?> GetDiscrepancyAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Расхождения приёмки (с партией и позицией); по умолчанию — только незакрытые.</summary>
+    Task<IReadOnlyList<ReceiptDiscrepancy>> ListDiscrepanciesAsync(bool includeResolved, CancellationToken ct = default);
+
+    /// <summary>Остатки на складе по позициям (все места) — для сверки с 1С. Партии вне учёта не входят.</summary>
     Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default);
 
     /// <summary>Подотчёт по сотрудникам и позициям — для сверки с 1С.</summary>

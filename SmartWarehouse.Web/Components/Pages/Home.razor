@@ -12,7 +12,8 @@
 
 <AuthorizeView Roles="@AppRoles.Warehouse">
 <div class="actions" style="margin-bottom: 1.25rem">
-    <a class="btn btn-primary" href="/documents/new/Receipt">+ Приход</a>
+    <a class="btn btn-primary" href="/receiving">⇩ Приёмка по накладной</a>
+    <a class="btn" href="/documents/new/Receipt">+ Приход вручную</a>
     <a class="btn" href="/documents/new/Issue">− Выдача</a>
     <a class="btn" href="/documents/new/Return">↩ Возврат</a>
     <a class="btn" href="/documents/new/Transfer">⇄ Перемещение</a>
@@ -41,6 +42,13 @@ else
             <div class="stat-value">@recent.Count(d => d.OccurredAt.ToLocalTime().Date == DateTime.Today)</div>
             <div class="stat-label">документов сегодня</div>
         </div>
+        @if (toPlace > 0)
+        {
+            <a class="stat stat-link warn" href="/receiving">
+                <div class="stat-value">@toPlace</div>
+                <div class="stat-label">партий в приёмке ждут размещения</div>
+            </a>
+        }
         @if (actsToApprove > 0)
         {
             <a class="stat stat-link warn" href="/acts?scope=approve">
@@ -89,7 +97,10 @@ else
     private List<LowStockItemDto>? lowStock;
     private List<DocumentSummaryDto>? recent;
     private int actsToApprove;
+    private int toPlace;
     private string? error;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,6 +109,9 @@ else
             actsToApprove = await Api.GetActsToApproveCountAsync();
             lowStock = await Api.GetBelowMinimumAsync();
             recent = await Api.GetDocumentsAsync(take: 50);
+            // «Приёмку» видит склад (кладовщик, администратор).
+            if (AuthState is not null && (await AuthState).User.IsWarehouseStaff())
+                toPlace = (await Api.GetPendingPlacementAsync()).Count;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

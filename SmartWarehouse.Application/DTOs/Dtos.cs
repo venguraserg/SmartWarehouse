@@ -218,7 +218,9 @@ public record CreateDocumentRequest(
     string? Comment,
     IReadOnlyList<DocumentLineRequest> Lines,
     int? PerformedById = null,
-    int? ReceivedById = null);
+    int? ReceivedById = null,
+    bool OffBook = false,
+    BatchOrigin Origin = BatchOrigin.Manual);
 
 public record DocumentLineDto(
     int LineNo,
@@ -328,7 +330,8 @@ public record BatchStockDto(
     long? DocumentId,
     string? DocumentNumber,
     string? Note,
-    decimal Reserved = 0);
+    decimal Reserved = 0,
+    bool OffBook = false);
 
 public record SetBatchPriceRequest(decimal UnitPrice);
 

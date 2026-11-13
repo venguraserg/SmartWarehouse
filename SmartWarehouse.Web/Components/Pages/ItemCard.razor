@@ -146,7 +146,13 @@
                             @foreach (var b in batches)
                             {
                                 <tr>
-                                    <td>@Ui.Day(b.ReceivedAt)@(string.IsNullOrEmpty(b.Note) ? "" : $" · {b.Note}")</td>
+                                    <td>
+                                        @Ui.Day(b.ReceivedAt)@(string.IsNullOrEmpty(b.Note) ? "" : $" · {b.Note}")
+                                        @if (b.OffBook)
+                                        {
+                                            <span class="tag tag-neutral" title="В 1С не числится: б/у, снятое с оборудования и т.п.">вне учёта</span>
+                                        }
+                                    </td>
                                     <td class="mono">
                                         @if (b.DocumentId is long documentId)
                                         {

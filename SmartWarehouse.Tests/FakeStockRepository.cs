@@ -72,7 +72,7 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemTotal>>(Balances
-            .Where(b => b.Quantity != 0)
+            .Where(b => b.Quantity != 0 && BatchOf(b.BatchId)?.OffBook != true)
             .GroupBy(b => b.ItemId)
             .Select(g =>
             {
@@ -85,7 +85,7 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<CustodyTotal>>(EmployeeBalances
-            .Where(b => b.Quantity != 0)
+            .Where(b => b.Quantity != 0 && BatchOf(b.BatchId)?.OffBook != true)
             .GroupBy(b => (b.EmployeeId, b.ItemId))
             .Select(g =>
             {
@@ -97,6 +97,54 @@ internal class FakeStockRepository : IStockRepository
             .ToList());
 
     private Batch? BatchOf(int id) => Batches.FirstOrDefault(b => b.Id == id);
+
+    // ---------- Приёмка по накладным ----------
+
+    public List<ReceiptDiscrepancy> Discrepancies { get; } = [];
+
+    public Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default) =>
+        Task.FromResult(Documents.Any(d => d.Type == MovementType.Receipt && d.ExternalNumber == externalNumber));
+
+    public Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<StockBalance>>(Balances
+            .Where(b => b.LocationId == locationId && b.Quantity != 0)
+            .Select(b =>
+            {
+                b.Item ??= Items.First(i => i.Id == b.ItemId);
+                b.Batch ??= BatchOf(b.BatchId)!;
+                return b;
+            })
+            .ToList());
+
+    public Task<IReadOnlyList<ManualBatch>> ListManualAccountedAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ManualBatch>>(Balances
+            .Where(b => itemIds.Contains(b.ItemId) && b.Quantity > 0 && BatchOf(b.BatchId) is { OffBook: false, Origin: BatchOrigin.Manual, ReceiptDocumentId: not null })
+            .GroupBy(b => b.BatchId)
+            .Select(g =>
+            {
+                var batch = BatchOf(g.Key)!;
+                return new ManualBatch(batch.ItemId, batch.Id, StockDocument.FormatNumber(MovementType.Receipt, batch.ReceiptDocumentId!.Value),
+                    batch.ReceivedAt, g.Sum(b => b.Quantity));
+            })
+            .ToList());
+
+    public Task<decimal> GetBatchReceivedAsync(int batchId, CancellationToken ct = default) =>
+        Task.FromResult(Documents.Where(d => d.Type == MovementType.Receipt)
+            .SelectMany(d => d.Lines).Where(m => m.BatchId == batchId).Sum(m => m.Quantity));
+
+    public void AddDiscrepancy(ReceiptDiscrepancy discrepancy)
+    {
+        discrepancy.Id = Discrepancies.Count + 1;
+        discrepancy.Batch ??= BatchOf(discrepancy.BatchId)!;
+        discrepancy.Batch.Item ??= Items.First(i => i.Id == discrepancy.Batch.ItemId);
+        Discrepancies.Add(discrepancy);
+    }
+
+    public Task<ReceiptDiscrepancy?> GetDiscrepancyAsync(int id, CancellationToken ct = default) =>
+        Task.FromResult(Discrepancies.FirstOrDefault(d => d.Id == id));
+
+    public Task<IReadOnlyList<ReceiptDiscrepancy>> ListDiscrepanciesAsync(bool includeResolved, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ReceiptDiscrepancy>>(Discrepancies.Where(d => includeResolved || d.ResolvedAt is null).ToList());
 
     public Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default)
     {
