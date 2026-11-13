@@ -96,3 +96,70 @@ public record ReconcileResultDto(
     IReadOnlyList<string> Notes);
 
 public record ReconcileMolDto(string Mol, string? Place, int? EmployeeId, int Batches, decimal Value);
+
+// ---------- Приёмка: накладная на внутреннее перемещение (файл 1С) ----------
+
+/// <summary>Строка накладной.</summary>
+/// <param name="Line">Номер строки в файле.</param>
+/// <param name="Code">Номенклатурный номер (код 1С, может быть с нулями впереди).</param>
+public record InvoiceLine(int Line, string Code, string Name, string Unit, decimal? Price, decimal Quantity, decimal? Amount);
+
+/// <summary>Накладная на внутреннее перемещение материалов, прочитанная из Excel.</summary>
+/// <param name="Account">Корреспондирующий счёт из шапки (10.9), если указан.</param>
+public record InvoiceFile(string? Number, DateOnly? Date, string? Account, IReadOnlyList<InvoiceLine> Lines, IReadOnlyList<ImportIssue> Issues);
+
+/// <summary>Что будет (или было) принято по позиции накладной: одна партия на код и цену.</summary>
+/// <param name="Warning">Например, «уже есть учётная партия, введённая вручную» — возможное задвоение.</param>
+public record InvoiceBatchDto(string Code, string Name, string Unit, decimal Quantity, decimal Price, decimal Amount, bool NewItem, string? Warning);
+
+/// <summary>Итог загрузки накладной (проверка или приём).</summary>
+/// <param name="AlreadyImported">Накладная с таким номером и датой уже загружена — повторно не принимается.</param>
+public record InvoiceImportResult(
+    bool Applied,
+    string Title,
+    bool AlreadyImported,
+    int Lines,
+    int ItemsNew,
+    int UnitsNew,
+    decimal Value,
+    string? ReceptionCode,
+    IReadOnlyList<InvoiceBatchDto> Batches,
+    IReadOnlyList<ImportIssue> Issues,
+    IReadOnlyList<long> DocumentIds);
+
+/// <summary>Партия в «Приёмке», ожидающая размещения по ячейкам.</summary>
+public record PendingPlacementDto(
+    int LocationId,
+    string LocationCode,
+    int ItemId,
+    string Sku,
+    string ItemName,
+    string UnitCode,
+    bool Fractional,
+    int BatchId,
+    string? Invoice,
+    DateTimeOffset ReceivedAt,
+    decimal Quantity,
+    decimal? UnitPrice,
+    bool HasDiscrepancy);
+
+/// <summary>Расхождение приёмки: по накладной и фактически.</summary>
+public record DiscrepancyDto(
+    int Id,
+    int BatchId,
+    int ItemId,
+    string Sku,
+    string ItemName,
+    string UnitCode,
+    string? Invoice,
+    decimal Expected,
+    decimal Actual,
+    string? Comment,
+    DateTimeOffset CreatedAt,
+    string? CreatedBy,
+    DateTimeOffset? ResolvedAt,
+    string? Resolution);
+
+public record ReportDiscrepancyRequest(int BatchId, decimal Actual, string? Comment);
+
+public record ResolveDiscrepancyRequest(string? Resolution);

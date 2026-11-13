@@ -336,6 +336,32 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    // ---------- Приёмка по накладным ----------
+
+    /// <summary>Накладная на внутреннее перемещение (.xls / .xlsx): проверка (apply=false) или приём.</summary>
+    public async Task<InvoiceImportResult> ImportInvoiceAsync(byte[] data, string fileName, int warehouseId, bool apply, CancellationToken ct = default)
+    {
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(data);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(file, "file", fileName);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/receiving/invoice?warehouseId={warehouseId}&apply={(apply ? "true" : "false")}") { Content = content };
+        using var response = await SendRawAsync(request, ct, TimeSpan.FromMinutes(5));
+        return await ReadAsync<InvoiceImportResult>(response, ct);
+    }
+
+    public Task<List<PendingPlacementDto>> GetPendingPlacementAsync(CancellationToken ct = default) =>
+        GetAsync<List<PendingPlacementDto>>("api/receiving/pending", ct);
+
+    public Task<List<DiscrepancyDto>> GetDiscrepanciesAsync(bool all = false, CancellationToken ct = default) =>
+        GetAsync<List<DiscrepancyDto>>($"api/receiving/discrepancies?all={(all ? "true" : "false")}", ct);
+
+    public Task<DiscrepancyDto> ReportDiscrepancyAsync(ReportDiscrepancyRequest request, CancellationToken ct = default) =>
+        SendAsync<DiscrepancyDto>(HttpMethod.Post, "api/receiving/discrepancies", request, ct);
+
+    public Task<DiscrepancyDto> ResolveDiscrepancyAsync(int id, string? resolution, CancellationToken ct = default) =>
+        SendAsync<DiscrepancyDto>(HttpMethod.Post, $"api/receiving/discrepancies/{id}/resolve", new ResolveDiscrepancyRequest(resolution), ct);
+
     // ---------- Импорт и сверка с 1С ----------
 
     /// <summary>Начальные остатки: проверка (apply=false) или загрузка.</summary>

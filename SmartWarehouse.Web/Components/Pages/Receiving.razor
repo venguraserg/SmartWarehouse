@@ -1,0 +1,485 @@
+@page "/receiving"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@using System.Globalization
+@using System.Text
+@implements IDisposable
+@inject ApiClient Api
+@inject ScannerHub Scanner
+
+<PageTitle>Приёмка — склад</PageTitle>
+
+<h1>Приёмка по накладной</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Учётные материалы приходят по «Накладной на внутреннее перемещение» из 1С: загрузите файл — позиции, цены и количество
+    возьмутся из него. Всё попадает в «Приёмку», затем раскладывается по ячейкам.
+    То, чего нет в 1С (б/у и прочее), — <a href="/documents/new/Receipt">приходом вручную</a>.
+</p>
+
+<Alert Error="@error" Success="@success" />
+
+@* ---------- 1. Накладная ---------- *@
+<div class="panel ref-section" style="max-width: 900px">
+    <h2 style="margin-top: 0">1. Загрузить накладную</h2>
+    <div class="field-row">
+        @if (warehouses.Count > 1)
+        {
+            <div class="field">
+                <label for="wh">Склад</label>
+                <select id="wh" @bind="warehouseId" @bind:after="RecheckAsync">
+                    @foreach (var w in warehouses)
+                    {
+                        <option value="@w.Id">@w.Code — @w.Name</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="field">
+            <label for="file">Файл накладной из 1С (.xls, .xlsx)</label>
+            <InputFile id="file" accept=".xls,.xlsx" OnChange="OnFileAsync" disabled="@busy" />
+        </div>
+    </div>
+    @if (warehouses.Count == 0 && loaded)
+    {
+        <p class="muted">Складов нет — сначала создайте склад в «<a href="/warehouses">Складах и местах</a>».</p>
+    }
+    @if (busy)
+    {
+        <p class="loading">Обработка…</p>
+    }
+
+    @if (invoice is { } inv)
+    {
+        <h3>@inv.Title</h3>
+        @if (inv.AlreadyImported)
+        {
+            <div class="alert alert-error">Эта накладная уже загружена — повторно не принимается.</div>
+        }
+        else
+        {
+            <p>
+                Строк в накладной: <strong>@inv.Lines</strong>, партий к приёму: <strong>@inv.Batches.Count</strong>
+                на <strong>@Ui.Money(inv.Value)</strong> руб.
+                @(inv.ItemsNew > 0 ? $"Новых позиций: {inv.ItemsNew}. " : "")
+                Место: <span class="mono">@inv.ReceptionCode</span>.
+            </p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Код</th><th>Наименование</th><th class="num">Количество</th><th class="num">Цена</th><th class="num">Сумма</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in inv.Batches)
+                        {
+                            <tr>
+                                <td class="mono">@b.Code</td>
+                                <td>
+                                    @b.Name
+                                    @if (b.Warning is not null)
+                                    {
+                                        <div class="line-hint" style="color: var(--danger)">@b.Warning</div>
+                                    }
+                                </td>
+                                <td class="num">@Ui.Qty(b.Quantity) @b.Unit</td>
+                                <td class="num">@Ui.Price(b.Price)</td>
+                                <td class="num">@Ui.Money(b.Amount)</td>
+                                <td>
+                                    @if (b.NewItem)
+                                    {
+                                        <span class="tag tag-warn">новая позиция</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (inv.Issues.Count > 0)
+            {
+                <h3>Не будут приняты (@inv.Issues.Count(i => i.Skipped))</h3>
+                <ul>
+                    @foreach (var i in inv.Issues)
+                    {
+                        <li>Строка @i.Line, код <span class="mono">@i.Code</span>: @i.Message</li>
+                    }
+                </ul>
+            }
+            @if (!inv.Applied)
+            {
+                <div class="actions">
+                    <button class="btn btn-primary" type="button" disabled="@(busy || inv.Batches.Count == 0)" @onclick="AcceptAsync">Принять в «Приёмку»</button>
+                    <button class="btn" type="button" disabled="@busy" @onclick="() => { invoice = null; data = null; }">Отмена</button>
+                </div>
+            }
+        }
+    }
+</div>
+
+@* ---------- 2. Размещение ---------- *@
+<h2>2. Разложить по ячейкам <span class="muted">(@pending.Count)</span></h2>
+@if (pending.Count == 0)
+{
+    <div class="empty">В «Приёмке» пусто — всё разложено.</div>
+}
+else
+{
+    <div class="toolbar">
+        <div class="field" style="min-width: 320px; flex: 2">
+            <label for="cell">Куда кладу (ячейка)</label>
+            <select id="cell" @bind="targetId" class="place-select" style="max-width: none">
+                <option value="">— выберите или отсканируйте ячейку —</option>
+                @foreach (var l in places.OrderBy(l => PlacePath(l.Id), StringComparer.CurrentCultureIgnoreCase))
+                {
+                    <option value="@l.Id" title="@l.FullCode">@PlacePath(l.Id) · @l.FullCode</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="find">Найти</label>
+            <input id="find" type="search" @bind="filter" @bind:event="oninput" placeholder="код или наименование" />
+        </div>
+    </div>
+    <p class="muted">Сканер: код ячейки — выбирает ячейку, код позиции — находит её в списке. Затем «Сюда».</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Код</th><th>Наименование</th><th>Накладная</th><th class="num">В приёмке</th><th style="width: 120px">Кладу</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var p in VisiblePending)
+                {
+                    <tr>
+                        <td class="mono"><a href="/items/@p.ItemId">@p.Sku</a></td>
+                        <td>
+                            @p.ItemName
+                            @if (p.HasDiscrepancy)
+                            {
+                                <span class="tag tag-out">расхождение</span>
+                            }
+                        </td>
+                        <td>@p.Invoice</td>
+                        <td class="num">@Ui.Qty(p.Quantity) @p.UnitCode</td>
+                        <td>
+                            <input type="number" min="0" max="@p.Quantity.ToString(CultureInfo.InvariantCulture)" step="@(p.Fractional ? "any" : "1")"
+                                   value="@QtyOf(p).ToString(CultureInfo.InvariantCulture)"
+                                   @onchange="e => SetQty(p, e.Value)" aria-label="Количество" />
+                        </td>
+                        <td class="row-actions">
+                            <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || targetId is null || QtyOf(p) <= 0 || QtyOf(p) > p.Quantity)"
+                                    @onclick="() => PlaceAsync(p)">Сюда</button>
+                            <button class="btn btn-sm" type="button" disabled="@busy" title="Фактически привезли не столько, сколько в накладной"
+                                    @onclick="() => StartDiscrepancy(p)">Расхождение</button>
+                        </td>
+                    </tr>
+                    @if (discrepancyFor == p.BatchId)
+                    {
+                        <tr>
+                            <td colspan="6">
+                                <div class="quick-add">
+                                    <div class="quick-add-title">Расхождение с накладной: @p.ItemName</div>
+                                    <div class="inline-form">
+                                        <div class="field" style="max-width: 170px">
+                                            <label for="d-actual">Фактически, @p.UnitCode</label>
+                                            <input id="d-actual" type="number" min="0" step="any" @bind="actual" />
+                                        </div>
+                                        <div class="field">
+                                            <label for="d-comment">Комментарий</label>
+                                            <input id="d-comment" type="text" @bind="discrepancyComment" maxlength="500" placeholder="недовоз, бой, пересорт…" />
+                                        </div>
+                                        <button class="btn btn-primary btn-sm" type="button" disabled="@busy" @onclick="() => ReportAsync(p)">Записать</button>
+                                        <button class="btn btn-sm" type="button" @onclick="() => discrepancyFor = null">Отмена</button>
+                                    </div>
+                                    <div class="field-hint">
+                                        Остаток не меняется: в учёте числится по накладной (как в 1С). Запись попадёт в список расхождений
+                                        для бухгалтерии; когда исправят документ — расхождение закрывается.
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ---------- 3. Расхождения ---------- *@
+@if (discrepancies.Count > 0)
+{
+    <h2>Расхождения с накладными <span class="muted">(@discrepancies.Count)</span></h2>
+    <p><a class="btn btn-sm" href="@CsvHref" download="@CsvFileName">Скачать для бухгалтерии (Excel)</a></p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Накладная</th><th>Код</th><th>Наименование</th><th class="num">По накладной</th><th class="num">Фактически</th><th class="num">Разница</th><th>Комментарий</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var d in discrepancies)
+                {
+                    <tr>
+                        <td>@d.Invoice</td>
+                        <td class="mono"><a href="/items/@d.ItemId">@d.Sku</a></td>
+                        <td>@d.ItemName</td>
+                        <td class="num">@Ui.Qty(d.Expected) @d.UnitCode</td>
+                        <td class="num">@Ui.Qty(d.Actual)</td>
+                        <td class="num">@((d.Actual - d.Expected > 0 ? "+" : "") + Ui.Qty(d.Actual - d.Expected))</td>
+                        <td>@d.Comment<div class="line-hint">@d.CreatedBy, @Ui.Date(d.CreatedAt)</div></td>
+                        <td class="row-actions">
+                            @if (resolveFor == d.Id)
+                            {
+                                <input type="text" @bind="resolution" maxlength="500" placeholder="как решили" aria-label="Как решили" style="max-width: 200px" />
+                                <button class="btn btn-primary btn-sm" type="button" disabled="@busy" @onclick="() => ResolveAsync(d)">Закрыть</button>
+                                <button class="btn btn-sm" type="button" @onclick="() => resolveFor = null">Отмена</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm" type="button" @onclick="() => { resolveFor = d.Id; resolution = null; }">Закрыть…</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private const long MaxBytes = 20 * 1024 * 1024;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<WarehouseDto> warehouses = [];
+    private int warehouseId;
+    private bool loaded;
+    private byte[]? data;
+    private string? fileName;
+    private InvoiceImportResult? invoice;
+
+    private List<PendingPlacementDto> pending = [];
+    private List<DiscrepancyDto> discrepancies = [];
+    private List<LocationNodeDto> places = [];
+    private Dictionary<int, string> placePaths = [];
+    private readonly Dictionary<int, decimal> quantities = [];
+    private int? targetId;
+    private string? filter;
+
+    private int? discrepancyFor;
+    private decimal actual;
+    private string? discrepancyComment;
+    private int? resolveFor;
+    private string? resolution;
+
+    private int? myEmployeeId;
+    private bool busy;
+    private string? error;
+    private string? success;
+    private IDisposable? scanSubscription;
+
+    private IEnumerable<PendingPlacementDto> VisiblePending => string.IsNullOrWhiteSpace(filter)
+        ? pending
+        : pending.Where(p => p.Sku.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
+                             || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private string PlacePath(int id) => placePaths.TryGetValue(id, out var path) ? path : id.ToString(CultureInfo.InvariantCulture);
+
+    private decimal QtyOf(PendingPlacementDto p) => quantities.TryGetValue(p.BatchId, out var q) ? q : p.Quantity;
+
+    private void SetQty(PendingPlacementDto p, object? value)
+    {
+        if (decimal.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture)?.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var q))
+            quantities[p.BatchId] = q;
+    }
+
+    public void Dispose() => scanSubscription?.Dispose();
+
+    protected override async Task OnInitializedAsync()
+    {
+        scanSubscription = Scanner.Subscribe(OnScanAsync);
+        if (AuthState is not null)
+            myEmployeeId = (await AuthState).User.EmployeeIdOf();
+        try
+        {
+            warehouses = await Api.GetWarehousesAsync();
+            warehouseId = warehouses.FirstOrDefault()?.Id ?? 0;
+            await ReloadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        loaded = true;
+    }
+
+    private async Task ReloadAsync()
+    {
+        pending = await Api.GetPendingPlacementAsync();
+        discrepancies = await Api.GetDiscrepanciesAsync();
+        var (leaves, paths) = await Api.GetPlacesAsync();
+        var reception = pending.Select(p => p.LocationId).ToHashSet();
+        // Раскладывать — в обычные ячейки: не в саму «Приёмку» и не во временное место ввода остатков.
+        places = leaves.Where(l => !reception.Contains(l.Id) && l.Code is not ("RCV" or "IMP")).ToList();
+        placePaths = paths;
+        quantities.Clear();
+    }
+
+    // ---------- Накладная ----------
+
+    private async Task OnFileAsync(InputFileChangeEventArgs e)
+    {
+        error = success = null;
+        invoice = null;
+        if (e.File.Size > MaxBytes)
+        {
+            error = "Файл больше 20 МБ.";
+            return;
+        }
+        busy = true;
+        try
+        {
+            using var buffer = new MemoryStream();
+            await using (var stream = e.File.OpenReadStream(MaxBytes))
+                await stream.CopyToAsync(buffer);
+            data = buffer.ToArray();
+            fileName = e.File.Name;
+            invoice = await Api.ImportInvoiceAsync(data, fileName, warehouseId, apply: false);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or IOException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task RecheckAsync()
+    {
+        if (data is null || invoice is null or { Applied: true })
+            return;
+        await RunAsync(async () =>
+        {
+            invoice = await Api.ImportInvoiceAsync(data, fileName ?? "invoice.xls", warehouseId, apply: false);
+            return null;
+        });
+    }
+
+    private Task AcceptAsync() => RunAsync(async () =>
+    {
+        invoice = await Api.ImportInvoiceAsync(data!, fileName ?? "invoice.xls", warehouseId, apply: true);
+        data = null;
+        await ReloadAsync();
+        return $"{invoice.Title}: принято партий — {invoice.Batches.Count}. Теперь разложите по ячейкам.";
+    });
+
+    // ---------- Размещение ----------
+
+    private Task PlaceAsync(PendingPlacementDto p) => RunAsync(async () =>
+    {
+        var qty = QtyOf(p);
+        await Api.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Transfer, null, null, null, $"Размещение из приёмки ({p.Invoice})",
+            [new DocumentLineRequest(p.ItemId, qty, p.LocationId, targetId, BatchId: p.BatchId)],
+            PerformedById: myEmployeeId));
+        var place = PlacePath(targetId!.Value);
+        await ReloadAsync();
+        return $"{p.Sku}: {Ui.Qty(qty)} {p.UnitCode} → {place}.";
+    });
+
+    private void StartDiscrepancy(PendingPlacementDto p)
+    {
+        discrepancyFor = discrepancyFor == p.BatchId ? null : p.BatchId;
+        actual = p.Quantity;
+        discrepancyComment = null;
+    }
+
+    private Task ReportAsync(PendingPlacementDto p) => RunAsync(async () =>
+    {
+        await Api.ReportDiscrepancyAsync(new ReportDiscrepancyRequest(p.BatchId, actual, discrepancyComment));
+        discrepancyFor = null;
+        await ReloadAsync();
+        return "Расхождение записано.";
+    });
+
+    private Task ResolveAsync(DiscrepancyDto d) => RunAsync(async () =>
+    {
+        await Api.ResolveDiscrepancyAsync(d.Id, resolution);
+        resolveFor = null;
+        await ReloadAsync();
+        return "Расхождение закрыто.";
+    });
+
+    private async Task RunAsync(Func<Task<string?>> action)
+    {
+        busy = true;
+        error = success = null;
+        try
+        {
+            success = await action();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    /// <summary>Сканер: ячейка — «куда кладу», позиция — найти в списке.</summary>
+    private async Task<bool> OnScanAsync(string code)
+    {
+        try
+        {
+            var found = await Api.ScanAsync(code);
+            if (found.Kind == ScanKind.Location)
+            {
+                if (places.Any(l => l.Id == found.Id))
+                {
+                    targetId = found.Id;
+                    error = null;
+                    success = $"Ячейка: {PlacePath(found.Id)}";
+                }
+                else
+                {
+                    error = $"{found.Code}: сюда класть нельзя — выберите конечную ячейку.";
+                }
+            }
+            else
+            {
+                filter = found.Code;
+                if (!pending.Any(p => p.ItemId == found.Id))
+                    error = $"{found.Code}: этой позиции в приёмке нет.";
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        StateHasChanged();
+        return true;
+    }
+
+    // ---------- Выгрузка расхождений ----------
+
+    private string CsvFileName => $"расхождения_приёмки_{DateTime.Now:yyyy-MM-dd}.csv";
+
+    private string CsvHref
+    {
+        get
+        {
+            var ru = CultureInfo.GetCultureInfo("ru-RU");
+            var sb = new StringBuilder("﻿");
+            sb.AppendLine("Накладная;Код;Наименование;Ед.;По накладной;Фактически;Разница;Комментарий;Кто отметил;Когда");
+            foreach (var d in discrepancies)
+                sb.AppendLine(string.Join(';', Csv(d.Invoice), Csv(d.Sku), Csv(d.ItemName), Csv(d.UnitCode),
+                    d.Expected.ToString("0.###", ru), d.Actual.ToString("0.###", ru), (d.Actual - d.Expected).ToString("0.###", ru),
+                    Csv(d.Comment), Csv(d.CreatedBy), Csv(Ui.Date(d.CreatedAt))));
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
+        }
+    }
+
+    private static string Csv(string? value) =>
+        string.IsNullOrEmpty(value) ? "" : $"\"{value.Replace("\"", "\"\"")}\"";
+}

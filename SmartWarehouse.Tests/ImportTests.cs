@@ -130,6 +130,20 @@ public class ImportTests
         Assert.Equal(new DateOnly(2026, 9, 10), file.Rows[1].DocumentDate);
     }
 
+    [Fact]
+    public void Файл_сохранённый_LibreOffice_с_примечаниями_открывается()
+    {
+        // Как «Начальные остатки — готово»: примечания к ячейкам, закреплённая строка, фильтр, формулы (пересчитан LibreOffice).
+        using var stream = File.OpenRead(Path.Combine(AppContext.BaseDirectory, "Fixtures", "opening-libreoffice.xlsx"));
+
+        var file = new ExcelImportReader().ReadOpening(stream);
+
+        Assert.Empty(file.Issues);
+        Assert.Equal(["60603", "76242"], file.Rows.Select(r => r.Code));
+        Assert.Equal(2065.12m, file.Rows[0].Value);
+        Assert.True(file.Rows[1].Custody);
+    }
+
     private static T Read<T>(XLWorkbook book, Func<Stream, T> read)
     {
         using var stream = new MemoryStream();

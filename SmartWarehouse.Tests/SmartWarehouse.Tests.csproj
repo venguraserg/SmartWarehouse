@@ -31,4 +31,9 @@
     <ProjectReference Include="..\SmartWarehouse.Infrastructure\SmartWarehouse.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Тестовые файлы Excel (синтетические данные) -->
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

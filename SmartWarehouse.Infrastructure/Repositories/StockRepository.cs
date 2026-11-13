@@ -67,10 +67,59 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         return rows.ToDictionary(r => r.BatchId, r => r.Quantity);
     }
 
+    // ---------- Приёмка по накладным ----------
+
+    public Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default) =>
+        db.Documents.AnyAsync(d => d.Type == MovementType.Receipt && d.ExternalNumber == externalNumber, ct);
+
+    public async Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default) =>
+        await db.Balances
+            .AsNoTracking()
+            .Include(b => b.Item).ThenInclude(i => i.Unit)
+            .Include(b => b.Batch)
+            .Where(b => b.LocationId == locationId && b.Quantity != 0)
+            .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.Item.Name)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ManualBatch>> ListManualAccountedAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default)
+    {
+        var ids = itemIds.ToList();
+        var rows = await db.Balances
+            .Where(b => ids.Contains(b.ItemId) && b.Quantity > 0 && !b.Batch.OffBook && b.Batch.Origin == BatchOrigin.Manual
+                        && b.Batch.ReceiptDocumentId != null)
+            .GroupBy(b => new { b.ItemId, b.BatchId, b.Batch.ReceiptDocumentId, b.Batch.ReceivedAt })
+            .Select(g => new { g.Key.ItemId, g.Key.BatchId, g.Key.ReceiptDocumentId, g.Key.ReceivedAt, Quantity = g.Sum(b => b.Quantity) })
+            .ToListAsync(ct);
+        return rows
+            .Select(r => new ManualBatch(r.ItemId, r.BatchId, r.ReceiptDocumentId is long id ? StockDocument.FormatNumber(MovementType.Receipt, id) : null,
+                r.ReceivedAt, r.Quantity))
+            .ToList();
+    }
+
+    public async Task<decimal> GetBatchReceivedAsync(int batchId, CancellationToken ct = default) =>
+        await db.Movements
+            .Where(m => m.BatchId == batchId && m.Document.Type == MovementType.Receipt)
+            .SumAsync(m => (decimal?)m.Quantity, ct) ?? 0;
+
+    public void AddDiscrepancy(ReceiptDiscrepancy discrepancy) => db.ReceiptDiscrepancies.Add(discrepancy);
+
+    public Task<ReceiptDiscrepancy?> GetDiscrepancyAsync(int id, CancellationToken ct = default) =>
+        db.ReceiptDiscrepancies.Include(d => d.Batch).ThenInclude(b => b.Item).ThenInclude(i => i.Unit)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+
+    public async Task<IReadOnlyList<ReceiptDiscrepancy>> ListDiscrepanciesAsync(bool includeResolved, CancellationToken ct = default) =>
+        await db.ReceiptDiscrepancies
+            .AsNoTracking()
+            .Include(d => d.Batch).ThenInclude(b => b.Item).ThenInclude(i => i.Unit)
+            .Where(d => includeResolved || d.ResolvedAt == null)
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(500)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default)
     {
         var totals = await db.Balances
-            .Where(b => b.Quantity != 0)
+            .Where(b => b.Quantity != 0 && !b.Batch.OffBook)
             .GroupBy(b => b.ItemId)
             .Select(g => new
             {
@@ -90,7 +139,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     public async Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default)
     {
         var totals = await db.EmployeeBalances
-            .Where(b => b.Quantity != 0)
+            .Where(b => b.Quantity != 0 && !b.Batch.OffBook)
             .GroupBy(b => new { b.EmployeeId, b.ItemId })
             .Select(g => new
             {

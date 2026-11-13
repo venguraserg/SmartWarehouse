@@ -222,18 +222,23 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             }
             else
             {
-                // Поступление: новая партия по цене из документа.
-                if (line.UnitPrice is not decimal price)
+                // Поступление: новая партия по цене из документа. Вне учёта (б/у и т.п.) цена необязательна.
+                if (line.UnitPrice is null && !request.OffBook)
                     throw new DomainException($"Строка {n} («{item.Name}»): укажите цену за единицу.");
+                var price = line.UnitPrice;
                 if (price < 0)
                     throw new DomainException($"Строка {n}: цена не может быть отрицательной.");
-                if (decimal.Round(price, 4) != price)
+                if (price is decimal given && decimal.Round(given, 4) != given)
                     throw new DomainException($"Строка {n}: цена — не больше 4 знаков после запятой.");
                 var key = --nextTempKey;
                 var note = string.IsNullOrWhiteSpace(line.BatchNote) ? null : line.BatchNote.Trim();
                 if (note is { Length: > 256 })
                     note = note[..256];
-                newBatches[key] = new Batch { ItemId = line.ItemId, UnitPrice = price, ReceivedAt = line.BatchDate ?? now, Note = note };
+                newBatches[key] = new Batch
+                {
+                    ItemId = line.ItemId, UnitPrice = price, ReceivedAt = line.BatchDate ?? now, Note = note,
+                    OffBook = request.OffBook, Origin = request.Origin
+                };
                 taken.Add((key, line.Quantity));
             }
 
@@ -397,7 +402,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .GroupBy(b => (b.LocationId, b.Location.FullCode, b.Location.Name))
             .Select(g =>
             {
-                var (value, incomplete) = Valuation.Of(g.Select(b => (b.Quantity, b.Batch?.UnitPrice)));
+                var (value, incomplete) = Valuation.Of(g.Select(b => (b.Quantity, Valuation.Price(b.Batch))));
                 return new StockBalanceDto(g.Key.LocationId, g.Key.FullCode, g.Sum(b => b.Quantity), value, incomplete, g.Key.Name);
             })
             .OrderBy(b => b.LocationCode)
@@ -416,7 +421,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .OrderBy(r => r.Batch.ReceivedAt).ThenBy(r => r.Batch.Id)
             .Select(r => new BatchStockDto(
                 r.Batch.Id, r.Batch.ReceivedAt, r.Batch.UnitPrice, r.Quantity,
-                r.Batch.ReceiptDocumentId, r.DocumentNumber, r.Batch.Note, held.GetValueOrDefault(r.Batch.Id)))
+                r.Batch.ReceiptDocumentId, r.DocumentNumber, r.Batch.Note, held.GetValueOrDefault(r.Batch.Id), r.Batch.OffBook))
             .ToList();
     }
 
@@ -466,7 +471,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .Select(g =>
             {
                 var b = g.First();
-                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, x.Batch?.UnitPrice)));
+                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
                 return new StockRowDto(
                     b.ItemId,
                     b.Item.Sku,

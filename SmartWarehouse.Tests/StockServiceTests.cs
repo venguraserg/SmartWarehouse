@@ -565,6 +565,19 @@ public class StockServiceTests
     }
 
     [Fact]
+    public async Task Приход_вне_учёта_проводится_без_цены()
+    {
+        await Send(new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(2, to: CellA)], OffBook: true));
+
+        var batch = Assert.Single(_repo.Batches);
+        Assert.True(batch.OffBook);
+        Assert.Null(batch.UnitPrice);
+        Assert.Equal(BatchOrigin.Manual, batch.Origin);
+        // Партия вне учёта без цены стоимость «неполной» не делает.
+        Assert.Equal((0m, false), Valuation.Of([(2m, Valuation.Price(batch))]) is var (value, incomplete) ? (value ?? -1, incomplete) : default);
+    }
+
+    [Fact]
     public async Task Выдача_берёт_самую_старую_партию_и_добирает_из_следующей()
     {
         await Post(MovementType.Receipt, Line(3, to: CellA) with { UnitPrice = 10 });

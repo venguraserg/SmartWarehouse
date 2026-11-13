@@ -32,7 +32,8 @@
                     </NavLink>
                     <NavLink href="/documents">Документы</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/documents/new/Receipt">+ Приход</NavLink>
+                        <NavLink href="/receiving">⇩ Приёмка по накладной</NavLink>
+                        <NavLink href="/documents/new/Receipt">+ Приход вручную</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@AppRoles.Issuing" Context="issuing">
                         <NavLink href="/documents/new/Issue">− Выдача сотруднику</NavLink>

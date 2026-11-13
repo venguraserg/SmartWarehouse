@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartWarehouse.Domain.Entities;
+using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.Infrastructure.Data;
 
@@ -142,6 +143,23 @@ internal class BatchConfiguration : IEntityTypeConfiguration<Batch>
         b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.ReceiptDocument).WithMany().HasForeignKey(x => x.ReceiptDocumentId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ItemId, x.ReceivedAt });
+        b.Property(x => x.OffBook).HasDefaultValue(false);
+        b.Property(x => x.Origin).HasDefaultValue(BatchOrigin.Manual);
+    }
+}
+
+internal class ReceiptDiscrepancyConfiguration : IEntityTypeConfiguration<ReceiptDiscrepancy>
+{
+    public void Configure(EntityTypeBuilder<ReceiptDiscrepancy> b)
+    {
+        b.ToTable("receipt_discrepancies");
+        b.Property(x => x.Expected).HasPrecision(18, 3);
+        b.Property(x => x.Actual).HasPrecision(18, 3);
+        b.Property(x => x.Comment).HasMaxLength(500);
+        b.Property(x => x.CreatedBy).HasMaxLength(128);
+        b.Property(x => x.Resolution).HasMaxLength(500);
+        b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.BatchId);
     }
 }
 

@@ -270,7 +270,7 @@ public class OpeningImportService(
                 .ToList();
             var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
                 MovementType.Receipt, "Ввод остатков из 1С", null, actor.Name,
-                "Начальные остатки (импорт из 1С)", lines, PerformedById: actor.EmployeeId), ct);
+                "Начальные остатки (импорт из 1С)", lines, PerformedById: actor.EmployeeId, Origin: BatchOrigin.Opening), ct);
             documents.Add(doc.Id);
             var ordered = doc.Lines.OrderBy(l => l.LineNo).ToList();
             for (var i = 0; i < chunk.Length; i++)

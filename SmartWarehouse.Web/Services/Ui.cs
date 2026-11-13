@@ -74,9 +74,9 @@ public static class Ui
 
     /// <summary>Партия для выбора: «от 12.10.2026 · 12,50 · 8 шт».</summary>
     public static string Batch(BatchStockDto b, string unit, bool showPrice = true) =>
-        showPrice
+        (b.OffBook ? "вне учёта · " : "") + (showPrice
             ? $"от {Day(b.ReceivedAt)} · {(b.UnitPrice is decimal p ? Price(p) : "без цены")} · {Qty(b.Quantity - b.Reserved)} {unit}"
-            : $"от {Day(b.ReceivedAt)} · {Qty(b.Quantity - b.Reserved)} {unit}";
+            : $"от {Day(b.ReceivedAt)} · {Qty(b.Quantity - b.Reserved)} {unit}");
 
     public static string Date(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ru);
 

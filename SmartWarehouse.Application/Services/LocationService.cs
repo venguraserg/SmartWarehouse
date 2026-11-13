@@ -119,7 +119,7 @@ public class LocationService(ILocationRepository repo) : ILocationService
             .Select(g =>
             {
                 var b = g.First();
-                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, x.Batch?.UnitPrice)));
+                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
                 return new LocationContentDto(b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code, g.Sum(x => x.Quantity),
                     b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), value, incomplete);
             })

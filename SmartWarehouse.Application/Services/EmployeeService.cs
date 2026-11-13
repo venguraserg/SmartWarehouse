@@ -78,7 +78,7 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
             {
                 var b = g.First();
                 var quantity = g.Sum(x => x.Quantity);
-                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, x.Batch?.UnitPrice)));
+                var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
                 return new CustodyRowDto(
                     b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
                     b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
