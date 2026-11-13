@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartWarehouse.Domain.Entities;
+using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.Infrastructure.Data;
 
