@@ -4,6 +4,7 @@
 @inject BrowserStore Store
 @inject NavigationManager Nav
 @inject ScannerHub Scanner
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>@Title — склад</PageTitle>
@@ -281,8 +282,16 @@ else
                         <tr>
                             <td class="num">@n</td>
                             <td>
-                                <input type="text" list="items-list" @bind="line.ItemText" @bind:after="() => OnItemChangedAsync(line)"
-                                       placeholder="Начните вводить…" class="@(ShowLineError(line) ? "invalid" : null)" />
+                                <div class="select-with-add">
+                                    <input type="text" list="items-list" @bind="line.ItemText" @bind:after="() => OnItemChangedAsync(line)"
+                                           placeholder="Начните вводить…" class="@(ShowLineError(line) ? "invalid" : null)" />
+                                    @if (CanCreateItems && line.Item is null)
+                                    {
+                                        @* Нет в номенклатуре — завести прямо здесь, приход не теряется. *@
+                                        <button class="btn btn-sm" type="button" title="Новая позиция номенклатуры — завести прямо здесь"
+                                                @onclick="() => StartNewItemAsync(line, line.ItemText, null)">+ Новая</button>
+                                    }
+                                </div>
                                 @if (line.Item is not null)
                                 {
                                     <div class="line-hint">@StockHint(line)</div>
@@ -401,6 +410,11 @@ else
 
         <div class="actions" style="margin-top: .75rem">
             <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+            @if (CanCreateItems)
+            {
+                <button class="btn" type="button" title="Позиции нет в номенклатуре — завести и сразу добавить в приход"
+                        @onclick="() => StartNewItemAsync(null, null, null)">+ Новая позиция</button>
+            }
             @if (FromEmployee && custody.Count > 0)
             {
                 <button class="btn" type="button" @onclick="FillAllCustodyAsync">Заполнить всем, что числится</button>
@@ -1091,6 +1105,23 @@ else
     private bool CanCreateItems => type == MovementType.Receipt;
 
     private NewItemModel? newItem;
+    private bool focusNewItem;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusNewItem && newItem is not null)
+        {
+            focusNewItem = false;
+            try
+            {
+                await JS.InvokeVoidAsync("swFocus", "ni-name");
+            }
+            catch (JSException)
+            {
+                // не критично
+            }
+        }
+    }
     private LineModel? newItemLine;
     private string? newItemError;
     private string? newItemSuggestedSku;
@@ -1128,6 +1159,8 @@ else
         {
             newItemError = ex.Message;
         }
+        // Форма — выше таблицы: прокрутить к ней и поставить курсор в «Наименование».
+        focusNewItem = true;
     }
 
     private Task SuggestNewSkuAsync() => SuggestNewSkuAsync(force: false);

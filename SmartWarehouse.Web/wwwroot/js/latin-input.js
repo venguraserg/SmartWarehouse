@@ -33,6 +33,14 @@
     }, true);
 })();
 
+// Показать и поставить курсор в поле (например, форма новой позиции открылась выше по странице).
+window.swFocus = id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.focus({ preventScroll: true });
+};
+
 // Быстрое создание элемента справочника (.quick-add) стоит внутри формы документа или позиции:
 // Enter в его поле не должен отправлять всю форму (провести документ) — он нажимает «Создать» самого блока.
 (function () {
