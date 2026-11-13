@@ -26,6 +26,14 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                 nullable: false,
                 defaultValue: 0);
 
+            // Партии, загруженные вводом остатков из 1С, — не «введены вручную» (иначе при приёме накладных
+            // по ним будет ложное предупреждение о задвоении).
+            migrationBuilder.Sql("""
+                UPDATE batches b SET "Origin" = 2
+                FROM stock_documents d
+                WHERE d."Id" = b."ReceiptDocumentId" AND d."ExternalNumber" = 'Ввод остатков из 1С';
+                """);
+
             migrationBuilder.CreateTable(
                 name: "receipt_discrepancies",
                 columns: table => new
