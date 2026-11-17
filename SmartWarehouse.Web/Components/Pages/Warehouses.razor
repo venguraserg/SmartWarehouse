@@ -113,10 +113,17 @@
                     }
                     else
                     {
+                        <form class="tree-find" @onsubmit="FindAsync" @onsubmit:preventDefault>
+                            <input type="search" @bind="findText" placeholder="Найти место: 2-A5-1 или описание" aria-label="Найти место" />
+                            <button class="btn btn-sm" type="submit" disabled="@string.IsNullOrWhiteSpace(findText)">Найти</button>
+                            <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всё">+ всё</button>
+                            <button class="btn btn-sm" type="button" @onclick="() => expanded.Clear()" title="Свернуть всё">− всё</button>
+                        </form>
                         <ul class="tree">
                             @foreach (var node in tree)
                             {
-                                <LocationNode Node="node" SelectedId="selected?.Id" OnSelect="SelectLocationAsync" />
+                                <LocationNode Node="node" SelectedId="selected?.Id" OnSelect="SelectLocationAsync"
+                                              Expanded="expanded" OnToggle="Toggle" />
                             }
                         </ul>
                     }
@@ -233,6 +240,10 @@
     private LocationNodeDto? selected;
     private List<LocationContentDto> content = [];
 
+    /// <summary>Развёрнутые узлы дерева. По умолчанию всё свёрнуто — видны только верхние уровни.</summary>
+    private readonly HashSet<int> expanded = [];
+    private string? findText;
+
     private string? newWarehouseCode;
     private string? newWarehouseName;
     private LocationType newType = LocationType.Rack;
@@ -308,6 +319,7 @@
         warehouseForm = null;
         relabelIds = [];
         selected = null;
+        expanded.Clear();
         await ReloadTreeAsync();
         ResetNewType();
     }
@@ -330,6 +342,10 @@
     private async Task SelectLocationAsync(LocationNodeDto? node)
     {
         selected = node;
+        // Выбранное место и путь к нему — раскрыты: видно, что внутри, и куда добавится новое.
+        if (node is not null)
+            foreach (var id in PathTo(tree, node.Id) ?? new List<int>())
+                expanded.Add(id);
         content = [];
         error = success = null;
         ResetNewType();
@@ -360,6 +376,65 @@
     /// <summary>Предзаполнение кода: следующая свободная буква или номер среди соседей.</summary>
     private void SuggestLocationCode() =>
         newCode = Codes.NextLocationCode(newType, Siblings.Select(s => s.Code));
+
+    // ---------- Свернуть / развернуть, поиск ----------
+
+    private void Toggle(int id)
+    {
+        if (!expanded.Remove(id))
+            expanded.Add(id);
+    }
+
+    private void ExpandAll()
+    {
+        void Walk(IEnumerable<LocationNodeDto> nodes)
+        {
+            foreach (var n in nodes.Where(n => n.Children.Count > 0))
+            {
+                expanded.Add(n.Id);
+                Walk(n.Children);
+            }
+        }
+        Walk(tree);
+    }
+
+    /// <summary>
+    /// Поиск по коду («2-A5-1», «2.A5.1», «WH1-2-A5-1») или описанию: выбирает первое найденное место
+    /// и раскрывает путь к нему.
+    /// </summary>
+    private async Task FindAsync()
+    {
+        var text = findText?.Trim();
+        if (string.IsNullOrEmpty(text) || warehouse is null) return;
+        var code = text.Replace('.', '-').ToUpperInvariant();
+        if (!code.StartsWith(warehouse.Code + "-", StringComparison.OrdinalIgnoreCase))
+            code = $"{warehouse.Code}-{code}";
+
+        var all = Flatten(tree).ToList();
+        var found = all.FirstOrDefault(n => string.Equals(n.FullCode, code, StringComparison.OrdinalIgnoreCase))
+                    ?? all.FirstOrDefault(n => n.FullCode.StartsWith(code, StringComparison.OrdinalIgnoreCase))
+                    ?? all.FirstOrDefault(n => n.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+        if (found is null)
+        {
+            error = $"Место «{text}» не найдено.";
+            return;
+        }
+        await SelectLocationAsync(found);
+    }
+
+    private static IEnumerable<LocationNodeDto> Flatten(IEnumerable<LocationNodeDto> nodes) =>
+        nodes.SelectMany(n => new[] { n }.Concat(Flatten(n.Children)));
+
+    /// <summary>Id мест от верхнего уровня до указанного (включительно); null — не найдено.</summary>
+    private static List<int>? PathTo(IEnumerable<LocationNodeDto> nodes, int id)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Id == id) return [n.Id];
+            if (PathTo(n.Children, id) is { } rest) return [n.Id, .. rest];
+        }
+        return null;
+    }
 
     // ---------- Сохранение ----------
 

@@ -1,19 +1,35 @@
-@* Узел дерева мест хранения (рекурсивный). *@
+@* Узел дерева мест хранения (рекурсивный). Вложенные места сворачиваются кнопкой «+/−». *@
 <li>
-    <button type="button" class="tree-node @(Node.Id == SelectedId ? "selected" : null)" @onclick="() => OnSelect.InvokeAsync(Node)">
-        <span class="tree-type">@Ui.LocType(Node.Type)</span>
-        <span class="mono">@Node.Code</span>
-        @if (!string.IsNullOrEmpty(Node.Name))
+    <div class="tree-row">
+        @if (Node.Children.Count > 0)
         {
-            <span class="muted">@Node.Name</span>
+            <button type="button" class="tree-toggle" @onclick="() => OnToggle.InvokeAsync(Node.Id)"
+                    title="@(IsOpen ? "Свернуть" : "Развернуть")" aria-expanded="@(IsOpen ? "true" : "false")"
+                    aria-label="@(IsOpen ? "Свернуть" : "Развернуть") @Node.Code">@(IsOpen ? "−" : "+")</button>
         }
-    </button>
-    @if (Node.Children.Count > 0)
+        else
+        {
+            <span class="tree-toggle-space"></span>
+        }
+        <button type="button" class="tree-node @(Node.Id == SelectedId ? "selected" : null)" @onclick="() => OnSelect.InvokeAsync(Node)">
+            <span class="tree-type">@Ui.LocType(Node.Type)</span>
+            <span class="mono">@Node.Code</span>
+            @if (!string.IsNullOrEmpty(Node.Name))
+            {
+                <span class="muted">@Node.Name</span>
+            }
+            @if (Node.Children.Count > 0 && !IsOpen)
+            {
+                <span class="tree-count" title="Вложенных мест">@Node.Children.Count</span>
+            }
+        </button>
+    </div>
+    @if (Node.Children.Count > 0 && IsOpen)
     {
         <ul>
             @foreach (var child in Node.Children)
             {
-                <LocationNode Node="child" SelectedId="SelectedId" OnSelect="OnSelect" />
+                <LocationNode Node="child" SelectedId="SelectedId" OnSelect="OnSelect" Expanded="Expanded" OnToggle="OnToggle" />
             }
         </ul>
     }
@@ -23,4 +39,11 @@
     [Parameter, EditorRequired] public LocationNodeDto Node { get; set; } = null!;
     [Parameter] public int? SelectedId { get; set; }
     [Parameter] public EventCallback<LocationNodeDto> OnSelect { get; set; }
+
+    /// <summary>Развёрнутые узлы (Id). Состояние хранит страница — общее для всего дерева.</summary>
+    [Parameter, EditorRequired] public ISet<int> Expanded { get; set; } = null!;
+
+    [Parameter] public EventCallback<int> OnToggle { get; set; }
+
+    private bool IsOpen => Expanded.Contains(Node.Id);
 }

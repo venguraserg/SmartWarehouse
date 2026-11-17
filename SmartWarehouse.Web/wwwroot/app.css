@@ -189,6 +189,13 @@ tr.group-row td { background: #f1f4f7; font-weight: 600; padding-top: .45rem; pa
 .tree-node:hover { background: #f1f4f7; }
 .tree-node.selected { background: var(--accent-weak); color: var(--accent); }
 .tree-type { font-size: .72rem; color: var(--muted); min-width: 52px; }
+.tree-row { display: flex; align-items: center; gap: .15rem; }
+.tree-toggle, .tree-toggle-space { flex: 0 0 1.5rem; width: 1.5rem; height: 1.5rem; }
+.tree-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--muted); font: 600 .95rem/1 monospace; cursor: pointer; }
+.tree-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.tree-count { margin-left: auto; font-size: .72rem; color: var(--muted); background: #f1f4f7; border-radius: 999px; padding: 0 .45rem; }
+.tree-find { display: flex; gap: .4rem; margin-bottom: .5rem; }
+.tree-find input { flex: 1; min-width: 0; }
 .list-select { list-style: none; margin: 0; padding: 0; }
 .list-select button { width: 100%; text-align: left; padding: .5rem .6rem; border: none; background: none; border-radius: 4px; font: inherit; cursor: pointer; color: inherit; }
 .list-select button:hover { background: #f1f4f7; }
