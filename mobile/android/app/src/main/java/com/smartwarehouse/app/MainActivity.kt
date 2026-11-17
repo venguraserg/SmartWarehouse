@@ -181,8 +181,8 @@ class MainActivity : AppCompatActivity() {
         showingError = true
         val html = """
             <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-            <style>body{font-family:sans-serif;padding:24px;color:#1d2433}button{font-size:16px;padding:10px 18px;margin:6px 8px 0 0;border-radius:8px;border:1px solid #1F5FAD;background:#1F5FAD;color:#fff}
-            button.alt{background:#fff;color:#1F5FAD}.muted{color:#6b7280}</style></head><body>
+            <style>body{font-family:sans-serif;padding:24px;color:#1A1F26}button{font-size:16px;padding:10px 18px;margin:6px 8px 0 0;border-radius:8px;border:1px solid #076A33;background:#076A33;color:#fff}
+            button.alt{background:#fff;color:#076A33}.muted{color:#5B6573}</style></head><body>
             <h2>Сервер склада недоступен</h2>
             <p>Адрес: <b>${serverUrl ?: "не задан"}</b></p>
             <p class="muted">${reason}. Проверьте, что телефон подключён к сети предприятия (Wi-Fi) и сервер включён.</p>

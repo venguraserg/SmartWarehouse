@@ -22,7 +22,7 @@ public class LabelPdfRenderer : ILabelPdfRenderer
 
         using var pdf = new PdfDocument();
         pdf.Info.Title = "Наклейки";
-        pdf.Info.Author = "SmartWarehouse";
+        pdf.Info.Author = "Склад ОЭТО — ОАО «Туровский молочный комбинат»";
 
         var left = (PageWidthMm - layout.Columns * layout.WidthMm) / 2;
         var top = (PageHeightMm - layout.Rows * layout.HeightMm) / 2;

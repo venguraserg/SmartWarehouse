@@ -22,8 +22,10 @@ public static class Ui
 
     public static string DocTypeClass(MovementType type) => type switch
     {
-        MovementType.Receipt or MovementType.Return => "tag-in",
-        MovementType.Issue or MovementType.WriteOff => "tag-out",
+        // Цвета статусов — по брифу: поступление — норма, выдача — подотчёт (синий), списание — красный.
+        MovementType.Receipt or MovementType.Return => "tag-ok",
+        MovementType.Issue => "tag-info",
+        MovementType.WriteOff => "tag-danger",
         _ => "tag-neutral"
     };
 
@@ -105,9 +107,10 @@ public static class Ui
 
     public static string ActStateClass(ActStatus status) => status switch
     {
-        ActStatus.Pending => "tag-warn",
-        ActStatus.Approved => "tag-in",
-        ActStatus.Returned => "tag-out",
+        ActStatus.Draft => "tag-draft",
+        ActStatus.Pending => "tag-reserve",   // позиции зарезервированы до утверждения
+        ActStatus.Approved => "tag-ok",
+        ActStatus.Returned => "tag-danger",
         _ => "tag-neutral"
     };
 

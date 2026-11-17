@@ -27,6 +27,8 @@
     <!-- Шрифт DejaVu Sans (кириллица) встроен в сборку: PDF одинаково строится в Windows и в Docker. -->
     <EmbeddedResource Include="Pdf\Fonts\*.ttf" LogicalName="Fonts.%(Filename)%(Extension)" />
     <None Include="Pdf\Fonts\LICENSE-DejaVu.txt" />
+    <!-- Логотип ТМК (ч/б) для печатных форм -->
+    <EmbeddedResource Include="Pdf\Images\*.png" LogicalName="Images.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

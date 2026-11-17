@@ -22,7 +22,7 @@ public class ActPdfRenderer : IActPdfRenderer
 
         var document = new Document();
         document.Info.Title = $"Акт на списание {data.Number}";
-        document.Info.Author = "SmartWarehouse";
+        document.Info.Author = "Склад ОЭТО — ОАО «Туровский молочный комбинат»";
 
         var normal = document.Styles[StyleNames.Normal]!;
         normal.Font.Name = EmbeddedFontResolver.Family;
@@ -37,6 +37,13 @@ public class ActPdfRenderer : IActPdfRenderer
         page.RightMargin = Unit.FromCentimeter(1.5);
 
         // ---------- Шапка ----------
+        // Логотип комбината (ч/б) — левый верхний угол, высота 12 мм (бриф оформления, п. 4.2).
+        var logoParagraph = section.AddParagraph();
+        logoParagraph.Format.SpaceAfter = Unit.FromPoint(8);
+        var logo = logoParagraph.AddImage(BrandImages.LogoMonoBase64);
+        logo.Height = Unit.FromMillimeter(12);
+        logo.LockAspectRatio = true;
+
         if (data.Organization is not null)
         {
             var org = section.AddParagraph(data.Organization);
