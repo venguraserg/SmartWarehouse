@@ -45,10 +45,6 @@ public class OpeningImportService(
     /// <summary>Код вложенного места для товара, лежащего на полке, у которой есть ячейки.</summary>
     public const string LooseCode = "0";
 
-    /// <summary>Единицы, в которых бывает дробное количество (для новых единиц).</summary>
-    private static readonly HashSet<string> FractionalUnits =
-        new(StringComparer.OrdinalIgnoreCase) { "м", "кг", "л", "т", "м2", "м3", "км", "см", "тыс. м", "тыс. шт", "100 шт" };
-
     private const int MaxLevels = 4;
 
     public async Task<OpeningImportResult> ImportAsync(OpeningFile file, int warehouseId, bool apply, ImportActor actor, CancellationToken ct = default)
@@ -126,7 +122,7 @@ public class OpeningImportService(
                 continue;
             }
 
-            var fractional = units.TryGetValue(unit, out var u) ? u.IsFractional : FractionalUnits.Contains(unit);
+            var fractional = units.TryGetValue(unit, out var u) ? u.IsFractional : UnitAliases.IsFractional(unit);
             if (!fractional && row.Quantity != decimal.Truncate(row.Quantity))
             {
                 issues.Add(new ImportIssue(row.Line, sku, $"Дробное количество {row.Quantity:0.###} в «{unit}» — уточните (в 1С так числится)."));
@@ -196,7 +192,7 @@ public class OpeningImportService(
         // ---------- 4. Загрузка ----------
         foreach (var code in newUnits)
         {
-            var unit = await catalog.CreateUnitAsync(new CreateUnitRequest(code, code, FractionalUnits.Contains(code)), ct);
+            var unit = await catalog.CreateUnitAsync(new CreateUnitRequest(code, code, UnitAliases.IsFractional(code)), ct);
             units[unit.Code] = unit;
         }
 
