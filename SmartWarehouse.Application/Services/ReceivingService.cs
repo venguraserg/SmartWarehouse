@@ -211,12 +211,16 @@ public class ReceivingService(
         foreach (var warehouse in await locations.ListWarehousesAsync(ct))
         {
             var tree = await locations.GetLocationTreeAsync(warehouse.Id, ct);
-            if (tree.FirstOrDefault(n => string.Equals(n.Code, ReceptionCode, StringComparison.OrdinalIgnoreCase)) is not { } reception)
-                continue;
-            foreach (var b in await repo.ListLocationStockAsync(reception.Id, ct))
-                result.Add(new PendingPlacementDto(reception.Id, reception.FullCode, b.ItemId, b.Item.Sku, b.Item.Name,
-                    b.Item.Unit?.Code ?? "", b.Item.Unit?.IsFractional ?? false, b.BatchId, b.Batch.Note, b.Batch.ReceivedAt,
-                    b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId)));
+            // «Приёмка» — товар по накладным, «Сортировка» — остатки, загруженные без места (адрес не по схеме).
+            foreach (var place in tree.Where(n => n.Code.Equals(ReceptionCode, StringComparison.OrdinalIgnoreCase)
+                                               || n.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                var sorting = place.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase);
+                foreach (var b in await repo.ListLocationStockAsync(place.Id, ct))
+                    result.Add(new PendingPlacementDto(place.Id, place.FullCode, b.ItemId, b.Item.Sku, b.Item.Name,
+                        b.Item.Unit?.Code ?? "", b.Item.Unit?.IsFractional ?? false, b.BatchId, b.Batch.Note, b.Batch.ReceivedAt,
+                        b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId), sorting));
+            }
         }
         return result;
     }

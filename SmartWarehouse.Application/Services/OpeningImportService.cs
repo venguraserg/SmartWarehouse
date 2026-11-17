@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Domain.Enums;
@@ -33,12 +34,20 @@ public class OpeningImportService(
     /// <summary>Временное место для подотчёта: приход туда, затем выдача сотрудникам.</summary>
     public const string TransitCode = "IMP";
 
+    /// <summary>
+    /// «Сортировка»: сюда попадает товар, у которого в файле нет адреса или адрес не по схеме.
+    /// Прежнее место пишется в примечание партии, кладовщик раскладывает со страницы «Приёмка».
+    /// </summary>
+    public const string SortingCode = "SORT";
+
+    public const string SortingName = "Сортировка — разместить вручную";
+
     /// <summary>Код вложенного места для товара, лежащего на полке, у которой есть ячейки.</summary>
     public const string LooseCode = "0";
 
     /// <summary>Единицы, в которых бывает дробное количество (для новых единиц).</summary>
     private static readonly HashSet<string> FractionalUnits =
-        new(StringComparer.OrdinalIgnoreCase) { "м", "кг", "л", "т", "м2", "км", "см", "тыс. м", "тыс. шт", "100 шт" };
+        new(StringComparer.OrdinalIgnoreCase) { "м", "кг", "л", "т", "м2", "м3", "км", "см", "тыс. м", "тыс. шт", "100 шт" };
 
     private const int MaxLevels = 4;
 
@@ -129,12 +138,9 @@ public class OpeningImportService(
             {
                 path = ParseAddress(row.Address);
                 if (path is null)
-                {
-                    issues.Add(new ImportIssue(row.Line, sku, string.IsNullOrWhiteSpace(row.Address)
-                        ? "Нет адреса хранения."
-                        : $"Адрес «{row.Address}» не по схеме (например 2A.2.1.3)."));
-                    continue;
-                }
+                    issues.Add(new ImportIssue(row.Line, sku, (string.IsNullOrWhiteSpace(row.Address)
+                        ? "Нет адреса хранения"
+                        : $"Адрес «{row.Address.Trim()}» не по схеме") + " — в «Сортировку».", Skipped: false));
             }
             else if (PersonNames.Parse(row.Mol) is null)
             {
@@ -142,7 +148,10 @@ public class OpeningImportService(
                 continue;
             }
 
-            var price = decimal.Round(row.Value / row.Quantity, 4, MidpointRounding.AwayFromZero);
+            // Вне учёта без стоимости — партия без цены (в оценке склада не участвует).
+            decimal? price = row.OffBook && row.Value == 0
+                ? null
+                : decimal.Round(row.Value / row.Quantity, 4, MidpointRounding.AwayFromZero);
             valid.Add(new Planned(row, sku, name, unit, price, path));
         }
 
@@ -154,10 +163,10 @@ public class OpeningImportService(
             p.Target = plan.Targets[string.Join('.', p.Path!)];
         foreach (var (address, target) in plan.Targets.Where(t => t.Value.Length > t.Key.Split('.').Length))
             notes.Add($"Адрес {address}: у него есть вложенные места — товар положен в {string.Join('.', target)} («без ячейки»).");
-        foreach (var p in valid.Where(p => p.Target is { Length: > MaxLevels }).ToList())
+        foreach (var p in valid.Where(p => p.Target is { Length: > MaxLevels }))
         {
-            issues.Add(new ImportIssue(p.Row.Line, p.Sku, $"Адрес {p.Row.Address}: больше {MaxLevels} уровней вложенности."));
-            valid.Remove(p);
+            issues.Add(new ImportIssue(p.Row.Line, p.Sku, $"Адрес {p.Row.Address}: больше {MaxLevels} уровней вложенности — в «Сортировку».", Skipped: false));
+            p.Target = null;
         }
         var neededNodes = valid.Where(p => p.Target is not null)
             .SelectMany(p => Enumerable.Range(1, p.Target!.Length).Select(n => string.Join('.', p.Target!.Take(n))))
@@ -166,6 +175,7 @@ public class OpeningImportService(
         var newNodes = neededNodes.Where(a => !existingByCode.ContainsKey(FullCode(warehouse.Code, a))).ToList();
         var custodyRows = valid.Where(p => p.Row.Custody).ToList();
         var needTransit = custodyRows.Count > 0 && !existingByCode.ContainsKey(FullCode(warehouse.Code, TransitCode));
+        var needSorting = valid.Any(ToSort) && !existingByCode.ContainsKey(FullCode(warehouse.Code, SortingCode));
 
         // ---------- 3. Сотрудники (МОЛ) ----------
         var mols = custodyRows.Select(p => p.Row.Mol!.Trim()).Distinct().ToList();
@@ -180,7 +190,7 @@ public class OpeningImportService(
         if (!apply)
         {
             return Result(false, file, valid, issues, notes, newItems.Count, items, newUnits.Count,
-                newNodes.Count + (needTransit ? 1 : 0), newEmployees.Count, []);
+                newNodes.Count + (needTransit ? 1 : 0) + (needSorting ? 1 : 0), newEmployees.Count, []);
         }
 
         // ---------- 4. Загрузка ----------
@@ -226,11 +236,21 @@ public class OpeningImportService(
             }
         }
         foreach (var p in valid.Where(p => p.Target is not null && failed.Any(f => string.Join('.', p.Target!) == f
-                     || string.Join('.', p.Target!).StartsWith(f + ".", StringComparison.Ordinal))).ToList())
+                     || string.Join('.', p.Target!).StartsWith(f + ".", StringComparison.Ordinal))))
         {
-            issues.Add(new ImportIssue(p.Row.Line, p.Sku, $"Место для адреса {p.Row.Address} не создано (см. замечания)."));
-            valid.Remove(p);
-            custodyRows.Remove(p);
+            issues.Add(new ImportIssue(p.Row.Line, p.Sku, $"Место для адреса {p.Row.Address} не создано (см. замечания) — в «Сортировку».", Skipped: false));
+            p.Target = null;
+        }
+
+        int? sortingId = null;
+        if (valid.Any(ToSort))
+        {
+            sortingId = existingByCode.TryGetValue(FullCode(warehouse.Code, SortingCode), out var sorting)
+                ? sorting.Id
+                : (await locations.AddLocationAsync(warehouse.Id,
+                    new CreateLocationRequest(null, LocationType.Cell, SortingCode, SortingName), ct)).Id;
+            notes.Add($"В «Сортировку» ({FullCode(warehouse.Code, SortingCode)}): {valid.Count(ToSort)} партий. " +
+                      "Прежнее место — в примечании партии; разложить на странице «Приёмка».");
         }
 
         int? transitId = null;
@@ -257,20 +277,23 @@ public class OpeningImportService(
         }
 
         // Приход: партии с ценой, датой и документом 1С. Не больше 500 строк в документе.
+        // Учётное и «вне учёта» — разными документами: признак вне учёта ставится на документ и его партии.
         var documents = new List<long>();
         var batchOf = new Dictionary<Planned, int>();
-        foreach (var chunk in valid.Chunk(StockService.MaxLines))
+        foreach (var (offBook, chunk) in valid.GroupBy(p => p.Row.OffBook).OrderBy(g => g.Key)
+                     .SelectMany(g => g.Chunk(StockService.MaxLines).Select(c => (g.Key, c))))
         {
             var lines = chunk.Select(p => new DocumentLineRequest(
                     items[p.Sku].Id, p.Row.Quantity, null,
-                    p.Row.Custody ? transitId : existingByCode[FullCode(warehouse.Code, string.Join('.', p.Target!))].Id,
+                    p.Row.Custody ? transitId : ToSort(p) ? sortingId : existingByCode[FullCode(warehouse.Code, string.Join('.', p.Target!))].Id,
                     UnitPrice: p.Price,
                     BatchDate: p.Row.DocumentDate is DateOnly date ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : null,
-                    BatchNote: BatchNote(p.Row)))
+                    BatchNote: ToSort(p) ? SortingNote(p.Row) : BatchNote(p.Row)))
                 .ToList();
             var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
-                MovementType.Receipt, "Ввод остатков из 1С", null, actor.Name,
-                "Начальные остатки (импорт из 1С)", lines, PerformedById: actor.EmployeeId, Origin: BatchOrigin.Opening), ct);
+                MovementType.Receipt, offBook ? "Ввод остатков вне учёта" : "Ввод остатков из 1С", null, actor.Name,
+                offBook ? "Начальные остатки вне учёта (б/у, неучтённое — в 1С нет)" : "Начальные остатки (импорт из 1С)",
+                lines, PerformedById: actor.EmployeeId, OffBook: offBook, Origin: BatchOrigin.Opening), ct);
             documents.Add(doc.Id);
             var ordered = doc.Lines.OrderBy(l => l.LineNo).ToList();
             for (var i = 0; i < chunk.Length; i++)
@@ -313,11 +336,27 @@ public class OpeningImportService(
             employeesNew,
             valid.Count(p => !p.Row.Custody),
             valid.Count(p => p.Row.Custody),
+            valid.Count(ToSort),
+            valid.Count(p => p.Row.OffBook),
             decimal.Round(valid.Sum(p => p.Row.Value), 2),
             issues.OrderBy(i => i.Line).ToList(),
             notes,
             documents);
     }
+
+    /// <summary>Партия без места: на склад, но адреса нет или он не по схеме.</summary>
+    private static bool ToSort(Planned p) => !p.Row.Custody && p.Target is null;
+
+    /// <summary>«Прежнее место: шкаф свар; ТТН … от …» — чтобы кладовщик знал, где искать.</summary>
+    public static string SortingNote(OpeningRow row)
+    {
+        var place = string.IsNullOrWhiteSpace(row.Address) ? "не указано" : Regex.Replace(row.Address.Trim(), @"\s+", " ");
+        var rest = BatchNote(row);
+        var text = $"Прежнее место: {place}" + (rest is null ? "" : $"; {rest}");
+        return text.Length <= NoteMax ? text : text[..(NoteMax - 1)] + "…";
+    }
+
+    private const int NoteMax = 256;
 
     private static string? BatchNote(OpeningRow row)
     {
@@ -403,13 +442,13 @@ public class OpeningImportService(
         return new LocationPlan(targets, types, loose);
     }
 
-    private sealed class Planned(OpeningRow row, string sku, string name, string unit, decimal price, string[]? path)
+    private sealed class Planned(OpeningRow row, string sku, string name, string unit, decimal? price, string[]? path)
     {
         public OpeningRow Row { get; } = row;
         public string Sku { get; } = sku;
         public string Name { get; } = name;
         public string Unit { get; } = unit;
-        public decimal Price { get; } = price;
+        public decimal? Price { get; } = price;
         public string[]? Path { get; } = path;
         public string[]? Target { get; set; }
     }

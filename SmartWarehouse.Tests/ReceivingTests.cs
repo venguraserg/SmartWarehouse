@@ -151,4 +151,33 @@ public class ReceivingTests
         Assert.Single(await _service.ListDiscrepanciesAsync(true));
         await Assert.ThrowsAsync<DomainException>(() => _service.ResolveDiscrepancyAsync(d.Id, null));
     }
+
+    // ---------- «Сортировка» при вводе остатков ----------
+
+    [Fact]
+    public void Примечание_партии_в_Сортировке_хранит_прежнее_место()
+    {
+        OpeningRow Row(string? address) =>
+            new(3, "10.6", "70002", "Позиция", "шт", 2, 20, "ТТН 7", new DateOnly(2026, 5, 27), false, null, address, null, null);
+
+        Assert.Equal("Прежнее место: 2C.2.3.1,34; ТТН 7 от 27.05.2026", OpeningImportService.SortingNote(Row(" 2C.2.3.1,34 ")));
+        Assert.Equal("Прежнее место: шкаф свар; ТТН 7 от 27.05.2026", OpeningImportService.SortingNote(Row("шкаф  свар")));
+        Assert.StartsWith("Прежнее место: не указано", OpeningImportService.SortingNote(Row(null)));
+        Assert.True(OpeningImportService.SortingNote(Row(new string('x', 400))).Length <= 256);
+    }
+
+    [Fact]
+    public async Task Товар_из_Сортировки_в_списке_к_размещению()
+    {
+        _locations.Locations.Add(new StorageLocation { Id = 50, WarehouseId = 1, Type = LocationType.Cell, Code = "SORT", FullCode = "WH1-SORT", Name = OpeningImportService.SortingName });
+        var unit = _catalog.Units[0];
+        _stock.Items.Add(new Item { Id = 7, Sku = "70002", Name = "Подшипник", UnitId = 1, Unit = unit });
+        _stock.Batches.Add(new Batch { Id = 1, ItemId = 7, UnitPrice = 10, Note = "Прежнее место: шкаф свар", Origin = BatchOrigin.Opening });
+        _stock.Balances.Add(new StockBalance { ItemId = 7, LocationId = 50, BatchId = 1, Quantity = 2 });
+
+        var p = Assert.Single(await _service.ListPendingAsync());
+
+        Assert.True(p.Sorting);
+        Assert.Equal(("WH1-SORT", "Прежнее место: шкаф свар", 2m), (p.LocationCode, p.Invoice, p.Quantity));
+    }
 }

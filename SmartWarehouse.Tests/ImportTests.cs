@@ -114,16 +114,20 @@ public class ImportTests
             ws.Cell(1, i + 1).Value = head[i];
         XLCellValue[] r1 = ["60603", "Редуктор", "шт", 1, 2065.12, "УПД 368", new DateTime(2023, 11, 30), "Склад", "Дорофей С.М.", "C3.1.4"];
         XLCellValue[] r2 = ["76242", "Кондиционер", "шт", 7, 13916, "ТТН 1145525", "10.09.2026", "Подотчёт: Рудаков М.А.", "Рудаков М.А.", ""];
+        XLCellValue[] r3 = ["NU-00001", "Насос б/у", "шт", 1, Blank.Value, "", "", "Вне учёта", "", "1.B5.0"];
         for (var i = 0; i < r1.Length; i++)
         {
             ws.Cell(2, i + 1).Value = r1[i];
             ws.Cell(3, i + 1).Value = r2[i];
+            ws.Cell(4, i + 1).Value = r3[i];
         }
 
         var file = Read(book, s => new ExcelImportReader().ReadOpening(s));
 
         Assert.Empty(file.Issues);
-        Assert.Equal(2, file.Rows.Count);
+        Assert.Equal(3, file.Rows.Count);
+        Assert.Equal((true, false, 0m), (file.Rows[2].OffBook, file.Rows[2].Custody, file.Rows[2].Value));
+        Assert.False(file.Rows[0].OffBook);
         Assert.Equal(("60603", 1m, 2065.12m, "C3.1.4", false), (file.Rows[0].Code, file.Rows[0].Quantity, file.Rows[0].Value, file.Rows[0].Address, file.Rows[0].Custody));
         Assert.Equal(new DateOnly(2023, 11, 30), file.Rows[0].DocumentDate);
         Assert.True(file.Rows[1].Custody);
@@ -166,30 +170,33 @@ public class ImportTests
             new CatalogService(catalogRepo, new FixedTimeProvider(Now)), new LocationService(locationRepo),
             new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)));
 
-        OpeningRow Row(int line, string code, decimal qty, decimal value, string? address, bool custody = false, string unit = "шт", string? mol = null) =>
-            new(line, "10.6", code, "Позиция " + code, unit, qty, value, "ТТН 1", new DateOnly(2025, 1, 10), custody, mol, address, null, null);
+        OpeningRow Row(int line, string code, decimal qty, decimal value, string? address, bool custody = false, string unit = "шт", string? mol = null,
+                       bool offBook = false) =>
+            new(line, "10.6", code, "Позиция " + code, unit, qty, value, "ТТН 1", new DateOnly(2025, 1, 10), custody, mol, address, null, null, offBook);
 
         var file = new OpeningFile(
         [
             Row(2, "60603", 2, 100, "C3.1.4"),
             Row(3, "60604", 1, 10, "C3.1"),             // у C3.1 есть ячейка C3.1.4 — товар в C3.1.0
             Row(4, "60605", 1.5m, 15, "C3.1.4"),        // дробное в штуках
-            Row(5, "60606", 3, 30, "шкаф свар"),         // адрес не по схеме
+            Row(5, "60606", 3, 30, "шкаф свар"),         // адрес не по схеме — в «Сортировку»
             Row(6, "76242", 7, 13916, null, custody: true, mol: "Рудаков М.А."),
             Row(7, "60607", 10, 5, "C3.2", unit: "м"),   // новая единица (дробная)
+            Row(8, "NU-00001", 1, 0, "C3.2", offBook: true), // вне учёта, без стоимости
         ], []);
 
         var result = await service.ImportAsync(file, 1, apply: false, new ImportActor(null, "Админ"));
 
         Assert.False(result.Applied);
-        Assert.Equal(4, result.RowsImported);
-        Assert.Equal((3, 1), (result.WarehouseBatches, result.CustodyBatches));
-        Assert.Equal(4, result.ItemsNew);
+        Assert.Equal(6, result.RowsImported);
+        Assert.Equal((5, 1, 1, 1), (result.WarehouseBatches, result.CustodyBatches, result.SortingBatches, result.OffBookBatches));
+        Assert.Equal(6, result.ItemsNew);
         Assert.Equal(1, result.UnitsNew);
         Assert.Equal(1, result.EmployeesNew);
-        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + временное IMP
-        Assert.Equal(6, result.LocationsNew);
-        Assert.Equal([4, 5], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
+        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + временное IMP + «Сортировка» SORT
+        Assert.Equal(7, result.LocationsNew);
+        Assert.Equal([4], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
+        Assert.Contains(result.Issues, i => i.Line == 5 && !i.Skipped && i.Message.Contains("Сортировк"));
         Assert.Contains(result.Notes, n => n.Contains("C3.1.0"));
         Assert.Empty(catalogRepo.Items); // проверка ничего не создаёт
     }

@@ -7,6 +7,7 @@ namespace SmartWarehouse.Application.DTOs;
 /// <param name="Custody">Партия числится за сотрудником (МОЛ, не основной склад) — в подотчёт.</param>
 /// <param name="Mol">МОЛ в 1С: «Рудаков М.А.».</param>
 /// <param name="Address">Адрес хранения на складе: «2A.2.1.3».</param>
+/// <param name="OffBook">«Где» = «Вне учёта»: б/у, неучтённое — в 1С не числится, цена необязательна.</param>
 public record OpeningRow(
     int Line,
     string? Account,
@@ -21,7 +22,8 @@ public record OpeningRow(
     string? Mol,
     string? Address,
     string? Description,
-    string? Note);
+    string? Note,
+    bool OffBook = false);
 
 /// <summary>Замечание по строке импорта: строка пропущена (Skipped) или только предупреждение.</summary>
 public record ImportIssue(int Line, string? Code, string Message, bool Skipped = true);
@@ -38,6 +40,8 @@ public record OpeningImportResult(
     int EmployeesNew,
     int WarehouseBatches,
     int CustodyBatches,
+    int SortingBatches,
+    int OffBookBatches,
     decimal Value,
     IReadOnlyList<ImportIssue> Issues,
     IReadOnlyList<string> Notes,
@@ -141,7 +145,8 @@ public record PendingPlacementDto(
     DateTimeOffset ReceivedAt,
     decimal Quantity,
     decimal? UnitPrice,
-    bool HasDiscrepancy);
+    bool HasDiscrepancy,
+    bool Sorting = false);
 
 /// <summary>Расхождение приёмки: по накладной и фактически.</summary>
 public record DiscrepancyDto(

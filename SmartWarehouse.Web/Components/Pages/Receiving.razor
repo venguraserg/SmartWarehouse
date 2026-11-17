@@ -118,7 +118,7 @@
 <h2>2. Разложить по ячейкам <span class="muted">(@pending.Count)</span></h2>
 @if (pending.Count == 0)
 {
-    <div class="empty">В «Приёмке» пусто — всё разложено.</div>
+    <div class="empty">В «Приёмке» и «Сортировке» пусто — всё разложено.</div>
 }
 else
 {
@@ -135,7 +135,7 @@ else
         </div>
         <div class="field">
             <label for="find">Найти</label>
-            <input id="find" type="search" @bind="filter" @bind:event="oninput" placeholder="код или наименование" />
+            <input id="find" type="search" @bind="filter" @bind:event="oninput" placeholder="код, наименование, прежнее место" />
         </div>
     </div>
     <p class="muted">Сканер: код ячейки — выбирает ячейку, код позиции — находит её в списке. Затем «Сюда».</p>
@@ -143,7 +143,7 @@ else
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Код</th><th>Наименование</th><th>Накладная</th><th class="num">В приёмке</th><th style="width: 120px">Кладу</th><th></th></tr>
+                <tr><th>Код</th><th>Наименование</th><th>Накладная / прежнее место</th><th class="num">Ждёт</th><th style="width: 120px">Кладу</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var p in VisiblePending)
@@ -157,7 +157,13 @@ else
                                 <span class="tag tag-out">расхождение</span>
                             }
                         </td>
-                        <td>@p.Invoice</td>
+                        <td>
+                            @if (p.Sorting)
+                            {
+                                <span class="tag tag-warn" title="Загружено с остатками без места: адрес в ведомости не по схеме">сортировка</span>
+                            }
+                            @p.Invoice
+                        </td>
                         <td class="num">@Ui.Qty(p.Quantity) @p.UnitCode</td>
                         <td>
                             <input type="number" min="0" max="@p.Quantity.ToString(CultureInfo.InvariantCulture)" step="@(p.Fractional ? "any" : "1")"
@@ -167,8 +173,11 @@ else
                         <td class="row-actions">
                             <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || targetId is null || QtyOf(p) <= 0 || QtyOf(p) > p.Quantity)"
                                     @onclick="() => PlaceAsync(p)">Сюда</button>
-                            <button class="btn btn-sm" type="button" disabled="@busy" title="Фактически привезли не столько, сколько в накладной"
-                                    @onclick="() => StartDiscrepancy(p)">Расхождение</button>
+                            @if (!p.Sorting)
+                            {
+                                <button class="btn btn-sm" type="button" disabled="@busy" title="Фактически привезли не столько, сколько в накладной"
+                                        @onclick="() => StartDiscrepancy(p)">Расхождение</button>
+                            }
                         </td>
                     </tr>
                     @if (discrepancyFor == p.BatchId)
@@ -278,7 +287,8 @@ else
     private IEnumerable<PendingPlacementDto> VisiblePending => string.IsNullOrWhiteSpace(filter)
         ? pending
         : pending.Where(p => p.Sku.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
-                             || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase));
+                             || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
+                             || (p.Invoice?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false));
 
     private string PlacePath(int id) => placePaths.TryGetValue(id, out var path) ? path : id.ToString(CultureInfo.InvariantCulture);
 
@@ -316,8 +326,8 @@ else
         discrepancies = await Api.GetDiscrepanciesAsync();
         var (leaves, paths) = await Api.GetPlacesAsync();
         var reception = pending.Select(p => p.LocationId).ToHashSet();
-        // Раскладывать — в обычные ячейки: не в саму «Приёмку» и не во временное место ввода остатков.
-        places = leaves.Where(l => !reception.Contains(l.Id) && l.Code is not ("RCV" or "IMP")).ToList();
+        // Раскладывать — в обычные ячейки: не в «Приёмку»/«Сортировку» и не во временное место ввода остатков.
+        places = leaves.Where(l => !reception.Contains(l.Id) && l.Code is not ("RCV" or "IMP" or "SORT")).ToList();
         placePaths = paths;
         quantities.Clear();
     }
