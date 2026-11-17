@@ -60,6 +60,17 @@ public class ReceivingTests
     public void Единицы_1С_приводятся_к_одному_виду(string unit, string expected) =>
         Assert.Equal(expected, UnitAliases.Normalize(unit));
 
+    [Theory]
+    [InlineData("м", true)]
+    [InlineData("10 шт", true)]
+    [InlineData("25 шт", true)]
+    [InlineData("100 шт", true)]
+    [InlineData("10 рул", true)]
+    [InlineData("шт", false)]
+    [InlineData("упак", false)]
+    public void Дробное_количество_в_упаковках_N_шт(string unit, bool fractional) =>
+        Assert.Equal(fractional, UnitAliases.IsFractional(unit));
+
     // ---------- Проверка накладной ----------
 
     [Fact]

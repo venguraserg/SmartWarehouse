@@ -33,7 +33,7 @@ UNIT_MAP = {
     "упак": "упак", "уп": "упак", "уп.": "упак", "комплект": "компл", "тыс.шт": "тыс. шт", "100 штук": "100 шт", "см": "см", "м2": "м2",
     "рул": "рул", "пара": "пара", "пар": "пара", "км": "км", "пач": "пач", "тыс.м.": "тыс. м", "бут": "бут",
 }
-# Как в приложении (OpeningImportService.FractionalUnits): в остальных единицах — только целые.
+# Как в приложении (UnitAliases.IsFractional): эти единицы и упаковки «N шт»; в остальных — только целые.
 FRACTIONAL = {"м", "кг", "л", "т", "м2", "м3", "км", "см", "тыс. м", "тыс. шт", "100 шт"}
 UNIT_UNCLEAR = {"бал.": "«бал.» — баллон? (единица из справочника 1С)"}
 LOOK = str.maketrans("АВСЕНКМОРТХ", "ABCEHKMOPTX")
@@ -111,6 +111,26 @@ for m in manual:
 
 codes_1c = {b["code"] for b in batches}
 
+# Дробные «шт» (рул, упак…) в 1С — на самом деле упаковки: «0,1 шт» сверла из пачки по 10 — одно сверло.
+# Единица позиции → «N шт»: N из наименования («(10шт)», «упак/50 шт»), если так все партии целые,
+# иначе «10^(знаков после запятой) <единица 1С>» — наименьшая упаковка, в которой количество целое (100 шт, 10 рул).
+def decimals(q):
+    s = f"{q:.6f}".rstrip("0").split(".")[1] if "." in f"{q:.6f}".rstrip("0") else ""
+    return len(s)
+
+PACK = {}
+for code in {b["code"] for b in batches}:
+    bs = [b for b in batches if b["code"] == code]
+    unit = UNIT_MAP.get(clean(bs[0]["unit"]).lower())
+    if not unit or unit in FRACTIONAL or all(b["qty"] is None or b["qty"] == int(b["qty"]) for b in bs):
+        continue
+    m = re.search(r"(?:уп\.?\s*-?\s*|упак\s*/\s*|\()\s*(\d+)\s*шт", bs[0]["name"], re.I)
+    n = int(m.group(1)) if m else 0
+    if n and all(abs(b["qty"] * n - round(b["qty"] * n)) < 1e-6 for b in bs):
+        PACK[code] = f"{n} шт"
+    else:
+        PACK[code] = f"{10 ** max(decimals(b['qty']) for b in bs)} {unit}"
+
 # ---------------------------------------------------------------- разбор партий 1С
 
 rows = []
@@ -126,19 +146,21 @@ for b in batches:
         quest.append(UNIT_UNCLEAR.get(unit_1c.lower(), f"Единица «{unit_1c}» — какая?"))
     qty = b["qty"]
     value = b["value"]
+    extra = []
+    if code in PACK:
+        extra.append(f"в 1С «{unit}» с дробным количеством → единица «{PACK[code]}» (упаковка)")
+        unit = PACK[code]
+    if value is None and qty:
+        value = 0
+        extra.append("в 1С нет стоимости — цена 0")
     number, date = doc_parts(b["doc"])
     custody = b["person"] != MAIN_MOL
     dept = b["dept"]
     if dept != OWN_DEPT and not (dept or "").startswith("Отдел эксплуатации"):
         probs.append("другое подразделение")
         quest.append(f"В 1С числится за подразделением «{dept}». Переносить в наш склад?")
-    if unit and unit not in FRACTIONAL and qty and qty != int(qty):
-        probs.append("дробное количество")
-        quest.append(f"В 1С числится {qty:g} {unit} — дробное в «{unit}» приложение не примет. "
-                     "Это другая единица (м, кг, упаковка)? Или округлить?")
     if b["acc"] == "002.1":
-        probs.append("забалансовый счёт 002.1")
-        quest.append("Счёт 002.1 — ТМЦ на ответственном хранении (не наши). Переносить?")
+        extra.append("счёт 002.1 (ответственное хранение) — переносим")
     if value is None or qty in (None, 0):
         probs.append("нет стоимости")
         quest.append("В 1С не указана стоимость партии — какая цена?")
@@ -177,7 +199,7 @@ for b in batches:
                                  line=", ".join(str(m["line"]) for m in ms[:4])))
     rows.append(dict(acc=b["acc"], code=code, name=name, unit=unit or unit_1c, unit_1c=unit_1c, qty=qty, value=value,
                      doc=b["doc"], number=number, date=date, mol=b["person"], custody=custody, dept=dept,
-                     addr=addr, fix=fix, desc=desc, note=note, line=line, probs=probs, quest=quest, sort=sort_why, offbook=False,
+                     addr=addr, fix="; ".join(x for x in [fix] + extra if x) or None, desc=desc, note=note, line=line, probs=probs, quest=quest, sort=sort_why, offbook=False,
                      addr_raw=", ".join(sorted({m["addr_raw"] or "(пусто)" for m in ms})) if ms else None))
 
 mismatch = list({m["code"]: m for m in mismatch}.values())

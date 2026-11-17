@@ -121,7 +121,7 @@ public class ReceivingService(
                 continue;
             }
             var unitCode = existing?.UnitCode ?? unit;
-            var fractional = units.TryGetValue(unitCode, out var u) ? u.IsFractional : UnitAliases.Fractional.Contains(unitCode);
+            var fractional = units.TryGetValue(unitCode, out var u) ? u.IsFractional : UnitAliases.IsFractional(unitCode);
             if (!fractional && line.Quantity != decimal.Truncate(line.Quantity))
             {
                 issues.Add(new ImportIssue(line.Line, sku, $"Дробное количество {line.Quantity:0.###} в «{unitCode}»."));
@@ -164,7 +164,7 @@ public class ReceivingService(
         // ---------- Приём ----------
         foreach (var code in newUnits)
         {
-            var unit = await catalog.CreateUnitAsync(new CreateUnitRequest(code, code, UnitAliases.Fractional.Contains(code)), ct);
+            var unit = await catalog.CreateUnitAsync(new CreateUnitRequest(code, code, UnitAliases.IsFractional(code)), ct);
             units[unit.Code] = unit;
         }
         foreach (var o in order.Where(o => o.Existing is null))

@@ -23,6 +23,13 @@ public static class UnitAliases
     public static readonly IReadOnlySet<string> Fractional = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "м", "кг", "л", "т", "м2", "м3", "км", "см", "тыс. м", "тыс. шт", "100 шт", "шт/м3" };
 
+    /// <summary>
+    /// Дробное количество допустимо: единица из списка выше или упаковка «N шт» (10 шт, 25 шт, 10 рул…):
+    /// в 1С «0,1 шт» сверла из пачки по 10 — это одна штука, т. е. 0,1 упаковки «10 шт».
+    /// </summary>
+    public static bool IsFractional(string code) =>
+        Fractional.Contains(code) || System.Text.RegularExpressions.Regex.IsMatch(code, @"^\d+ \p{L}+$");
+
     public static string Normalize(string? unit)
     {
         var u = System.Text.RegularExpressions.Regex.Replace(unit ?? "", @"\s+", " ").Trim();
