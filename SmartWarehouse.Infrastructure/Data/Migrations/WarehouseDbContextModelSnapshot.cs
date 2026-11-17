@@ -187,6 +187,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("BatchId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
@@ -197,7 +200,7 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.HasKey("EmployeeId", "ItemId", "BatchId");
+                    b.HasKey("EmployeeId", "ItemId", "BatchId", "Kind");
 
                     b.HasIndex("BatchId");
 
@@ -460,6 +463,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<int>("BatchId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CustodyKind")
                         .HasColumnType("integer");
 
                     b.Property<long>("DocumentId")
