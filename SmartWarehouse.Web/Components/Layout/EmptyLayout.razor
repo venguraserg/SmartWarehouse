@@ -1,12 +1,18 @@
-@* Разметка без меню — для страниц входа и смены пароля. *@
+@* Разметка без меню — для страниц входа и смены пароля: фирменный градиент, логотип для светлого фона. *@
 @inherits LayoutComponentBase
 
 <div class="auth-page">
-    <div class="auth-card">
-        <div class="brand auth-brand">
-            <span class="brand-mark">SW</span>
-            <span class="brand-text">Склад запчастей</span>
+    <div>
+        <div class="auth-card">
+            <div class="auth-brand">
+                <img src="img/tmk_logo_light.svg" alt="ОАО «Туровский молочный комбинат»" width="160" height="48" />
+                <div class="auth-app">
+                    Склад ОЭТО
+                    <small>Запасные части и расходные материалы отдела эксплуатации технологического оборудования</small>
+                </div>
+            </div>
+            @Body
         </div>
-        @Body
+        <div class="auth-foot">ОАО «Туровский молочный комбинат»</div>
     </div>
 </div>

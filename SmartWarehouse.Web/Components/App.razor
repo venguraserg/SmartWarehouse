@@ -5,11 +5,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
+    @* Шрифт — из приложения (сеть комбината может быть без интернета); основные начертания грузим сразу *@
+    <link rel="preload" href="fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="@Assets["app.css"]" />
-    @* Установка на телефон как приложение (PWA) *@
+    @* Установка на телефон как приложение (PWA); иконка — знак ТМК на фирменном градиенте *@
     <link rel="manifest" href="manifest.webmanifest" />
-    <meta name="theme-color" content="#0f6e78" />
-    <link rel="icon" type="image/png" href="icons/icon-192.png" />
+    <meta name="theme-color" content="#004820" />
+    <link rel="icon" type="image/svg+xml" href="img/tmk_app_icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />

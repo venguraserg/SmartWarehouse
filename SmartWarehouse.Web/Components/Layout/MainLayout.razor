@@ -6,15 +6,22 @@
 @implements IAsyncDisposable
 
 <div class="app">
-    <aside class="sidebar">
-        <a class="brand" href="/">
-            <span class="brand-mark">SW</span>
-            <span class="brand-text">Склад запчастей</span>
+    @* Шапка по брифу ТМК: логотип для тёмного фона | «Склад ОЭТО»; на телефоне — только знак *@
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Склад ОЭТО — на главную">
+            <img class="brand-logo" src="img/tmk_logo_dark.svg" alt="Туровский молочный комбинат" width="120" height="36" />
+            <img class="brand-mark" src="img/tmk_mark_accent.svg" alt="ТМК" width="26" height="30" />
+            <span class="brand-divider" aria-hidden="true"></span>
+            <span class="brand-text">Склад ОЭТО</span>
         </a>
+        <span class="spacer"></span>
+        <button class="menu-toggle" type="button" @onclick="() => menuOpen = !menuOpen"
+                aria-label="Меню" aria-expanded="@(menuOpen ? "true" : "false")">@(menuOpen ? "✕" : "☰")</button>
+    </header>
 
-        <button class="menu-toggle" type="button" @onclick="() => menuOpen = !menuOpen" aria-label="Меню">☰</button>
-
-        <nav class="nav @(menuOpen ? "open" : null)" @onclick="() => menuOpen = false">
+    <div class="app-body">
+    <aside class="sidebar @(menuOpen ? "open" : null)">
+        <nav class="nav" @onclick="() => menuOpen = false">
             <AuthorizeView>
                 <Authorized>
                     <NavLink href="/scan" class="nav-scan">📷 Сканировать</NavLink>
@@ -86,6 +93,7 @@
     <main class="content @(isNativeApp ? "with-fab" : null)">
         @Body
     </main>
+    </div>
 </div>
 
 @* В приложении для Android — кнопка камеры на каждой странице: код идёт туда же, куда код ручного сканера. *@
