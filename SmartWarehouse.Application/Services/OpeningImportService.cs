@@ -305,7 +305,8 @@ public class OpeningImportService(
                 var lines = chunk.Select(p => new DocumentLineRequest(items[p.Sku].Id, p.Row.Quantity, transitId, null, BatchId: batchOf[p])).ToList();
                 var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
                     MovementType.Issue, "Ввод остатков из 1С", null, actor.Name,
-                    $"Подотчёт по 1С (МОЛ {group.Key})", lines, PerformedById: actor.EmployeeId, ReceivedById: molEmployee[group.Key]), ct);
+                    $"Подотчёт по 1С (МОЛ {group.Key})", lines, PerformedById: actor.EmployeeId, ReceivedById: molEmployee[group.Key],
+                    Custody: CustodyKind.Official), ct);
                 documents.Add(doc.Id);
             }
         }

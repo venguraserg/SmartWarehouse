@@ -15,7 +15,8 @@ public interface IReconcileService
 
 public class ReconcileService(IStockRepository stock, IEmployeeService employees) : IReconcileService
 {
-    public const string WarehousePlace = "Склад";
+    /// <summary>Место для МОЛ склада: склад + «выдано в работу» (в 1С это за кладовщиком).</summary>
+    public const string WarehousePlace = "Склад + в работе";
 
     public async Task<ReconcileResultDto> ReconcileAsync(IReadOnlyList<SaldoSheet> sheets, string? warehouseMol, CancellationToken ct = default)
     {

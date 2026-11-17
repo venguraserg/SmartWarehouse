@@ -99,7 +99,7 @@ public record EmployeeMovementDto(
     string? Location,
     int? EquipmentId);
 
-/// <summary>Что числится за сотрудником (подотчёт).</summary>
+/// <summary>Что числится за сотрудником: «выдано в работу» или «подотчёт по 1С» (<see cref="Kind"/>).</summary>
 public record CustodyRowDto(
     int EmployeeId,
     string EmployeeName,
@@ -114,7 +114,8 @@ public record CustodyRowDto(
     DateTimeOffset? HeldSince = null,
     decimal Reserved = 0,
     decimal? Value = null,
-    bool ValueIncomplete = false);
+    bool ValueIncomplete = false,
+    CustodyKind Kind = CustodyKind.Work);
 
 // ---------- Учётные записи ----------
 
@@ -220,7 +221,8 @@ public record CreateDocumentRequest(
     int? PerformedById = null,
     int? ReceivedById = null,
     bool OffBook = false,
-    BatchOrigin Origin = BatchOrigin.Manual);
+    BatchOrigin Origin = BatchOrigin.Manual,
+    CustodyKind? Custody = null);
 
 public record DocumentLineDto(
     int LineNo,

@@ -468,6 +468,50 @@ public class StockServiceTests
         await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.WriteOff, Line(1)));
     }
 
+    // ---------- Виды подотчёта: «в работу» и «подотчёт по 1С» ----------
+
+    private decimal Custody(CustodyKind kind, int employee = Worker, int item = Bearing) =>
+        _repo.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item && b.Kind == kind).Sum(b => b.Quantity);
+
+    [Fact]
+    public async Task Выдача_со_склада_по_умолчанию_в_работу()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));
+        await Send(Doc(MovementType.Issue, Line(1, from: CellA)) with { Custody = CustodyKind.Official });
+
+        Assert.Equal((4m, 1m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+        var issues = _repo.Documents.Where(d => d.Type == MovementType.Issue).SelectMany(d => d.Lines).ToList();
+        Assert.Equal([CustodyKind.Work, CustodyKind.Official], issues.Select(l => l.CustodyKind));
+    }
+
+    [Fact]
+    public async Task Возврат_сначала_из_выданного_в_работу_списание_сначала_из_подотчёта_по_1С()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(3, from: CellA));                                                  // в работу
+        await Send(Doc(MovementType.Issue, Line(3, from: CellA)) with { Custody = CustodyKind.Official });   // по 1С
+
+        await Post(MovementType.Return, Line(4, to: CellA));       // 3 из «в работу» + 1 из «по 1С»
+        Assert.Equal((0m, 2m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+
+        await Post(MovementType.Issue, Line(2, from: CellA));      // снова 2 в работу
+        await Post(MovementType.WriteOff, Line(3));                // 2 из «по 1С» + 1 из «в работу»
+        Assert.Equal((1m, 0m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+    }
+
+    [Fact]
+    public async Task Возврат_только_из_указанного_вида()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(3, from: CellA));
+
+        await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            Send(Doc(MovementType.Return, Line(1, to: CellA)) with { Custody = CustodyKind.Official }));
+        await Assert.ThrowsAsync<DomainException>(() =>
+            Send(Doc(MovementType.Transfer, Line(1, from: CellA, to: CellB)) with { Custody = CustodyKind.Work }));
+    }
+
     [Fact]
     public async Task Возврат_от_сотрудника_на_склад()
     {

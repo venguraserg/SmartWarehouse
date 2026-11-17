@@ -216,7 +216,7 @@ public class ImportTests
             new StockBalance { ItemId = 1, LocationId = 1, BatchId = 1, Quantity = 12 },  // совпадает
             new StockBalance { ItemId = 2, LocationId = 1, BatchId = 2, Quantity = 3 },   // в 1С — 5
             new StockBalance { ItemId = 3, LocationId = 1, BatchId = 3, Quantity = 1 }]); // в 1С нет
-        stock.EmployeeBalances.Add(new EmployeeBalance { EmployeeId = 7, ItemId = 4, BatchId = 4, Quantity = 7 });
+        stock.EmployeeBalances.Add(new EmployeeBalance { EmployeeId = 7, ItemId = 4, BatchId = 4, Quantity = 7, Kind = CustodyKind.Official });
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
@@ -238,6 +238,32 @@ public class ImportTests
         Assert.Equal(ReconcileStatus.Match, StatusOf("76242"));
         Assert.Equal(ReconcileStatus.OnlyIn1C, StatusOf("60081")); // МОЛ не найден
         Assert.Contains(result.Notes, n => n.Contains("Иванов И.Г."));
+    }
+
+    [Fact]
+    public async Task Выданное_в_работу_сверяется_с_МОЛ_склада_а_не_сотрудника()
+    {
+        var stock = new FakeStockRepository();
+        var unit = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" };
+        stock.Items.Add(new Item { Id = 1, Sku = "23148", Name = "Ремень", UnitId = 1, Unit = unit });
+        stock.Batches.Add(new Batch { Id = 1, ItemId = 1, UnitPrice = 10 });
+        stock.Balances.Add(new StockBalance { ItemId = 1, LocationId = 1, BatchId = 1, Quantity = 3 });
+        // 2 шт выдано Рудакову «в работу»: в 1С они по-прежнему на кладовщике
+        stock.EmployeeBalances.Add(new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 1, Quantity = 2, Kind = CustodyKind.Work });
+
+        var employees = new FakeEmployeeRepository();
+        employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
+        var service = new ReconcileService(stock, new EmployeeService(employees));
+
+        SaldoBatch B(string mol, string code, decimal qty, decimal value) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, value);
+        var result = await service.ReconcileAsync(
+            [new SaldoSheet("склад.xlsx", "17.11.2026", [B("Дорофей С.М.", "23148", 5, 50)]),
+             new SaldoSheet("рудаков.xlsx", "17.11.2026", [B("Рудаков М.А.", "99999", 1, 1)])],
+            "Дорофей С.М.");
+
+        var row = result.Rows.Single(r => r.Code == "23148");
+        Assert.Equal((ReconcileStatus.Match, 5m), (row.Status, row.QtyApp));
+        Assert.DoesNotContain(result.Rows, r => r.Code == "23148" && r.Mol == "Рудаков М.А.");
     }
 
     [Fact]
