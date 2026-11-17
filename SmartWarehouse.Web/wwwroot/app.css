@@ -102,7 +102,7 @@ h3 { font-size: 1rem; font-weight: 600; }
 .nav a.active { background: rgba(255, 255, 255, .11); color: #fff; font-weight: 500; box-shadow: inset 3px 0 0 var(--brand-accent); }
 .nav-group { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #9FC3AC; margin: 1.1rem .7rem .35rem; }
 
-.content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 1240px; }
+.content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 1440px; }
 
 .nav-user { margin-top: 1.5rem; padding: .85rem .7rem 0; border-top: 1px solid rgba(255, 255, 255, .12); }
 .nav-user-name { color: #fff; font-weight: 600; margin-bottom: .35rem; }
@@ -154,6 +154,11 @@ tbody tr:hover { background: var(--surface-alt); }
 tr.selected td, tbody tr.selected:hover { background: var(--brand-light); }
 tr.inactive td { color: var(--text-muted); }
 .empty { padding: 1.5rem; text-align: center; color: var(--text-muted); }
+/* Поле количества в строке таблицы не сжимается в нитку */
+td > input[type=number] { min-width: 84px; }
+/* Длинное примечание в ячейке: мельче и не шире 320 px, чтобы не выдавливать колонки с вводом */
+.cell-note { font-size: .8125rem; line-height: 1.35; color: var(--text-muted); max-width: 320px; }
+.cell-note .tag { margin-bottom: .2rem; }
 
 .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); display: block; }
 .thumb-empty { width: 40px; height: 40px; border-radius: 4px; background: #EEF1F4; }
@@ -221,6 +226,8 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .alert { padding: .7rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; border: 1px solid; border-left-width: 4px; }
 .alert-error { background: var(--danger-weak); color: var(--danger-text); border-color: #F0C4C4; border-left-color: var(--danger); }
 .alert-success { background: var(--ok-weak); color: var(--ok-text); border-color: #C3DFC5; border-left-color: var(--ok); }
+.alert-warn { background: var(--warn-weak); color: var(--text); border-color: #F2CF9A; border-left-color: var(--warn); }
+.alert-warn ul { margin: .4rem 0 0; padding-left: 1.2rem; }
 
 .loading { color: var(--text-muted); padding: 1rem 0; }
 

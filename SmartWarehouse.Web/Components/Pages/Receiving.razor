@@ -143,7 +143,7 @@ else
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Код</th><th>Наименование</th><th>Накладная / прежнее место</th><th class="num">Ждёт</th><th style="width: 120px">Кладу</th><th></th></tr>
+                <tr><th>Код</th><th>Наименование</th><th>Накладная / прежнее место</th><th class="num">Ждёт</th><th>Кладу</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var p in VisiblePending)
@@ -157,16 +157,16 @@ else
                                 <span class="tag tag-out">расхождение</span>
                             }
                         </td>
-                        <td>
+                        <td class="cell-note">
                             @if (p.Sorting)
                             {
-                                <span class="tag tag-warn" title="Загружено с остатками без места: адрес в ведомости не по схеме">сортировка</span>
+                                <span class="tag tag-warn" title="Загружено с остатками без места: адрес в ведомости не по схеме">сортировка</span><br />
                             }
                             @p.Invoice
                         </td>
                         <td class="num">@Ui.Qty(p.Quantity) @p.UnitCode</td>
                         <td>
-                            <input type="number" min="0" max="@p.Quantity.ToString(CultureInfo.InvariantCulture)" step="@(p.Fractional ? "any" : "1")"
+                            <input type="number" style="width: 96px" min="0" max="@p.Quantity.ToString(CultureInfo.InvariantCulture)" step="@(p.Fractional ? "any" : "1")"
                                    value="@QtyOf(p).ToString(CultureInfo.InvariantCulture)"
                                    @onchange="e => SetQty(p, e.Value)" aria-label="Количество" />
                         </td>
