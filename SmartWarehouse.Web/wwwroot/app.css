@@ -217,6 +217,7 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .tag-info { background: var(--info-weak); color: var(--info-text); }
 .tag-reserve { background: var(--reserve-weak); color: var(--reserve-text); }
 .tag-neutral, .tag-draft { background: var(--draft-weak); color: var(--draft-text); }
+.tag-official { background: var(--brand-light); color: var(--brand-dark); }   /* подотчёт по 1С */
 
 .alert { padding: .7rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; border: 1px solid; border-left-width: 4px; }
 .alert-error { background: var(--danger-weak); color: var(--danger-text); border-color: #F0C4C4; border-left-color: var(--danger); }

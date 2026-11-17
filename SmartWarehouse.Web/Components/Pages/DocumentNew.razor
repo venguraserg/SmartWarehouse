@@ -694,9 +694,12 @@ else
             try
             {
                 // Зарезервированное в актах на утверждении вернуть нельзя — считаем только свободное.
+                // «В работе» и «по 1С» — вместе: что именно возвращается, решает сервер (сначала «в работе»).
                 custody = (await Api.GetCustodyAsync(employeeId: id))
-                    .Where(r => r.Quantity - r.Reserved > 0)
-                    .ToDictionary(r => r.ItemId, r => r.Quantity - r.Reserved);
+                    .GroupBy(r => r.ItemId)
+                    .Select(g => (ItemId: g.Key, Free: g.Sum(r => r.Quantity - r.Reserved)))
+                    .Where(x => x.Free > 0)
+                    .ToDictionary(x => x.ItemId, x => x.Free);
             }
             catch (Exception ex) when (ex is ApiException or HttpRequestException)
             {

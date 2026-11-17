@@ -392,7 +392,20 @@ else
 
         try
         {
-            custody = await Api.GetCustodyAsync(employeeId: id);
+            // Пока акт сотрудника списывает и «в работе», и «по 1С» — одной строкой на позицию
+            // (при проведении сначала берётся «по 1С»). Отдельный путь для «в работе» — отчёт и акт кладовщика.
+            custody = (await Api.GetCustodyAsync(employeeId: id))
+                .GroupBy(r => r.ItemId)
+                .Select(g => g.First() with
+                {
+                    Quantity = g.Sum(r => r.Quantity),
+                    Reserved = g.Sum(r => r.Reserved),
+                    Value = g.Any(r => r.Value is not null) ? g.Sum(r => r.Value ?? 0) : null,
+                    ValueIncomplete = g.Any(r => r.ValueIncomplete),
+                    HeldSince = g.Min(r => r.HeldSince),
+                    Kind = g.Any(r => r.Kind == CustodyKind.Official) ? CustodyKind.Official : CustodyKind.Work
+                })
+                .ToList();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
