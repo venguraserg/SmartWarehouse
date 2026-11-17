@@ -46,7 +46,8 @@ public interface ICatalogService
 
     Task<ItemDto> GetItemAsync(int id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default);
+    /// <param name="all">Все позиции без ограничения (справочник для форм, импорт). Иначе — первые 500 по наименованию.</param>
+    Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, bool all = false, CancellationToken ct = default);
 
     Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request, CancellationToken ct = default);
 

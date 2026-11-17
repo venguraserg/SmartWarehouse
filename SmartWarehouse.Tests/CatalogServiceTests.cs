@@ -26,6 +26,18 @@ public class CatalogServiceTests
     private Task<ItemDto> CreateItemAsync(string sku = "BRG-1") =>
         _service.CreateItemAsync(new CreateItemRequest(sku, "Подшипник", null, 1, 5, 10, null));
 
+    // ---------- Список номенклатуры ----------
+
+    [Fact]
+    public async Task Список_ограничен_500_а_справочник_для_форм_и_импорта_полный()
+    {
+        for (var i = 1; i <= 600; i++)
+            _repo.Items.Add(new Item { Id = i, Sku = $"S{i:0000}", Name = $"Позиция {i:0000}", UnitId = 1, Unit = _repo.Units[0], IsActive = true });
+
+        Assert.Equal(CatalogService.ListLimit, (await _service.ListItemsAsync(null, null)).Count);
+        Assert.Equal(600, (await _service.ListItemsAsync(null, null, all: true)).Count);
+    }
+
     // ---------- Формат изображения ----------
 
     [Fact]
@@ -280,8 +292,8 @@ internal class FakeCatalogRepository : ICatalogRepository
         return Task.FromResult(item);
     }
 
-    public Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<Item>>(Items.ToList());
+    public Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, int? limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Item>>(Items.Take(limit ?? int.MaxValue).ToList());
 
     public void AddItem(Item item) => _added.Add(item);
 

@@ -83,11 +83,14 @@ else
             <div class="empty">Ничего не найдено.</div>
         }
     </div>
-    <p class="muted">Показано: @visible.Count</p>
+    <p class="muted">Показано: @visible.Count@(items?.Count >= ListLimit ? $" — в списке первые {ListLimit} по наименованию, уточните поиск" : "")</p>
 }
 
 @code {
     private List<ItemDto>? items;
+
+    /// <summary>Как CatalogService.ListLimit: без «all» API отдаёт не больше стольких позиций.</summary>
+    private const int ListLimit = 500;
     private List<CategoryDto> categories = [];
     private string? search;
     private int? categoryId;

@@ -97,9 +97,12 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
         return ToDto(item);
     }
 
-    public async Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default)
+    /// <summary>Сколько позиций показывать в списке без «все» (страница номенклатуры, поиск).</summary>
+    public const int ListLimit = 500;
+
+    public async Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, bool all = false, CancellationToken ct = default)
     {
-        var items = await repo.ListItemsAsync(search?.Trim(), categoryId, ct);
+        var items = await repo.ListItemsAsync(search?.Trim(), categoryId, all ? null : ListLimit, ct);
         return items.Select(ToDto).ToList();
     }
 

@@ -178,9 +178,11 @@ public class ApiClient(HttpClient http, IServiceProvider services)
 
     // ---------- Номенклатура ----------
 
-    public Task<List<ItemDto>> GetItemsAsync(string? search = null, int? categoryId = null, CancellationToken ct = default)
+    /// <param name="all">Все позиции без ограничения в 500 (справочник для форм документов).</param>
+    public Task<List<ItemDto>> GetItemsAsync(string? search = null, int? categoryId = null, bool all = false, CancellationToken ct = default)
     {
         var query = new List<string>();
+        if (all) query.Add("all=true");
         if (!string.IsNullOrWhiteSpace(search)) query.Add($"search={Uri.EscapeDataString(search.Trim())}");
         if (categoryId is not null) query.Add($"categoryId={categoryId}");
         var url = query.Count == 0 ? "api/items" : $"api/items?{string.Join('&', query)}";

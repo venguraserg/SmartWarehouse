@@ -7,7 +7,6 @@ namespace SmartWarehouse.Infrastructure.Repositories;
 
 public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
 {
-    private const int MaxListSize = 500;
 
     // ---------- Категории ----------
 
@@ -63,7 +62,7 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
             ?? await db.Items.AsNoTracking().Include(x => x.Unit).FirstOrDefaultAsync(x => x.Barcode == code, ct);
     }
 
-    public async Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, int? limit, CancellationToken ct = default)
     {
         var query = db.Items.AsNoTracking().Include(x => x.Category).Include(x => x.Unit).AsQueryable();
 
@@ -77,7 +76,10 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
         if (categoryId is not null)
             query = query.Where(x => x.CategoryId == categoryId);
 
-        return await query.OrderBy(x => x.Name).Take(MaxListSize).ToListAsync(ct);
+        query = query.OrderBy(x => x.Name);
+        if (limit is int max)
+            query = query.Take(max);
+        return await query.ToListAsync(ct);
     }
 
     public void AddItem(Item item) => db.Items.Add(item);

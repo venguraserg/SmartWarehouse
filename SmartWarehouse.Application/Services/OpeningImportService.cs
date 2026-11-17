@@ -55,7 +55,7 @@ public class OpeningImportService(
             ?? throw new NotFoundException("Склад не найден — создайте его в «Складах и местах».");
 
         var units = (await catalog.ListUnitsAsync(ct)).ToDictionary(u => u.Code, StringComparer.OrdinalIgnoreCase);
-        var items = (await catalog.ListItemsAsync(null, null, ct)).ToDictionary(i => i.Sku, StringComparer.OrdinalIgnoreCase);
+        var items = (await catalog.ListItemsAsync(null, null, all: true, ct)).ToDictionary(i => i.Sku, StringComparer.OrdinalIgnoreCase);
         var staff = (await employees.ListAsync(null, includeInactive: true, ct)).ToList();
 
         // ---------- 1. Проверка строк ----------

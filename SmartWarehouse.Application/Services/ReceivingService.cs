@@ -67,7 +67,7 @@ public class ReceivingService(
 
         var units = (await catalog.ListUnitsAsync(ct)).ToDictionary(u => u.Code, StringComparer.OrdinalIgnoreCase);
         // Код 1С в накладной — с нулями впереди (0000000917), в приложении — без: сравниваем без нулей.
-        var items = (await catalog.ListItemsAsync(null, null, ct))
+        var items = (await catalog.ListItemsAsync(null, null, all: true, ct))
             .GroupBy(i => ReconcileService.Key(i.Sku), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
