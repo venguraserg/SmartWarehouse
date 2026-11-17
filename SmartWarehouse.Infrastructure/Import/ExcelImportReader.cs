@@ -62,19 +62,21 @@ public partial class ExcelImportReader : IImportFileReader
             var name = Get("name");
             if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(name))
                 continue;
+            var where = Get("where") ?? "";
+            // «Вне учёта» — товар, которого нет в 1С (б/у, неучтённое): стоимость можно не указывать.
+            var offBook = where.StartsWith("Вне", StringComparison.OrdinalIgnoreCase);
             var qty = Number(row.Cell(map["qty"]));
-            var value = Number(row.Cell(map["value"]));
+            var value = Number(row.Cell(map["value"])) ?? (offBook && row.Cell(map["value"]).IsEmpty() ? 0 : null);
             if (qty is null || value is null)
             {
                 issues.Add(new ImportIssue(r, code, "Не число в «Количество» или «Стоимость»."));
                 continue;
             }
-            var where = Get("where") ?? "";
             rows.Add(new OpeningRow(
                 r, Get("account"), code ?? "", name ?? "", Get("unit") ?? "", qty.Value, value.Value,
                 Get("doc"), map.TryGetValue("date", out var dc) ? Date(row.Cell(dc)) : null,
                 where.StartsWith("Подотчёт", StringComparison.OrdinalIgnoreCase) || where.StartsWith("Подотчет", StringComparison.OrdinalIgnoreCase),
-                Get("mol"), Get("address"), Get("description"), Get("note")));
+                Get("mol"), Get("address"), Get("description"), Get("note"), offBook));
         }
         return new OpeningFile(rows, issues);
     }

@@ -70,6 +70,10 @@
                 <tr><td>Строк в файле</td><td class="num">@r.Rows</td></tr>
                 <tr><td>Партий @(r.Applied ? "загружено" : "к загрузке")</td><td class="num"><strong>@r.RowsImported</strong></td></tr>
                 <tr><td>&nbsp;&nbsp;на склад / в подотчёт</td><td class="num">@r.WarehouseBatches / @r.CustodyBatches</td></tr>
+                @if (r.OffBookBatches > 0)
+                {
+                    <tr><td>&nbsp;&nbsp;из них вне учёта (б/у, неучтённое)</td><td class="num">@r.OffBookBatches</td></tr>
+                }
                 @if (r.SortingBatches > 0)
                 {
                     <tr><td>&nbsp;&nbsp;из них в «Сортировку» (адрес не по схеме)</td><td class="num">@r.SortingBatches</td></tr>

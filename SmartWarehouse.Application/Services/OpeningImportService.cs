@@ -148,7 +148,10 @@ public class OpeningImportService(
                 continue;
             }
 
-            var price = decimal.Round(row.Value / row.Quantity, 4, MidpointRounding.AwayFromZero);
+            // Вне учёта без стоимости — партия без цены (в оценке склада не участвует).
+            decimal? price = row.OffBook && row.Value == 0
+                ? null
+                : decimal.Round(row.Value / row.Quantity, 4, MidpointRounding.AwayFromZero);
             valid.Add(new Planned(row, sku, name, unit, price, path));
         }
 
@@ -274,9 +277,11 @@ public class OpeningImportService(
         }
 
         // Приход: партии с ценой, датой и документом 1С. Не больше 500 строк в документе.
+        // Учётное и «вне учёта» — разными документами: признак вне учёта ставится на документ и его партии.
         var documents = new List<long>();
         var batchOf = new Dictionary<Planned, int>();
-        foreach (var chunk in valid.Chunk(StockService.MaxLines))
+        foreach (var (offBook, chunk) in valid.GroupBy(p => p.Row.OffBook).OrderBy(g => g.Key)
+                     .SelectMany(g => g.Chunk(StockService.MaxLines).Select(c => (g.Key, c))))
         {
             var lines = chunk.Select(p => new DocumentLineRequest(
                     items[p.Sku].Id, p.Row.Quantity, null,
@@ -286,8 +291,9 @@ public class OpeningImportService(
                     BatchNote: ToSort(p) ? SortingNote(p.Row) : BatchNote(p.Row)))
                 .ToList();
             var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
-                MovementType.Receipt, "Ввод остатков из 1С", null, actor.Name,
-                "Начальные остатки (импорт из 1С)", lines, PerformedById: actor.EmployeeId, Origin: BatchOrigin.Opening), ct);
+                MovementType.Receipt, offBook ? "Ввод остатков вне учёта" : "Ввод остатков из 1С", null, actor.Name,
+                offBook ? "Начальные остатки вне учёта (б/у, неучтённое — в 1С нет)" : "Начальные остатки (импорт из 1С)",
+                lines, PerformedById: actor.EmployeeId, OffBook: offBook, Origin: BatchOrigin.Opening), ct);
             documents.Add(doc.Id);
             var ordered = doc.Lines.OrderBy(l => l.LineNo).ToList();
             for (var i = 0; i < chunk.Length; i++)
@@ -331,6 +337,7 @@ public class OpeningImportService(
             valid.Count(p => !p.Row.Custody),
             valid.Count(p => p.Row.Custody),
             valid.Count(ToSort),
+            valid.Count(p => p.Row.OffBook),
             decimal.Round(valid.Sum(p => p.Row.Value), 2),
             issues.OrderBy(i => i.Line).ToList(),
             notes,
@@ -435,13 +442,13 @@ public class OpeningImportService(
         return new LocationPlan(targets, types, loose);
     }
 
-    private sealed class Planned(OpeningRow row, string sku, string name, string unit, decimal price, string[]? path)
+    private sealed class Planned(OpeningRow row, string sku, string name, string unit, decimal? price, string[]? path)
     {
         public OpeningRow Row { get; } = row;
         public string Sku { get; } = sku;
         public string Name { get; } = name;
         public string Unit { get; } = unit;
-        public decimal Price { get; } = price;
+        public decimal? Price { get; } = price;
         public string[]? Path { get; } = path;
         public string[]? Target { get; set; }
     }
