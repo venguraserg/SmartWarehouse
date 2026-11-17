@@ -174,7 +174,7 @@ public class ImportTests
             Row(2, "60603", 2, 100, "C3.1.4"),
             Row(3, "60604", 1, 10, "C3.1"),             // у C3.1 есть ячейка C3.1.4 — товар в C3.1.0
             Row(4, "60605", 1.5m, 15, "C3.1.4"),        // дробное в штуках
-            Row(5, "60606", 3, 30, "шкаф свар"),         // адрес не по схеме
+            Row(5, "60606", 3, 30, "шкаф свар"),         // адрес не по схеме — в «Сортировку»
             Row(6, "76242", 7, 13916, null, custody: true, mol: "Рудаков М.А."),
             Row(7, "60607", 10, 5, "C3.2", unit: "м"),   // новая единица (дробная)
         ], []);
@@ -182,14 +182,15 @@ public class ImportTests
         var result = await service.ImportAsync(file, 1, apply: false, new ImportActor(null, "Админ"));
 
         Assert.False(result.Applied);
-        Assert.Equal(4, result.RowsImported);
-        Assert.Equal((3, 1), (result.WarehouseBatches, result.CustodyBatches));
-        Assert.Equal(4, result.ItemsNew);
+        Assert.Equal(5, result.RowsImported);
+        Assert.Equal((4, 1, 1), (result.WarehouseBatches, result.CustodyBatches, result.SortingBatches));
+        Assert.Equal(5, result.ItemsNew);
         Assert.Equal(1, result.UnitsNew);
         Assert.Equal(1, result.EmployeesNew);
-        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + временное IMP
-        Assert.Equal(6, result.LocationsNew);
-        Assert.Equal([4, 5], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
+        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + временное IMP + «Сортировка» SORT
+        Assert.Equal(7, result.LocationsNew);
+        Assert.Equal([4], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
+        Assert.Contains(result.Issues, i => i.Line == 5 && !i.Skipped && i.Message.Contains("Сортировк"));
         Assert.Contains(result.Notes, n => n.Contains("C3.1.0"));
         Assert.Empty(catalogRepo.Items); // проверка ничего не создаёт
     }

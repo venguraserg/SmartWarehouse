@@ -38,6 +38,7 @@ public record OpeningImportResult(
     int EmployeesNew,
     int WarehouseBatches,
     int CustodyBatches,
+    int SortingBatches,
     decimal Value,
     IReadOnlyList<ImportIssue> Issues,
     IReadOnlyList<string> Notes,
@@ -141,7 +142,8 @@ public record PendingPlacementDto(
     DateTimeOffset ReceivedAt,
     decimal Quantity,
     decimal? UnitPrice,
-    bool HasDiscrepancy);
+    bool HasDiscrepancy,
+    bool Sorting = false);
 
 /// <summary>Расхождение приёмки: по накладной и фактически.</summary>
 public record DiscrepancyDto(
