@@ -603,11 +603,11 @@ else
     private IEnumerable<EmployeeDto> AccountableChoices =>
         type == MovementType.Issue ? activeEmployees : allEmployees.Where(e => e.IsActive || custodyHolders.Contains(e.Id));
 
-    /// <summary>Подсказки позиций: при списании и возврате — только то, что числится за сотрудником.</summary>
+    /// <summary>Подсказки позиций: при списании и возврате — только то, что числится за сотрудником, иначе — активные.</summary>
     private IEnumerable<string> ItemChoices =>
         FromEmployee
             ? itemsByLabel.Where(kv => custody.ContainsKey(kv.Value.Id)).Select(kv => kv.Key)
-            : itemsByLabel.Keys;
+            : itemsByLabel.Where(kv => kv.Value.IsActive).Select(kv => kv.Key);
 
     private static string EmployeeLabel(EmployeeDto e) =>
         string.IsNullOrEmpty(e.Position) ? e.ShortName : $"{e.ShortName} — {e.Position}";
@@ -653,10 +653,10 @@ else
         {
             try
             {
-                var items = await Api.GetItemsAsync();
-                itemsByLabel = items
-                    .Where(i => i.IsActive)
-                    .ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
+                // Все позиции, без ограничения в 500, и неактивные тоже: снятое с учёта может числиться
+                // за сотрудником — вернуть или списать его надо уметь.
+                var items = await Api.GetItemsAsync(all: true);
+                itemsByLabel = items.ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
                 (leaves, placePaths) = await Api.GetPlacesAsync();
                 equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
                 units = await Api.GetUnitsAsync();
@@ -715,6 +715,9 @@ else
         line.Item = itemsByLabel.TryGetValue(text, out var byLabel)
             ? byLabel
             : itemsByLabel.Values.FirstOrDefault(i => string.Equals(i.Sku, text, StringComparison.OrdinalIgnoreCase));
+        // Неактивную позицию можно только вернуть или списать с сотрудника.
+        if (line.Item is { IsActive: false } && !FromEmployee)
+            line.Item = null;
 
         line.Available = [];
         line.FromId = null;
@@ -985,7 +988,7 @@ else
     private async Task AddScannedItemAsync(ScanResultDto found)
     {
         var entry = itemsByLabel.FirstOrDefault(kv => kv.Value.Id == found.Id);
-        if (entry.Value is null)
+        if (entry.Value is null || (!entry.Value.IsActive && !FromEmployee))
         {
             error = $"Позиция {found.Code} неактивна — операции с ней запрещены.";
             return;

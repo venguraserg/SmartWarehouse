@@ -13,9 +13,10 @@ namespace SmartWarehouse.API.Controllers;
 [Route("api/items")]
 public class ItemsController(ICatalogService catalog, IStockService stock) : ControllerBase
 {
+    /// <param name="all">true — все позиции (справочник для форм документов); иначе первые 500 по наименованию.</param>
     [HttpGet]
-    public Task<IReadOnlyList<ItemDto>> List([FromQuery] string? search, [FromQuery] int? categoryId, CancellationToken ct) =>
-        catalog.ListItemsAsync(search, categoryId, ct);
+    public Task<IReadOnlyList<ItemDto>> List([FromQuery] string? search, [FromQuery] int? categoryId, [FromQuery] bool all, CancellationToken ct) =>
+        catalog.ListItemsAsync(search, categoryId, all, ct);
 
     /// <summary>Следующий свободный артикул: SP-000001 или с префиксом категории (BRG-000001).</summary>
     [HttpGet("next-sku")]

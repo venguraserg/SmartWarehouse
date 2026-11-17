@@ -156,7 +156,8 @@ public interface ICatalogRepository
     /// <summary>Позиция (с единицей) по артикулу без учёта регистра или по штрих-коду.</summary>
     Task<Item?> FindItemByCodeAsync(string code, CancellationToken ct = default);
 
-    Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, CancellationToken ct = default);
+    /// <param name="limit">Не больше стольких позиций; null — все.</param>
+    Task<IReadOnlyList<Item>> ListItemsAsync(string? search, int? categoryId, int? limit, CancellationToken ct = default);
 
     void AddItem(Item item);
 
