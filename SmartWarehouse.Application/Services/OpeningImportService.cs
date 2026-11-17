@@ -47,7 +47,7 @@ public class OpeningImportService(
 
     /// <summary>Единицы, в которых бывает дробное количество (для новых единиц).</summary>
     private static readonly HashSet<string> FractionalUnits =
-        new(StringComparer.OrdinalIgnoreCase) { "м", "кг", "л", "т", "м2", "км", "см", "тыс. м", "тыс. шт", "100 шт" };
+        new(StringComparer.OrdinalIgnoreCase) { "м", "кг", "л", "т", "м2", "м3", "км", "см", "тыс. м", "тыс. шт", "100 шт" };
 
     private const int MaxLevels = 4;
 
