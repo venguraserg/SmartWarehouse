@@ -183,6 +183,29 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .ToList();
     }
 
+    public async Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default)
+    {
+        var held = await db.EmployeeBalances
+            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && !b.Batch.OffBook)
+            .GroupBy(b => new { b.EmployeeId, b.ItemId })
+            .Select(g => new { g.Key.EmployeeId, g.Key.ItemId, Quantity = g.Sum(b => b.Quantity) })
+            .ToListAsync(ct);
+        var reserved = (await ReservedLines(db.WriteOffActLines)
+                .Where(l => l.Act.Kind != ActKind.WriteOff && l.Batch != null && !l.Batch.OffBook)
+                .GroupBy(l => new { l.Act.EmployeeId, l.ItemId })
+                .Select(g => new { g.Key.EmployeeId, g.Key.ItemId, Quantity = g.Sum(l => l.Quantity) })
+                .ToListAsync(ct))
+            .ToDictionary(r => (r.EmployeeId, r.ItemId), r => r.Quantity);
+        var free = held
+            .Select(h => (h.EmployeeId, h.ItemId, Quantity: h.Quantity - reserved.GetValueOrDefault((h.EmployeeId, h.ItemId))))
+            .Where(h => h.Quantity > 0)
+            .ToList();
+        var items = await ItemNamesAsync(free.Select(f => f.ItemId), ct);
+        return free
+            .Select(f => new WorkTotal(f.EmployeeId, f.ItemId, items[f.ItemId].Sku, items[f.ItemId].Name, items[f.ItemId].Unit, f.Quantity))
+            .ToList();
+    }
+
     private async Task<Dictionary<int, (string Sku, string Name, string Unit)>> ItemNamesAsync(IEnumerable<int> ids, CancellationToken ct)
     {
         var list = ids.Distinct().ToList();

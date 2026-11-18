@@ -93,7 +93,9 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
 
     public async Task<IReadOnlyList<IssueRecord>> ListIssuesAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default)
     {
-        var query = db.Movements.AsNoTracking().Where(x => x.Type == MovementType.Issue && x.ToEmployeeId != null);
+        // Перевод в подотчёт по 1С — для вида «по 1С» это тоже поступление за сотрудником.
+        var query = db.Movements.AsNoTracking()
+            .Where(x => (x.Type == MovementType.Issue || x.Type == MovementType.CustodyChange) && x.ToEmployeeId != null);
         if (employeeIds is not null)
         {
             var ids = employeeIds.ToList();

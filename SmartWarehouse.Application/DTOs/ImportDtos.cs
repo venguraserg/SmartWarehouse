@@ -97,7 +97,34 @@ public record ReconcileResultDto(
     string? WarehouseMol,
     IReadOnlyList<ReconcileMolDto> Mols,
     IReadOnlyList<ReconcileRowDto> Rows,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    IReadOnlyList<ReconcileConvertDto>? Conversions = null);
+
+/// <summary>
+/// Предложение перевести «выдано в работу» в «подотчёт по 1С»: в 1С на МОЛ сотрудника позиции больше,
+/// чем у него «по 1С» в приложении, а «в работе» у него она есть.
+/// </summary>
+/// <param name="QtyOfficial">Сколько «по 1С» за сотрудником в приложении.</param>
+/// <param name="WorkFree">Сколько «в работе» можно перевести (учётные партии, не в отчётах).</param>
+/// <param name="Suggested">Сколько предлагается перевести: недостача по 1С, но не больше свободного «в работе».</param>
+public record ReconcileConvertDto(
+    int EmployeeId,
+    string EmployeeName,
+    string Mol,
+    int ItemId,
+    string Code,
+    string Name,
+    string Unit,
+    decimal Qty1C,
+    decimal QtyOfficial,
+    decimal WorkFree,
+    decimal Suggested);
+
+/// <summary>Строка перевода в подотчёт по 1С.</summary>
+public record ConvertCustodyLine(int EmployeeId, int ItemId, decimal Quantity);
+
+/// <summary>Перевести «в работе» → «подотчёт по 1С» (по сверке с 1С). Документ — на каждого сотрудника.</summary>
+public record ConvertCustodyRequest(IReadOnlyList<ConvertCustodyLine> Lines, string? Comment = null);
 
 public record ReconcileMolDto(string Mol, string? Place, int? EmployeeId, int Batches, decimal Value);
 

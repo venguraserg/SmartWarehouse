@@ -597,6 +597,55 @@ public class StockServiceTests
         Assert.Equal(3, Custody());
     }
 
+    // ---------- Перевод «в работу» → «подотчёт по 1С» (по сверке с 1С) ----------
+
+    [Fact]
+    public async Task Перевод_в_подотчёт_по_1С_меняет_вид_но_не_количество()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(5, from: CellA));   // «в работу»
+
+        var docs = await _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 3)]), performerId: 1);
+
+        Assert.Single(docs);
+        Assert.StartsWith("ПП-", docs[0].Number);
+        Assert.Equal((2m, 3m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+        Assert.Equal(5, Balance(CellA));
+        var line = _repo.Documents.Single(d => d.Type == MovementType.CustodyChange).Lines.Single();
+        Assert.Equal((Worker, Worker, CustodyKind.Official, 3m), (line.FromEmployeeId!.Value, line.ToEmployeeId!.Value, line.CustodyKind!.Value, line.Quantity));
+    }
+
+    [Fact]
+    public async Task Перевод_не_трогает_зарезервированное_отчётом_и_вне_учёта()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Send(new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(5, to: CellB)], OffBook: true));
+        await Post(MovementType.Issue, Line(4, from: CellA));   // учётные, «в работу»
+        await Post(MovementType.Issue, Line(5, from: CellB));   // вне учёта, «в работу»
+        _repo.Acts.Add(new WriteOffAct
+        {
+            Id = 7, EmployeeId = Worker, Status = ActStatus.Pending, Kind = ActKind.UsageReport,
+            Lines = { new WriteOffActLine { ItemId = Bearing, BatchId = 1, Quantity = 3, Usage = "ремонт" } }
+        });
+
+        // Свободно учётного «в работе» — 1 шт.
+        await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 2)]), null));
+        await _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 1)]), null);
+
+        Assert.Equal((8m, 1m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+    }
+
+    [Fact]
+    public async Task Перевод_обычным_документом_не_проводится()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Issue, Line(2, from: CellA));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(Doc(MovementType.CustodyChange, Line(1))));
+        Assert.Contains("сверки", ex.Message);
+    }
+
     // ---------- Партии и цены ----------
 
     [Fact]

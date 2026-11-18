@@ -11,6 +11,12 @@ public interface IStockService
     /// </summary>
     Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Перевод «выдано в работу» → «подотчёт по 1С» (подтверждение кладовщиком предложений сверки).
+    /// Документ на каждого сотрудника; всё проводится одной транзакцией.
+    /// </summary>
+    Task<IReadOnlyList<DocumentRefDto>> ConvertToOfficialAsync(ConvertCustodyRequest request, int? performerId, CancellationToken ct = default);
+
     Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default);
 
     Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, CancellationToken ct = default);

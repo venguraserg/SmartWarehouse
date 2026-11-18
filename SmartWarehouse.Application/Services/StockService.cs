@@ -19,10 +19,40 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         // Списание — только по утверждённому акту на списание (см. WriteOffActService).
         if (request.Type == MovementType.WriteOff)
             throw new DomainException("Списание оформляется актом на списание: сотрудник составляет акт, руководитель утверждает — тогда позиции списываются.");
+        if (request.Type == MovementType.CustodyChange)
+            throw new DomainException("Перевод в подотчёт по 1С проводится из сверки с 1С.");
 
         var staged = await StageAsync(request, exceptActId: null, ct);
         await repo.SaveChangesAsync(ct);
         return staged.ToDto();
+    }
+
+    public async Task<IReadOnlyList<DocumentRefDto>> ConvertToOfficialAsync(ConvertCustodyRequest request, int? performerId, CancellationToken ct = default)
+    {
+        var lines = (request.Lines ?? []).Where(l => l.Quantity != 0).ToList();
+        if (lines.Count == 0)
+            throw new DomainException("Отметьте, что перевести в подотчёт по 1С.");
+        var comment = Clean(request.Comment) ?? "По сверке с 1С: передано на МОЛ сотрудника";
+
+        var documents = new List<StockDocument>();
+        foreach (var employee in lines.GroupBy(l => l.EmployeeId))
+        {
+            var byItem = employee
+                .GroupBy(l => l.ItemId)
+                .Select(g => new DocumentLineRequest(g.Key, g.Sum(l => l.Quantity), null, null))
+                .ToList();
+            foreach (var chunk in byItem.Chunk(MaxLines))
+            {
+                var staged = await StageAsync(
+                    new CreateDocumentRequest(MovementType.CustodyChange, null, null, null, comment, chunk,
+                        PerformedById: performerId, ReceivedById: employee.Key),
+                    exceptActId: null, ct);
+                documents.Add(staged.Document);
+            }
+        }
+
+        await repo.SaveChangesAsync(ct);
+        return documents.Select(d => new DocumentRefDto(d.Id, d.Number)).ToList();
     }
 
     /// <summary>Подготовленный к сохранению документ: остатки изменены, документ добавлен, но не сохранён.</summary>
@@ -170,17 +200,21 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         IEnumerable<int> Oldest(IEnumerable<int> keys) =>
             keys.OrderBy(k => batches.TryGetValue(k, out var b) ? b.ReceivedAt : DateTimeOffset.MaxValue).ThenBy(k => k);
 
-        int? fromEmployeeId = request.Type is MovementType.WriteOff or MovementType.Return ? accountable!.Id : null;
-        int? toEmployeeId = request.Type is MovementType.Issue ? accountable!.Id : null;
+        // Перевод вида подотчёта: убывает «в работе» и прибывает «по 1С» у того же сотрудника, теми же партиями.
+        var isCustodyChange = request.Type == MovementType.CustodyChange;
+        int? fromEmployeeId = request.Type is MovementType.WriteOff or MovementType.Return or MovementType.CustodyChange ? accountable!.Id : null;
+        int? toEmployeeId = request.Type is MovementType.Issue or MovementType.CustodyChange ? accountable!.Id : null;
 
         // Вид подотчёта. Выдача со склада — «в работу» (в 1С остаётся на МОЛ кладовщика), если не сказано иное.
         // Возврат и списание берут из указанного вида, а если не указан — по порядку:
         // возврат — сначала «в работу», списание по акту сотрудника — сначала «подотчёт по 1С».
-        var issueKind = request.Custody ?? CustodyKind.Work;
-        CustodyKind[] sourceKinds = request.Custody is CustodyKind only
-            ? [only]
-            : request.Type == MovementType.Return ? [CustodyKind.Work, CustodyKind.Official] : [CustodyKind.Official, CustodyKind.Work];
-        if (request.Custody is not null && !UsesAccountable(request.Type))
+        var issueKind = isCustodyChange ? CustodyKind.Official : request.Custody ?? CustodyKind.Work;
+        CustodyKind[] sourceKinds = isCustodyChange
+            ? [CustodyKind.Work]
+            : request.Custody is CustodyKind only
+                ? [only]
+                : request.Type == MovementType.Return ? [CustodyKind.Work, CustodyKind.Official] : [CustodyKind.Official, CustodyKind.Work];
+        if (request.Custody is not null && (isCustodyChange || !UsesAccountable(request.Type)))
             throw new DomainException("Вид подотчёта указывается только для выдачи, возврата и списания.");
 
         var parts = new List<(DocumentLineRequest Line, int BatchKey, decimal Quantity, CustodyKind? Kind)>();
@@ -217,6 +251,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                             .Select(k => k.BatchKey))
                         .Select(batchKey => (Kind: kind, BatchKey: batchKey)))
                     .Where(s => line.BatchId is not int chosen || s.BatchKey == chosen)
+                    // Вне учёта в 1С нет — в подотчёт по 1С его не переводят.
+                    .Where(s => !isCustodyChange || batches.GetValueOrDefault(s.BatchKey)?.OffBook != true)
                     .ToList();
                 if (line.BatchId is not null && slots.Count == 0)
                     throw new DomainException($"Строка {n} («{item.Name}»): выбранной партии здесь нет.");
@@ -557,13 +593,14 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
     /// <summary>Документы, где обязательно подотчётное лицо.</summary>
     public static bool UsesAccountable(MovementType type) =>
-        type is MovementType.Issue or MovementType.WriteOff or MovementType.Return;
+        type is MovementType.Issue or MovementType.WriteOff or MovementType.Return or MovementType.CustodyChange;
 
     private static string AccountableLabel(MovementType type) => type switch
     {
         MovementType.Issue => "Кому выдано",
         MovementType.WriteOff => "С кого списать",
         MovementType.Return => "Кто возвращает",
+        MovementType.CustodyChange => "За кем числится",
         _ => "Сотрудник"
     };
 
@@ -596,6 +633,11 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             case MovementType.WriteOff:
                 if (hasFrom || hasTo)
                     throw new DomainException($"Строка {n}: при списании место не указывается — списывается с сотрудника.");
+                break;
+
+            case MovementType.CustodyChange:
+                if (hasFrom || hasTo)
+                    throw new DomainException($"Строка {n}: при переводе в подотчёт по 1С место не указывается.");
                 break;
 
             case MovementType.Return:

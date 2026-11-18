@@ -101,6 +101,9 @@ public interface IStockRepository
     /// <summary>«Подотчёт по 1С» по сотрудникам и позициям — для сверки с ведомостями их МОЛ.</summary>
     Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default);
 
+    /// <summary>«Выдано в работу», которое можно перевести в подотчёт по 1С: учётные партии без резерва отчётов.</summary>
+    Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
 
     /// <summary>

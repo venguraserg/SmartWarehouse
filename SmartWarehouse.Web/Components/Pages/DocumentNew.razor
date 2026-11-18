@@ -647,6 +647,13 @@ else
             Nav.NavigateTo(EmployeeParam is int forEmployee ? $"/acts/new?employee={forEmployee}" : "/acts/new", replace: true);
             return;
         }
+
+        // Перевод в подотчёт по 1С — из сверки с 1С.
+        if (type == MovementType.CustodyChange)
+        {
+            Nav.NavigateTo("/reconcile", replace: true);
+            return;
+        }
         lines = [new()];
         externalNumber = comment = null;
         equipmentId = null;
