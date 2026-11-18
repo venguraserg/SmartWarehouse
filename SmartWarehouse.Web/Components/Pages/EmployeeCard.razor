@@ -65,49 +65,58 @@
             }
         </AuthorizeView>
     </div>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 56px"></th>
-                    <th>Артикул</th>
-                    <th>Наименование</th>
-                    <th class="num">Количество</th>
-                    @if (ShowValue)
-                    {
-                        <th class="num">Стоимость</th>
-                    }
-                    <th class="num" title="Сколько дней числится (по самой ранней невозвращённой выдаче)">Числится</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var c in custody)
-                {
+    @if (custody.Count == 0)
+    {
+        <div class="panel empty">За сотрудником ничего не числится.</div>
+    }
+    @* Два раздела: «выдано в работу» (в 1С — за кладовщиком) и «подотчёт по 1С» (МОЛ — сам сотрудник). *@
+    @foreach (var section in custody.GroupBy(c => c.Kind).OrderBy(g => g.Key))
+    {
+        <h3 style="margin: 1rem 0 .5rem">
+            <span class="tag @Ui.CustodyKindClass(section.Key)">@Ui.CustodyKindShort(section.Key)</span>
+            @(section.Key == CustodyKind.Official ? "Подотчёт по 1С" : "Выдано в работу")
+            <span class="muted" style="font-weight: 400; font-size: .875rem">— @Ui.CustodyKindTitle(section.Key).Split(':')[1].Trim()</span>
+        </h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
                     <tr>
-                        <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
-                        <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
-                        <td>@c.ItemName</td>
-                        <td class="num">
-                            <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
-                            @if (c.Reserved > 0)
-                            {
-                                <div class="line-hint">из них @Ui.Qty(c.Reserved) — в актах на утверждении</div>
-                            }
-                        </td>
+                        <th style="width: 56px"></th>
+                        <th>Артикул</th>
+                        <th>Наименование</th>
+                        <th class="num">Количество</th>
                         @if (ShowValue)
                         {
-                            <td class="num">@Ui.Value(c.Value, c.ValueIncomplete)</td>
+                            <th class="num">Стоимость</th>
                         }
-                        <td class="num"><CustodyAge Since="c.HeldSince" /></td>
+                        <th class="num" title="Сколько дней числится (по самой ранней невозвращённой выдаче)">Числится</th>
                     </tr>
-                }
-            </tbody>
-        </table>
-        @if (custody.Count == 0)
-        {
-            <div class="empty">За сотрудником ничего не числится.</div>
-        }
-    </div>
+                </thead>
+                <tbody>
+                    @foreach (var c in section)
+                    {
+                        <tr>
+                            <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
+                            <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
+                            <td>@c.ItemName</td>
+                            <td class="num">
+                                <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
+                                @if (c.Reserved > 0)
+                                {
+                                    <div class="line-hint">из них @Ui.Qty(c.Reserved) — в актах на утверждении</div>
+                                }
+                            </td>
+                            @if (ShowValue)
+                            {
+                                <td class="num">@Ui.Value(c.Value, c.ValueIncomplete)</td>
+                            }
+                            <td class="num"><CustodyAge Since="c.HeldSince" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 
     <h2>История: выдачи, списания, возвраты</h2>
     <div class="table-wrap">

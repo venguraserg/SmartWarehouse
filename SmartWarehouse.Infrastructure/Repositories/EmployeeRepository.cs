@@ -100,7 +100,7 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
             query = query.Where(x => ids.Contains(x.ToEmployeeId!.Value));
         }
         return await query
-            .Select(x => new IssueRecord(x.ToEmployeeId!.Value, x.ItemId, x.OccurredAt, x.Quantity))
+            .Select(x => new IssueRecord(x.ToEmployeeId!.Value, x.ItemId, x.OccurredAt, x.Quantity, x.CustodyKind ?? CustodyKind.Work))
             .ToListAsync(ct);
     }
 

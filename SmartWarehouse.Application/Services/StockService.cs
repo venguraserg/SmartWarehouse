@@ -133,8 +133,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         var newBatches = new Dictionary<int, Batch>();        // временный ключ (< 0) → новая партия
         var stored = new Dictionary<(int ItemId, int LocationId, int BatchKey), StockBalance>();
         var projected = new Dictionary<(int ItemId, int LocationId, int BatchKey), decimal>();
-        var storedEmployee = new Dictionary<(int ItemId, int EmployeeId, int BatchKey), EmployeeBalance>();
-        var projectedEmployee = new Dictionary<(int ItemId, int EmployeeId, int BatchKey), decimal>();
+        var storedEmployee = new Dictionary<(int ItemId, int EmployeeId, CustodyKind Kind, int BatchKey), EmployeeBalance>();
+        var projectedEmployee = new Dictionary<(int ItemId, int EmployeeId, CustodyKind Kind, int BatchKey), decimal>();
         var reserved = new Dictionary<(int ItemId, int EmployeeId, int BatchKey), decimal>();
         var loadedLocations = new HashSet<(int ItemId, int LocationId)>();
         var loadedEmployees = new HashSet<(int ItemId, int EmployeeId)>();
@@ -157,8 +157,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 return;
             foreach (var b in await repo.GetEmployeeBatchesAsync(itemId, employeeId, ct))
             {
-                storedEmployee[(itemId, employeeId, b.BatchId)] = b;
-                projectedEmployee[(itemId, employeeId, b.BatchId)] = b.Quantity;
+                storedEmployee[(itemId, employeeId, b.Kind, b.BatchId)] = b;
+                projectedEmployee[(itemId, employeeId, b.Kind, b.BatchId)] = b.Quantity;
                 batches[b.BatchId] = b.Batch;
             }
             // Зарезервированное в актах на утверждении вернуть или списать другим документом нельзя.
@@ -172,7 +172,18 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
         int? fromEmployeeId = request.Type is MovementType.WriteOff or MovementType.Return ? accountable!.Id : null;
         int? toEmployeeId = request.Type is MovementType.Issue ? accountable!.Id : null;
-        var parts = new List<(DocumentLineRequest Line, int BatchKey, decimal Quantity)>();
+
+        // Вид подотчёта. Выдача со склада — «в работу» (в 1С остаётся на МОЛ кладовщика), если не сказано иное.
+        // Возврат и списание берут из указанного вида, а если не указан — по порядку:
+        // возврат — сначала «в работу», списание по акту сотрудника — сначала «подотчёт по 1С».
+        var issueKind = request.Custody ?? CustodyKind.Work;
+        CustodyKind[] sourceKinds = request.Custody is CustodyKind only
+            ? [only]
+            : request.Type == MovementType.Return ? [CustodyKind.Work, CustodyKind.Official] : [CustodyKind.Official, CustodyKind.Work];
+        if (request.Custody is not null && !UsesAccountable(request.Type))
+            throw new DomainException("Вид подотчёта указывается только для выдачи, возврата и списания.");
+
+        var parts = new List<(DocumentLineRequest Line, int BatchKey, decimal Quantity, CustodyKind? Kind)>();
         var nextTempKey = 0;
 
         for (var i = 0; i < lines.Count; i++)
@@ -181,6 +192,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             var n = i + 1;
             var item = items[line.ItemId];
             var taken = new List<(int BatchKey, decimal Quantity)>();
+            CustodyKind?[] takenKinds = [];
 
             if (line.FromLocationId is int fromId)
             {
@@ -198,15 +210,39 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (line.UnitPrice is not null)
                     throw new DomainException($"Строка {n}: цена указывается только при поступлении (приход, корректировка «+»).");
                 await LoadEmployeeAsync(line.ItemId, fromEmp);
-                var keys = projectedEmployee.Keys.Where(k => k.ItemId == line.ItemId && k.EmployeeId == fromEmp).Select(k => k.BatchKey);
-                Allocate(n, item, line, Oldest(keys),
-                    k => projectedEmployee[(line.ItemId, fromEmp, k)],
-                    k => reserved.GetValueOrDefault((line.ItemId, fromEmp, k)),
+                // Ячейки подотчёта: вид × партия. Порядок — по видам (см. sourceKinds), внутри — самая старая партия.
+                var slots = sourceKinds
+                    .SelectMany(kind => Oldest(projectedEmployee.Keys
+                            .Where(k => k.ItemId == line.ItemId && k.EmployeeId == fromEmp && k.Kind == kind)
+                            .Select(k => k.BatchKey))
+                        .Select(batchKey => (Kind: kind, BatchKey: batchKey)))
+                    .Where(s => line.BatchId is not int chosen || s.BatchKey == chosen)
+                    .ToList();
+                if (line.BatchId is not null && slots.Count == 0)
+                    throw new DomainException($"Строка {n} («{item.Name}»): выбранной партии здесь нет.");
+
+                // Резерв актов на утверждении (по партии) ложится сначала на «подотчёт по 1С», остаток — на «в работу».
+                decimal ReservedOf(int slot)
+                {
+                    var (kind, batchKey) = slots[slot];
+                    var held = reserved.GetValueOrDefault((line.ItemId, fromEmp, batchKey));
+                    var official = projectedEmployee.GetValueOrDefault((line.ItemId, fromEmp, CustodyKind.Official, batchKey));
+                    return kind == CustodyKind.Official ? Math.Min(held, official) : Math.Max(0, held - official);
+                }
+
+                Allocate(n, item, line with { BatchId = null }, Enumerable.Range(0, slots.Count),
+                    s => projectedEmployee[(line.ItemId, fromEmp, slots[s].Kind, slots[s].BatchKey)],
+                    ReservedOf,
                     taken,
                     (available, held) => new InsufficientStockException(
                         item.Sku, accountable!.ShortName, available, line.Quantity, isEmployee: true, reserved: held));
-                foreach (var (k, q) in taken)
-                    projectedEmployee[(line.ItemId, fromEmp, k)] -= q;
+                takenKinds = taken.Select(x => (CustodyKind?)slots[x.BatchKey].Kind).ToArray();
+                for (var s = 0; s < taken.Count; s++)
+                {
+                    var (kind, batchKey) = slots[taken[s].BatchKey];
+                    projectedEmployee[(line.ItemId, fromEmp, kind, batchKey)] -= taken[s].Quantity;
+                    taken[s] = (batchKey, taken[s].Quantity);
+                }
             }
             else if (line.BatchId is int existingId && request.Type == MovementType.Adjustment)
             {
@@ -242,8 +278,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 taken.Add((key, line.Quantity));
             }
 
-            foreach (var (k, q) in taken)
+            for (var s = 0; s < taken.Count; s++)
             {
+                var (k, q) = taken[s];
+                CustodyKind? kind = s < takenKinds.Length ? takenKinds[s] : null;
                 if (line.ToLocationId is int toId)
                 {
                     await LoadLocationAsync(line.ItemId, toId);
@@ -252,9 +290,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (toEmployeeId is int toEmp)
                 {
                     await LoadEmployeeAsync(line.ItemId, toEmp);
-                    projectedEmployee[(line.ItemId, toEmp, k)] = projectedEmployee.GetValueOrDefault((line.ItemId, toEmp, k)) + q;
+                    projectedEmployee[(line.ItemId, toEmp, issueKind, k)] = projectedEmployee.GetValueOrDefault((line.ItemId, toEmp, issueKind, k)) + q;
+                    kind = issueKind;
                 }
-                parts.Add((line, k, q));
+                parts.Add((line, k, q, kind));
             }
         }
 
@@ -293,12 +332,12 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             if (storedEmployee.TryGetValue(key, out var balance))
                 balance.Quantity = quantity;
             else if (quantity > 0)
-                repo.AddEmployeeBalance(NewBalance(new EmployeeBalance { ItemId = key.ItemId, EmployeeId = key.EmployeeId, Quantity = quantity }, key.BatchKey));
+                repo.AddEmployeeBalance(NewBalance(new EmployeeBalance { ItemId = key.ItemId, EmployeeId = key.EmployeeId, Kind = key.Kind, Quantity = quantity }, key.BatchKey));
         }
 
         // Строка документа может разойтись на несколько партий — каждая партия отдельной строкой журнала.
         var lineNo = 0;
-        foreach (var (line, key, quantity) in parts)
+        foreach (var (line, key, quantity, kind) in parts)
         {
             var batch = BatchOf(key);
             document.Lines.Add(new StockMovement
@@ -314,6 +353,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 ToLocationId = line.ToLocationId,
                 FromEmployeeId = fromEmployeeId,
                 ToEmployeeId = toEmployeeId,
+                CustodyKind = kind,
                 Quantity = quantity
             });
         }

@@ -234,7 +234,7 @@ internal class EmployeeBalanceConfiguration : IEntityTypeConfiguration<EmployeeB
     public void Configure(EntityTypeBuilder<EmployeeBalance> b)
     {
         b.ToTable("employee_balances", t => t.HasCheckConstraint("ck_employee_balances_quantity_nonnegative", "\"Quantity\" >= 0"));
-        b.HasKey(x => new { x.EmployeeId, x.ItemId, x.BatchId });
+        b.HasKey(x => new { x.EmployeeId, x.ItemId, x.BatchId, x.Kind });
         b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => x.BatchId);
         b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);

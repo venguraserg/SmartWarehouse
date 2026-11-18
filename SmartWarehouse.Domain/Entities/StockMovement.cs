@@ -52,5 +52,8 @@ public class StockMovement
 
     public Employee? ToEmployee { get; set; }
 
+    /// <summary>Для движений с сотрудником: «в работу» или «подотчёт по 1С».</summary>
+    public CustodyKind? CustodyKind { get; set; }
+
     public decimal Quantity { get; set; }
 }

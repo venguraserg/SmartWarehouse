@@ -61,6 +61,17 @@ else
                         {
                             <div class="field-hint">За этим сотрудником ничего не числится.</div>
                         }
+                        else if (type == MovementType.Issue)
+                        {
+                            <div class="field-hint">
+                                Выдаётся <span class="tag tag-info">в работу</span>: в 1С остаётся за кладовщиком,
+                                сотрудник потом отчитывается об использовании или возвращает.
+                            </div>
+                        }
+                        else if (type == MovementType.Return)
+                        {
+                            <div class="field-hint">Сначала возвращается выданное <span class="tag tag-info">в работу</span>, затем <span class="tag tag-official">по 1С</span>.</div>
+                        }
                     </div>
                 }
                 @if (type == MovementType.Receipt)
@@ -694,9 +705,12 @@ else
             try
             {
                 // Зарезервированное в актах на утверждении вернуть нельзя — считаем только свободное.
+                // «В работе» и «по 1С» — вместе: что именно возвращается, решает сервер (сначала «в работе»).
                 custody = (await Api.GetCustodyAsync(employeeId: id))
-                    .Where(r => r.Quantity - r.Reserved > 0)
-                    .ToDictionary(r => r.ItemId, r => r.Quantity - r.Reserved);
+                    .GroupBy(r => r.ItemId)
+                    .Select(g => (ItemId: g.Key, Free: g.Sum(r => r.Quantity - r.Reserved)))
+                    .Where(x => x.Free > 0)
+                    .ToDictionary(x => x.ItemId, x => x.Free);
             }
             catch (Exception ex) when (ex is ApiException or HttpRequestException)
             {

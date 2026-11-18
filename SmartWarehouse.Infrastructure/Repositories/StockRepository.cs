@@ -118,7 +118,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public async Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default)
     {
-        var totals = await db.Balances
+        var stock = await db.Balances
             .Where(b => b.Quantity != 0 && !b.Batch.OffBook)
             .GroupBy(b => b.ItemId)
             .Select(g => new
@@ -129,6 +129,21 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
                 Incomplete = g.Any(b => b.Batch.UnitPrice == null)
             })
             .ToListAsync(ct);
+        var atWork = await db.EmployeeBalances
+            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && !b.Batch.OffBook)
+            .GroupBy(b => b.ItemId)
+            .Select(g => new
+            {
+                ItemId = g.Key,
+                Quantity = g.Sum(b => b.Quantity),
+                Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
+                Incomplete = g.Any(b => b.Batch.UnitPrice == null)
+            })
+            .ToListAsync(ct);
+        var totals = stock.Concat(atWork)
+            .GroupBy(t => t.ItemId)
+            .Select(g => new { ItemId = g.Key, Quantity = g.Sum(t => t.Quantity), Value = g.Sum(t => t.Value), Incomplete = g.Any(t => t.Incomplete) })
+            .ToList();
         var items = await ItemNamesAsync(totals.Select(t => t.ItemId), ct);
         return totals
             .Select(t => new ItemTotal(t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
@@ -139,7 +154,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     public async Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default)
     {
         var totals = await db.EmployeeBalances
-            .Where(b => b.Quantity != 0 && !b.Batch.OffBook)
+            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Official && !b.Batch.OffBook)
             .GroupBy(b => new { b.EmployeeId, b.ItemId })
             .Select(g => new
             {

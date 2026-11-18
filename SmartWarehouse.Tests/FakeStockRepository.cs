@@ -72,6 +72,8 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemTotal>>(Balances
+            .Select(b => (b.ItemId, b.BatchId, b.Quantity))
+            .Concat(EmployeeBalances.Where(b => b.Kind == CustodyKind.Work).Select(b => (b.ItemId, b.BatchId, b.Quantity)))
             .Where(b => b.Quantity != 0 && BatchOf(b.BatchId)?.OffBook != true)
             .GroupBy(b => b.ItemId)
             .Select(g =>
@@ -85,7 +87,7 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<CustodyTotal>>(EmployeeBalances
-            .Where(b => b.Quantity != 0 && BatchOf(b.BatchId)?.OffBook != true)
+            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Official && BatchOf(b.BatchId)?.OffBook != true)
             .GroupBy(b => (b.EmployeeId, b.ItemId))
             .Select(g =>
             {

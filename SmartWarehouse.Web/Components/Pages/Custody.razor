@@ -13,7 +13,9 @@
     <a class="btn btn-primary" href="/acts/new">Акт на списание</a>
 </div>
 <p class="muted" style="margin-top: -.5rem">
-    Что выдано со склада и числится за сотрудниками — до списания или возврата.
+    Что числится за сотрудниками до списания или возврата.
+    <span class="tag tag-info">в работе</span> — выдано кладовщиком, в 1С остаётся за ним;
+    <span class="tag tag-official">по 1С</span> — на МОЛ самого сотрудника.
     <AuthorizeView Roles="@AppRoles.Warehouse">
         <NotAuthorized>Показан ваш подотчёт@(context.User.IsInRole(AppRoles.Manager) ? " и подотчёт ваших подчинённых" : "").</NotAuthorized>
     </AuthorizeView>
@@ -22,6 +24,11 @@
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
     <input type="search" placeholder="Сотрудник, табельный номер, артикул или наименование" @bind="search" style="max-width: 420px" />
     <button class="btn" type="submit">Найти</button>
+    <div class="segmented" role="group" aria-label="Вид подотчёта">
+        <button type="button" class="@(kind is null ? "active" : null)" @onclick="() => kind = null">Все</button>
+        <button type="button" class="@(kind == CustodyKind.Work ? "active" : null)" @onclick="() => kind = CustodyKind.Work">В работе</button>
+        <button type="button" class="@(kind == CustodyKind.Official ? "active" : null)" @onclick="() => kind = CustodyKind.Official">По 1С</button>
+    </div>
 </form>
 
 <Alert Error="@error" />
@@ -33,7 +40,7 @@
         <p class="loading">Загрузка…</p>
     }
 }
-else if (rows.Count == 0)
+else if (Visible.Count == 0)
 {
     <div class="panel empty">@(string.IsNullOrWhiteSpace(search) ? "За сотрудниками ничего не числится." : "Ничего не найдено.")</div>
 }
@@ -55,7 +62,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var group in rows.GroupBy(r => r.EmployeeId))
+                @foreach (var group in Visible.GroupBy(r => r.EmployeeId))
                 {
                     var first = group.First();
                     <tr class="group-row">
@@ -90,7 +97,10 @@ else
                         <tr>
                             <td><Thumb ItemId="r.ItemId" ImageVersion="r.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@r.ItemId">@r.Sku</a></td>
-                            <td>@r.ItemName</td>
+                            <td>
+                                @r.ItemName
+                                <span class="tag @Ui.CustodyKindClass(r.Kind)" title="@Ui.CustodyKindTitle(r.Kind)">@Ui.CustodyKindShort(r.Kind)</span>
+                            </td>
                             <td class="num">
                                 @Ui.Qty(r.Quantity) @r.UnitCode
                                 @if (r.Reserved > 0)
@@ -120,6 +130,11 @@ else
     private bool ShowValue => rows?.Any(r => r.Value is not null || r.ValueIncomplete) == true;
     private int? myEmployeeId;
     private List<CustodyRowDto>? rows;
+
+    /// <summary>Фильтр по виду: null — все, «в работе» или «по 1С».</summary>
+    private CustodyKind? kind;
+
+    private List<CustodyRowDto> Visible => rows?.Where(r => kind is null || r.Kind == kind).ToList() ?? [];
     private string? search;
     private string? error;
 

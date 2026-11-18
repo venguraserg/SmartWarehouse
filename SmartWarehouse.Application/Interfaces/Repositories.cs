@@ -19,7 +19,7 @@ public record StockFilter(int? WarehouseId, string? LocationCode, string? Search
 public record LocationInfo(int Id, string FullCode, bool HasChildren, string? Name = null);
 
 /// <summary>Выдача позиции сотруднику (строка документа выдачи).</summary>
-public record IssueRecord(int EmployeeId, int ItemId, DateTimeOffset OccurredAt, decimal Quantity);
+public record IssueRecord(int EmployeeId, int ItemId, DateTimeOffset OccurredAt, decimal Quantity, CustodyKind Kind = CustodyKind.Work);
 
 /// <summary>Сколько позиции за сотрудником в актах на утверждении.</summary>
 public record ReservedRecord(int EmployeeId, int ItemId, decimal Quantity);
@@ -85,10 +85,13 @@ public interface IStockRepository
     /// <summary>Расхождения приёмки (с партией и позицией); по умолчанию — только незакрытые.</summary>
     Task<IReadOnlyList<ReceiptDiscrepancy>> ListDiscrepanciesAsync(bool includeResolved, CancellationToken ct = default);
 
-    /// <summary>Остатки на складе по позициям (все места) — для сверки с 1С. Партии вне учёта не входят.</summary>
+    /// <summary>
+    /// Что числится в 1С за МОЛ склада, по позициям — для сверки: остатки во всех местах склада
+    /// плюс «выдано в работу» (в 1С это по-прежнему у кладовщика). Партии вне учёта не входят.
+    /// </summary>
     Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default);
 
-    /// <summary>Подотчёт по сотрудникам и позициям — для сверки с 1С.</summary>
+    /// <summary>«Подотчёт по 1С» по сотрудникам и позициям — для сверки с ведомостями их МОЛ.</summary>
     Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);

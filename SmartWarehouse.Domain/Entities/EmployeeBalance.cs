@@ -1,3 +1,5 @@
+using SmartWarehouse.Domain.Enums;
+
 namespace SmartWarehouse.Domain.Entities;
 
 /// <summary>
@@ -18,6 +20,9 @@ public class EmployeeBalance
     public int BatchId { get; set; }
 
     public Batch Batch { get; set; } = null!;
+
+    /// <summary>«Выдано в работу» (учёт за МОЛ склада) или «подотчёт по 1С» (МОЛ — сам сотрудник).</summary>
+    public CustodyKind Kind { get; set; }
 
     public decimal Quantity { get; set; }
 }

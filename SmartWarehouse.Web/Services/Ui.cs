@@ -105,6 +105,16 @@ public static class Ui
         _ => status.ToString()
     };
 
+    /// <summary>Вид подотчёта коротко — для метки в списках.</summary>
+    public static string CustodyKindShort(CustodyKind kind) => kind == CustodyKind.Official ? "по 1С" : "в работе";
+
+    /// <summary>Вид подотчёта полностью — для заголовков и подсказок.</summary>
+    public static string CustodyKindTitle(CustodyKind kind) => kind == CustodyKind.Official
+        ? "Подотчёт по 1С: в 1С на МОЛ сотрудника, списывает он сам своим актом"
+        : "Выдано в работу: в 1С остаётся на МОЛ кладовщика, списывает кладовщик по отчёту сотрудника";
+
+    public static string CustodyKindClass(CustodyKind kind) => kind == CustodyKind.Official ? "tag-official" : "tag-info";
+
     public static string ActStateClass(ActStatus status) => status switch
     {
         ActStatus.Draft => "tag-draft",
