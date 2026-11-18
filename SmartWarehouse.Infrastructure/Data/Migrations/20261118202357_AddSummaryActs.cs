@@ -47,6 +47,15 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                 principalTable: "write_off_acts",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.SetNull);
+
+            // Позиции вне учёта в уже подтверждённых отчётах списаны при подтверждении —
+            // помечаем их документом отчёта, чтобы они не попадали в сводный акт и не числились в резерве.
+            migrationBuilder.Sql("""
+                UPDATE write_off_act_lines l SET "DocumentId" = a."DocumentId"
+                FROM write_off_acts a, batches b
+                WHERE l."ActId" = a."Id" AND a."Kind" = 1 AND a."DocumentId" IS NOT NULL
+                  AND l."BatchId" = b."Id" AND b."OffBook";
+                """);
         }
 
         /// <inheritdoc />
