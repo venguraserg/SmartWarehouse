@@ -15,7 +15,8 @@ public record ActActor(int? EmployeeId, string? DisplayName, bool IsWarehouse, b
 
 public interface IWriteOffActService
 {
-    Task<IReadOnlyList<ActSummaryDto>> ListAsync(ActScope scope, ActStatus? status, int? employeeId, ActActor actor, CancellationToken ct = default);
+    Task<IReadOnlyList<ActSummaryDto>> ListAsync(ActScope scope, ActStatus? status, int? employeeId, ActActor actor, CancellationToken ct = default,
+        ActKind? kind = null);
 
     Task<ActDto> GetAsync(int id, ActActor actor, CancellationToken ct = default);
 
@@ -42,13 +43,18 @@ public interface IWriteOffActService
     /// <summary>Вернуть на доработку с замечанием.</summary>
     Task<ActDto> ReturnAsync(int id, string? remark, ActActor actor, CancellationToken ct = default);
 
-    /// <summary>Сколько актов ждут утверждения текущим пользователем.</summary>
+    /// <summary>Сколько ждут решения текущего пользователя: акты подчинённых, а кладовщику — и отчёты на подтверждении.</summary>
     Task<int> CountToApproveAsync(ActActor actor, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Акты на списание: сотрудник отчитывается, куда израсходовал полученное, руководитель утверждает.
-/// Остатки меняются только при утверждении — проведением документа списания (через <see cref="StockService"/>),
+/// Акты на списание и отчёты об использовании — один механизм, разные правила (<see cref="ActKind"/>).
+/// <list type="bullet">
+/// <item>Акт (АС): «подотчёт по 1С», утверждает руководитель — проводится списание с сотрудника.</item>
+/// <item>Отчёт (ОИ): выданное «в работу», подтверждает кладовщик (внесённый кладовщиком — подтверждён сразу).
+/// Подтверждённое остаётся в резерве до сводного акта кладовщика за месяц; вне учёта списывается сразу.</item>
+/// </list>
+/// Остатки меняются только проведением документа списания (через <see cref="StockService"/>),
 /// акт и документ сохраняются одной транзакцией.
 /// </summary>
 public class WriteOffActService(
@@ -64,18 +70,18 @@ public class WriteOffActService(
     // ---------- Чтение ----------
 
     public async Task<IReadOnlyList<ActSummaryDto>> ListAsync(
-        ActScope scope, ActStatus? status, int? employeeId, ActActor actor, CancellationToken ct = default)
+        ActScope scope, ActStatus? status, int? employeeId, ActActor actor, CancellationToken ct = default, ActKind? kind = null)
     {
         ActFilter filter;
         if (scope == ActScope.ToApprove)
         {
-            if (actor.EmployeeId is not int me)
+            if (actor.EmployeeId is null && !actor.IsWarehouse)
                 return [];
-            filter = new ActFilter(null, me, ActStatus.Pending, employeeId, 500);
+            filter = new ActFilter(null, actor.EmployeeId, ActStatus.Pending, employeeId, 500, actor.IsWarehouse, kind);
         }
         else
         {
-            filter = new ActFilter(await VisibleEmployeesAsync(actor, ct), null, status, employeeId, 500);
+            filter = new ActFilter(await VisibleEmployeesAsync(actor, ct), null, status, employeeId, 500, Kind: kind);
         }
 
         var headers = await acts.ListAsync(filter, ct);
@@ -89,14 +95,16 @@ public class WriteOffActService(
     }
 
     public async Task<int> CountToApproveAsync(ActActor actor, CancellationToken ct = default) =>
-        actor.EmployeeId is int me ? await acts.CountToApproveAsync(me, ct) : 0;
+        actor.EmployeeId is not null || actor.IsWarehouse ? await acts.CountToApproveAsync(actor.EmployeeId, actor.IsWarehouse, ct) : 0;
 
     // ---------- Черновик ----------
 
     public async Task<ActDto> CreateAsync(SaveActRequest request, ActActor actor, CancellationToken ct = default)
     {
         if (!actor.IsWarehouse && actor.EmployeeId != request.EmployeeId)
-            throw new ForbiddenException("Акт на списание составляет сам сотрудник (или кладовщик за него).");
+            throw new ForbiddenException(request.Kind == ActKind.UsageReport
+                ? "Отчёт об использовании вносит сам сотрудник (или кладовщик с его слов)."
+                : "Акт на списание составляет сам сотрудник (или кладовщик за него).");
 
         var employee = await employees.GetAsync(request.EmployeeId, ct)
             ?? throw new NotFoundException($"Сотрудник {request.EmployeeId} не найден.");
@@ -105,6 +113,7 @@ public class WriteOffActService(
         var act = new WriteOffAct
         {
             EmployeeId = employee.Id,
+            Kind = request.Kind,
             Status = ActStatus.Draft,
             CreatedAt = now,
             UpdatedAt = now,
@@ -123,6 +132,8 @@ public class WriteOffActService(
         EnsureCanEdit(act, actor);
         if (request.EmployeeId != act.EmployeeId)
             throw new DomainException("Сотрудника в акте сменить нельзя — составьте новый акт.");
+        if (request.Kind != act.Kind)
+            throw new DomainException("Акт нельзя превратить в отчёт об использовании и наоборот — составьте новый.");
 
         await ApplyAsync(act, request, act.Employee, ct);
         act.Status = ActStatus.Draft;
@@ -154,7 +165,7 @@ public class WriteOffActService(
         var current = act.Lines.OrderBy(l => l.LineNo)
             .Select(l => new ActLineRequest(l.ItemId, l.Quantity, l.EquipmentId, l.Usage, l.UsedOn, l.BatchId))
             .ToList();
-        var allocated = await AllocateAsync(act.Employee, current, act.Lines.GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.First().Item), act.Id, ct);
+        var allocated = await AllocateAsync(act.Employee, act.Custody, current, act.Lines.GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.First().Item), act.Id, ct);
         SetLines(act, allocated);
 
         var now = clock.GetUtcNow();
@@ -162,9 +173,11 @@ public class WriteOffActService(
         act.SubmittedAt = now;
         act.UpdatedAt = now;
 
-        // Руководителя нет — сотрудник утверждает свои акты сам, без лишнего шага.
-        if (ApproverOf(act.Employee).Id == act.EmployeeId && actor.EmployeeId == act.EmployeeId)
-            await ApproveCoreAsync(act, ct);
+        // Отчёт, который вносит кладовщик (со слов сотрудника), подтверждён сразу.
+        // Акт: руководителя нет — сотрудник утверждает свои акты сам, без лишнего шага.
+        if (act.Kind == ActKind.UsageReport ? actor.IsWarehouse
+                : ApproverOf(act.Employee).Id == act.EmployeeId && actor.EmployeeId == act.EmployeeId)
+            await ApproveCoreAsync(act, actor, ct);
 
         await acts.SaveChangesAsync(ct);
         return await GetAsync(act.Id, actor, ct);
@@ -175,8 +188,8 @@ public class WriteOffActService(
         var act = await LoadVisibleAsync(id, actor, ct);
         if (!CanRecall(act, actor))
             throw act.Status == ActStatus.Pending
-                ? new ForbiddenException("Отозвать акт может сам сотрудник или кладовщик.")
-                : new DomainException("Отозвать можно только акт, который на утверждении.");
+                ? new ForbiddenException("Отозвать может сам сотрудник или кладовщик.")
+                : new DomainException("Отозвать можно только то, что на утверждении (подтверждении).");
 
         act.Status = ActStatus.Draft;
         act.UpdatedAt = clock.GetUtcNow();
@@ -189,7 +202,7 @@ public class WriteOffActService(
         var act = await LoadVisibleAsync(id, actor, ct);
         EnsureCanDecide(act, actor);
 
-        await ApproveCoreAsync(act, ct);
+        await ApproveCoreAsync(act, actor, ct);
         await acts.SaveChangesAsync(ct);
         return await GetAsync(act.Id, actor, ct);
     }
@@ -199,17 +212,14 @@ public class WriteOffActService(
         var act = await LoadVisibleAsync(id, actor, ct);
         EnsureCanDecide(act, actor);
 
-        var text = Clean(remark) ?? throw new DomainException("Напишите замечание: что нужно исправить в акте.");
+        var text = Clean(remark) ?? throw new DomainException("Напишите замечание: что нужно исправить.");
         if (text.Length > 1000)
             throw new DomainException("Замечание — не длиннее 1000 символов.");
 
-        var approver = ApproverOf(act.Employee);
         var now = clock.GetUtcNow();
         act.Status = ActStatus.Returned;
         act.ReturnRemark = text;
-        act.DecidedById = approver.Id;
-        act.DecidedBy = approver.ShortName;
-        act.DecidedByPosition = approver.Position;
+        SetDecider(act, actor);
         act.DecidedAt = now;
         act.UpdatedAt = now;
 
@@ -217,39 +227,72 @@ public class WriteOffActService(
         return await GetAsync(act.Id, actor, ct);
     }
 
-    /// <summary>Проводит документ списания и отмечает акт утверждённым (без сохранения).</summary>
-    private async Task ApproveCoreAsync(WriteOffAct act, CancellationToken ct)
+    /// <summary>
+    /// Утверждает акт или подтверждает отчёт (без сохранения). Акт — проводится списание всего с «подотчёта по 1С».
+    /// Отчёт — списываются сразу только партии вне учёта (с «в работе»); остальное остаётся в резерве
+    /// до сводного акта кладовщика.
+    /// </summary>
+    private async Task ApproveCoreAsync(WriteOffAct act, ActActor actor, CancellationToken ct)
     {
-        var approver = ApproverOf(act.Employee);
+        var lines = act.Lines.OrderBy(l => l.LineNo).ToList();
+        if (act.Kind == ActKind.UsageReport)
+        {
+            // Партии строк только что закреплены (при отправке) — навигация может быть не загружена.
+            var offBook = new List<WriteOffActLine>();
+            foreach (var l in lines)
+                if ((l.Batch ?? (l.BatchId is int b ? await stockRepo.GetBatchAsync(b, ct) : null))?.OffBook == true)
+                    offBook.Add(l);
+            lines = offBook;
+        }
 
-        // Если всё израсходовано на одно оборудование — оно же попадает в документ.
-        var equipment = act.Lines.Select(l => l.EquipmentId).Distinct().ToList();
-        var comment = $"По акту на списание {act.Number}";
-        if (act.ExternalNumber is not null)
-            comment += $" ({act.ExternalNumber})";
+        if (lines.Count > 0)
+        {
+            // Если всё израсходовано на одно оборудование — оно же попадает в документ.
+            var equipment = lines.Select(l => l.EquipmentId).Distinct().ToList();
+            var comment = act.Kind == ActKind.UsageReport
+                ? $"Вне учёта, по отчёту об использовании {act.Number}"
+                : $"По акту на списание {act.Number}";
+            if (act.ExternalNumber is not null)
+                comment += $" ({act.ExternalNumber})";
 
-        var request = new CreateDocumentRequest(
-            MovementType.WriteOff,
-            act.Number,
-            equipment.Count == 1 ? equipment[0] : null,
-            null,
-            comment,
-            act.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineRequest(l.ItemId, l.Quantity, null, null, l.BatchId)).ToList(),
-            PerformedById: approver.Id,
-            ReceivedById: act.EmployeeId);
+            var request = new CreateDocumentRequest(
+                MovementType.WriteOff,
+                act.Number,
+                equipment.Count == 1 ? equipment[0] : null,
+                null,
+                comment,
+                lines.Select(l => new DocumentLineRequest(l.ItemId, l.Quantity, null, null, l.BatchId)).ToList(),
+                PerformedById: act.Kind == ActKind.UsageReport ? actor.EmployeeId : ApproverOf(act.Employee).Id,
+                ReceivedById: act.EmployeeId,
+                Custody: act.Custody);
 
-        var staged = await stock.StageAsync(request, exceptActId: act.Id, ct);
+            var staged = await stock.StageAsync(request, exceptActId: act.Id, ct);
+            act.Document = staged.Document;
+            staged.Document.Act = act;
+        }
 
         var now = clock.GetUtcNow();
-        act.Document = staged.Document;
-        staged.Document.Act = act;
         act.Status = ActStatus.Approved;
-        act.DecidedById = approver.Id;
-        act.DecidedBy = approver.ShortName;
-        act.DecidedByPosition = approver.Position;
+        SetDecider(act, actor);
         act.DecidedAt = now;
         act.UpdatedAt = now;
         act.ReturnRemark = null;
+    }
+
+    /// <summary>Кто решил: по акту — руководитель сотрудника, по отчёту — кладовщик, который подтвердил (вернул).</summary>
+    private static void SetDecider(WriteOffAct act, ActActor actor)
+    {
+        if (act.Kind == ActKind.UsageReport)
+        {
+            act.DecidedById = actor.EmployeeId;
+            act.DecidedBy = Clean(actor.DisplayName);
+            act.DecidedByPosition = null;
+            return;
+        }
+        var approver = ApproverOf(act.Employee);
+        act.DecidedById = approver.Id;
+        act.DecidedBy = approver.ShortName;
+        act.DecidedByPosition = approver.Position;
     }
 
     // ---------- Проверки ----------
@@ -312,7 +355,7 @@ public class WriteOffActService(
             }
         }
 
-        var allocated = await AllocateAsync(employee, lines, items, act.Id == 0 ? null : act.Id, ct);
+        var allocated = await AllocateAsync(employee, act.Custody, lines, items, act.Id == 0 ? null : act.Id, ct);
 
         act.PeriodFrom = request.PeriodFrom;
         act.PeriodTo = request.PeriodTo;
@@ -341,11 +384,12 @@ public class WriteOffActService(
     }
 
     /// <summary>
-    /// Распределяет строки акта по партиям подотчёта: указанная партия или самая старая
-    /// (при нехватке строка делится на несколько партий). Учитывает резерв других актов на утверждении.
+    /// Распределяет строки по партиям подотчёта нужного вида (акт — «по 1С», отчёт — «в работе»):
+    /// указанная партия или самая старая (при нехватке строка делится на несколько партий).
+    /// Учитывает резерв других актов и отчётов.
     /// </summary>
     private async Task<List<(ActLineRequest Line, int BatchId, decimal Quantity)>> AllocateAsync(
-        Employee employee, IReadOnlyList<ActLineRequest> lines, IReadOnlyDictionary<int, Item> items, int? exceptActId, CancellationToken ct)
+        Employee employee, CustodyKind custody, IReadOnlyList<ActLineRequest> lines, IReadOnlyDictionary<int, Item> items, int? exceptActId, CancellationToken ct)
     {
         var free = new Dictionary<int, Dictionary<int, decimal>>();      // позиция → партия → свободно
         var order = new Dictionary<int, List<int>>();                     // позиция → партии от старой к новой
@@ -353,11 +397,11 @@ public class WriteOffActService(
 
         foreach (var itemId in lines.Select(l => l.ItemId).Distinct())
         {
-            var batches = await stockRepo.GetEmployeeBatchesAsync(itemId, employee.Id, ct);
+            var batches = (await stockRepo.GetEmployeeBatchesAsync(itemId, employee.Id, ct)).Where(b => b.Kind == custody).ToList();
             var reserved = await stockRepo.GetReservedByBatchAsync(itemId, employee.Id, exceptActId, ct);
-            free[itemId] = batches.ToDictionary(b => b.BatchId, b => Math.Max(0, b.Quantity - reserved.GetValueOrDefault(b.BatchId)));
+            free[itemId] = batches.ToDictionary(b => b.BatchId, b => Math.Max(0, b.Quantity - reserved.GetValueOrDefault((b.BatchId, custody))));
             order[itemId] = batches.OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId).Select(b => b.BatchId).ToList();
-            held[itemId] = reserved.Values.Sum();
+            held[itemId] = reserved.Where(kv => kv.Key.Kind == custody).Sum(kv => kv.Value);
         }
 
         var result = new List<(ActLineRequest, int, decimal)>();
@@ -399,7 +443,7 @@ public class WriteOffActService(
     private async Task<WriteOffAct> LoadVisibleAsync(int id, ActActor actor, CancellationToken ct)
     {
         var act = await acts.GetAsync(id, ct) ?? throw new NotFoundException($"Акт {id} не найден.");
-        if (actor.IsWarehouse || actor.EmployeeId == ApproverOf(act.Employee).Id)
+        if (actor.IsWarehouse || (act.Kind == ActKind.WriteOff && actor.EmployeeId == ApproverOf(act.Employee).Id))
             return act;
 
         var visible = await VisibleEmployeesAsync(actor, ct);
@@ -429,15 +473,18 @@ public class WriteOffActService(
     private static bool CanRecall(WriteOffAct act, ActActor actor) =>
         act.Status == ActStatus.Pending && (actor.IsWarehouse || actor.EmployeeId == act.EmployeeId);
 
+    /// <summary>Акт утверждает руководитель сотрудника; отчёт подтверждает кладовщик.</summary>
     private static bool CanDecide(WriteOffAct act, ActActor actor) =>
-        act.Status == ActStatus.Pending && actor.EmployeeId is int me && me == ApproverOf(act.Employee).Id;
+        act.Status == ActStatus.Pending && (act.Kind == ActKind.UsageReport
+            ? actor.IsWarehouse
+            : actor.EmployeeId is int me && me == ApproverOf(act.Employee).Id);
 
     private static void EnsureCanEdit(WriteOffAct act, ActActor actor)
     {
         if (!act.IsEditable)
             throw new DomainException(act.Status == ActStatus.Pending
-                ? $"Акт {act.Number} на утверждении — сначала отзовите его."
-                : $"Акт {act.Number} уже утверждён, изменить его нельзя.");
+                ? $"{act.Number} на утверждении (подтверждении) — сначала отзовите."
+                : $"{act.Number} уже утверждён (подтверждён), изменить нельзя.");
         if (!CanEdit(act, actor))
             throw new ForbiddenException("Изменять акт может сам сотрудник или кладовщик.");
     }
@@ -445,9 +492,13 @@ public class WriteOffActService(
     private static void EnsureCanDecide(WriteOffAct act, ActActor actor)
     {
         if (act.Status != ActStatus.Pending)
-            throw new DomainException($"Акт {act.Number} не на утверждении.");
+            throw new DomainException(act.Kind == ActKind.UsageReport
+                ? $"Отчёт {act.Number} не на подтверждении."
+                : $"Акт {act.Number} не на утверждении.");
         if (!CanDecide(act, actor))
-            throw new ForbiddenException($"Акт утверждает {ApproverOf(act.Employee).ShortName} — непосредственный руководитель сотрудника.");
+            throw new ForbiddenException(act.Kind == ActKind.UsageReport
+                ? "Отчёт об использовании подтверждает кладовщик."
+                : $"Акт утверждает {ApproverOf(act.Employee).ShortName} — непосредственный руководитель сотрудника.");
     }
 
     private static string? Clean(string? value) =>
@@ -457,7 +508,7 @@ public class WriteOffActService(
 
     private static ActDto ToDto(WriteOffAct act, ActActor actor)
     {
-        var approver = ApproverOf(act.Employee);
+        var approver = DeciderOf(act);
         return new ActDto(
             act.Id,
             act.Number,
@@ -474,7 +525,7 @@ public class WriteOffActService(
             act.UpdatedAt,
             act.SubmittedAt,
             approver.Id,
-            approver.ShortName,
+            approver.Name,
             act.DecidedById,
             act.DecidedBy,
             act.DecidedByPosition,
@@ -489,7 +540,17 @@ public class WriteOffActService(
                     l.EquipmentId, l.Equipment is { } e ? $"{e.Code} — {e.Name}" : null,
                     l.Usage, l.UsedOn, l.BatchId, l.Batch?.UnitPrice, l.Batch?.ReceivedAt))
                 .ToList(),
-            new ActPermissions(CanEdit(act, actor), CanEdit(act, actor), CanRecall(act, actor), CanDecide(act, actor)));
+            new ActPermissions(CanEdit(act, actor), CanEdit(act, actor), CanRecall(act, actor), CanDecide(act, actor)),
+            act.Kind);
+    }
+
+    /// <summary>Кто решает: по акту — руководитель (или сам сотрудник), по отчёту — кладовщик.</summary>
+    private static (int Id, string Name) DeciderOf(WriteOffAct act)
+    {
+        if (act.Kind == ActKind.UsageReport)
+            return (0, "кладовщик");
+        var approver = ApproverOf(act.Employee);
+        return (approver.Id, approver.ShortName);
     }
 
     private static ActSummaryDto ToSummary(WriteOffAct act, int lineCount) => new(
@@ -504,7 +565,8 @@ public class WriteOffActService(
         lineCount,
         act.UpdatedAt,
         act.SubmittedAt,
-        ApproverOf(act.Employee).ShortName,
+        DeciderOf(act).Name,
         act.DecidedBy,
-        act.DecidedAt);
+        act.DecidedAt,
+        act.Kind);
 }

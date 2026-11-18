@@ -58,13 +58,18 @@ public class WriteOffActServiceTests
         _service = new WriteOffActService(_acts, _stock, _employees, _stockService, clock);
     }
 
-    /// <summary>Приход на склад и выдача сотруднику.</summary>
-    private async Task GiveAsync(int employee, int item, decimal qty)
+    /// <summary>
+    /// Приход на склад и выдача сотруднику. По умолчанию — «подотчёт по 1С» (с него списывают акты);
+    /// для отчётов об использовании — «в работу».
+    /// </summary>
+    private async Task GiveAsync(int employee, int item, decimal qty, CustodyKind kind = CustodyKind.Official, bool offBook = false)
     {
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
-            MovementType.Receipt, null, null, null, null, [new DocumentLineRequest(item, qty, null, Cell, UnitPrice: 10)]));
+            MovementType.Receipt, offBook ? null : "ТТН 1", null, null, null,
+            [new DocumentLineRequest(item, qty, null, Cell, UnitPrice: offBook ? null : 10)], OffBook: offBook));
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
-            MovementType.Issue, null, null, null, null, [new DocumentLineRequest(item, qty, Cell, null)], ReceivedById: employee));
+            MovementType.Issue, null, null, null, null, [new DocumentLineRequest(item, qty, Cell, null)], ReceivedById: employee,
+            Custody: kind));
     }
 
     private decimal Custody(int employee, int item = Bearing) =>
@@ -262,6 +267,99 @@ public class WriteOffActServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => _service.GetAsync(act.Id, AsFitter));
     }
 
+    // ---------- Отчёт об использовании (выданное «в работу») ----------
+
+    private static SaveActRequest Report(int employee, params ActLineRequest[] lines) =>
+        new(employee, null, null, null, null, lines, ActKind.UsageReport);
+
+    private decimal Held(int employee, CustodyKind kind, int item = Bearing) =>
+        _stock.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item && b.Kind == kind).Sum(b => b.Quantity);
+
+    [Fact]
+    public async Task Отчёт_сотрудника_подтверждает_кладовщик_и_позиции_остаются_в_резерве()
+    {
+        await GiveAsync(Fitter, Bearing, 5, CustodyKind.Work);
+
+        var report = await _service.CreateAsync(Report(Fitter, Line(3, equipment: Pump)), AsFitter);
+        Assert.StartsWith("ОИ-", report.Number);
+        report = await _service.SubmitAsync(report.Id, AsFitter);
+        Assert.Equal(ActStatus.Pending, report.Status);
+        Assert.Equal("кладовщик", report.ApproverName);
+
+        // Руководитель отчёт видит, но подтверждает кладовщик
+        await Assert.ThrowsAsync<ForbiddenException>(() => _service.ApproveAsync(report.Id, AsBoss));
+        Assert.Equal(1, await _service.CountToApproveAsync(AsKeeper));
+        Assert.Single(await _service.ListAsync(ActScope.ToApprove, null, null, AsKeeper));
+
+        report = await _service.ApproveAsync(report.Id, AsKeeper);
+        Assert.Equal((ActStatus.Approved, "Иванов И."), (report.Status, report.DecidedBy));
+        Assert.Null(report.DocumentId);                          // списание — сводным актом кладовщика
+        Assert.Equal(5, Held(Fitter, CustodyKind.Work));        // ещё числится, но 3 — в резерве
+
+        // Зарезервированное по отчёту вернуть нельзя — только свободные 2
+        await Assert.ThrowsAsync<InsufficientStockException>(() => _stockService.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Return, null, null, null, null, [new DocumentLineRequest(Bearing, 3, null, Cell)], ReceivedById: Fitter)));
+        await _stockService.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Return, null, null, null, null, [new DocumentLineRequest(Bearing, 2, null, Cell)], ReceivedById: Fitter));
+        Assert.Equal(3, Held(Fitter, CustodyKind.Work));
+    }
+
+    [Fact]
+    public async Task Отчёт_внесённый_кладовщиком_подтверждён_сразу()
+    {
+        await GiveAsync(Fitter, Bearing, 2, CustodyKind.Work);
+
+        var report = await _service.CreateAsync(Report(Fitter, Line(2, usage: "насос Н-3, сальник")), AsKeeper);
+        report = await _service.SubmitAsync(report.Id, AsKeeper);
+
+        Assert.Equal(ActStatus.Approved, report.Status);
+        Assert.Equal(0, await _service.CountToApproveAsync(AsKeeper));
+    }
+
+    [Fact]
+    public async Task Отчёт_только_по_выданному_в_работу_а_акт_только_по_подотчёту_1С()
+    {
+        await GiveAsync(Fitter, Bearing, 2, CustodyKind.Official);
+        await GiveAsync(Fitter, Belt, 1, CustodyKind.Work);
+
+        await Assert.ThrowsAsync<InsufficientStockException>(() => _service.CreateAsync(Report(Fitter, Line(1)), AsFitter));
+        await Assert.ThrowsAsync<InsufficientStockException>(() => _service.CreateAsync(Request(Fitter, Line(1, item: Belt)), AsFitter));
+
+        var act = await _service.CreateAsync(Request(Fitter, Line(2)), AsFitter);
+        var report = await _service.CreateAsync(Report(Fitter, Line(1, item: Belt)), AsFitter);
+        Assert.StartsWith("АС-", act.Number);
+        Assert.StartsWith("ОИ-", report.Number);
+    }
+
+    [Fact]
+    public async Task Вне_учёта_по_отчёту_списывается_сразу_при_подтверждении()
+    {
+        await GiveAsync(Fitter, Bearing, 4, CustodyKind.Work, offBook: true);
+
+        var report = await _service.CreateAsync(Report(Fitter, Line(3)), AsFitter);
+        await _service.SubmitAsync(report.Id, AsFitter);
+        report = await _service.ApproveAsync(report.Id, AsKeeper);
+
+        Assert.NotNull(report.DocumentId);
+        Assert.Equal(1, Held(Fitter, CustodyKind.Work));
+        // Резерва нет — остаток можно вернуть
+        await _stockService.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Return, null, null, null, null, [new DocumentLineRequest(Bearing, 1, null, Cell)], ReceivedById: Fitter));
+    }
+
+    [Fact]
+    public async Task Кладовщик_возвращает_отчёт_с_замечанием()
+    {
+        await GiveAsync(Fitter, Bearing, 1, CustodyKind.Work);
+        var report = await _service.CreateAsync(Report(Fitter, Line(1)), AsFitter);
+        await _service.SubmitAsync(report.Id, AsFitter);
+
+        report = await _service.ReturnAsync(report.Id, "Укажите оборудование", AsKeeper);
+
+        Assert.Equal((ActStatus.Returned, "Укажите оборудование", "Иванов И."), (report.Status, report.ReturnRemark, report.DecidedBy));
+        Assert.True(report.Can.Edit);
+    }
+
     // ---------- Видимость ----------
 
     [Fact]
@@ -319,8 +417,10 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
         var query = stock.Acts.AsEnumerable();
         if (filter.EmployeeIds is not null)
             query = query.Where(a => filter.EmployeeIds.Contains(a.EmployeeId));
-        if (filter.ApproverId is int approver)
-            query = query.Where(a => IsApprover(a, approver));
+        if (filter.ApproverId is not null || filter.ReportsToConfirm)
+            query = query.Where(a => ToDecide(a, filter.ApproverId, filter.ReportsToConfirm));
+        if (filter.Kind is ActKind kind)
+            query = query.Where(a => a.Kind == kind);
         if (filter.Status is ActStatus status)
             query = query.Where(a => a.Status == status);
         if (filter.EmployeeId is int employeeId)
@@ -330,12 +430,17 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
             query.OrderByDescending(a => a.Id).Take(filter.Take).Select(a => new ActHeader(a, a.Lines.Count)).ToList());
     }
 
-    public Task<int> CountToApproveAsync(int approverId, CancellationToken ct = default)
+    public Task<int> CountToApproveAsync(int? approverId, bool reportsToConfirm, CancellationToken ct = default)
     {
         foreach (var act in stock.Acts)
             Populate(act);
-        return Task.FromResult(stock.Acts.Count(a => a.Status == ActStatus.Pending && IsApprover(a, approverId)));
+        return Task.FromResult(stock.Acts.Count(a => ToDecide(a, approverId, reportsToConfirm)));
     }
+
+    private static bool ToDecide(WriteOffAct a, int? approverId, bool reportsToConfirm) =>
+        a.Status == ActStatus.Pending
+        && ((a.Kind == ActKind.WriteOff && approverId is int me && IsApprover(a, me))
+            || (reportsToConfirm && a.Kind == ActKind.UsageReport));
 
     public void Add(WriteOffAct act) => _pending.Add(act);
 

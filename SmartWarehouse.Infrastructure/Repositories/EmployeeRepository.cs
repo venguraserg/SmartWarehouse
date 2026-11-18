@@ -106,18 +106,19 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
 
     public async Task<IReadOnlyList<ReservedRecord>> ListReservedAsync(IReadOnlyCollection<int>? employeeIds, CancellationToken ct = default)
     {
-        var query = db.WriteOffActLines.AsNoTracking().Where(l => l.Act.Status == ActStatus.Pending);
+        var query = StockRepository.ReservedLines(db.WriteOffActLines.AsNoTracking());
         if (employeeIds is not null)
         {
             var ids = employeeIds.ToList();
             query = query.Where(l => ids.Contains(l.Act.EmployeeId));
         }
         var rows = await query
-            .Select(l => new { l.Act.EmployeeId, l.ItemId, l.Quantity })
+            .Select(l => new { l.Act.EmployeeId, l.ItemId, l.Quantity, l.Act.Kind })
             .ToListAsync(ct);
         return rows
-            .GroupBy(x => (x.EmployeeId, x.ItemId))
-            .Select(g => new ReservedRecord(g.Key.EmployeeId, g.Key.ItemId, g.Sum(x => x.Quantity)))
+            .GroupBy(x => (x.EmployeeId, x.ItemId, x.Kind))
+            .Select(g => new ReservedRecord(g.Key.EmployeeId, g.Key.ItemId, g.Sum(x => x.Quantity),
+                g.Key.Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official))
             .ToList();
     }
 

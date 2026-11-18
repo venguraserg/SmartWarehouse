@@ -1,16 +1,24 @@
 @page "/acts/new"
 @page "/acts/{Id:int}/edit"
+@page "/reports/new"
+@page "/reports/{Id:int}/edit"
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject ScannerHub Scanner
 @implements IDisposable
 
-<PageTitle>@(Id is null ? "Новый акт на списание" : $"Акт {act?.Number}") — Склад ОЭТО</PageTitle>
+<PageTitle>@Title — Склад ОЭТО</PageTitle>
 
-<h1>@(Id is null ? "Новый акт на списание" : $"Акт {act?.Number}")</h1>
+<h1>@Title</h1>
 <p class="muted" style="margin-top: -.5rem">
-    Отчёт о том, куда израсходовано полученное со склада. Можно на одну работу или сводный за период.
-    После утверждения руководителем позиции списываются.
+    @if (IsReport)
+    {
+        @("Что из выданного ")<span class="tag tag-info">в работу</span>@(" израсходовано и куда. Подтверждает кладовщик; списание в 1С — его сводным актом за месяц.")
+    }
+    else
+    {
+        @("Куда израсходован ")<span class="tag tag-official">подотчёт по 1С</span>@(". Можно на одну работу или сводный за период. После утверждения руководителем позиции списываются.")
+    }
 </p>
 
 <Alert Error="@error" />
@@ -25,8 +33,8 @@
 else if (act is not null && !act.Can.Edit)
 {
     <div class="panel">
-        Этот акт сейчас изменить нельзя (@Ui.ActState(act.Status).ToLowerInvariant()).
-        <a href="/acts/@act.Id">Открыть акт</a>
+        @act.Number сейчас изменить нельзя (@Ui.ActState(act.Status, act.Kind).ToLowerInvariant()).
+        <a href="/acts/@act.Id">Открыть</a>
     </div>
 }
 else if (!isWarehouse && myEmployeeId is null)
@@ -132,7 +140,11 @@ else
         }
         else if (custody.Count == 0 && lines.All(l => l.ItemId is null))
         {
-            <div class="panel empty">За сотрудником нет свободных позиций (всё списано, возвращено или уже в актах на утверждении).</div>
+            <div class="panel empty">
+                @(IsReport
+                    ? "За сотрудником нет свободного выданного «в работу» (всё возвращено или уже в отчётах)."
+                    : "За сотрудником нет свободного подотчёта по 1С (всё списано, возвращено или уже в актах на утверждении).")
+            </div>
         }
         else
         {
@@ -172,7 +184,7 @@ else
                                             Свободно: @Ui.Qty(Free(row)) @row.UnitCode
                                             @if (row.Reserved > 0)
                                             {
-                                                <span>(ещё @Ui.Qty(row.Reserved) — в актах на утверждении)</span>
+                                                <span>(ещё @Ui.Qty(row.Reserved) — @(IsReport ? "в других отчётах" : "в актах на утверждении"))</span>
                                             }
                                         </div>
                                     }
@@ -244,13 +256,21 @@ else
 
         <div class="actions" style="margin-top: 1.5rem">
             <button class="btn btn-primary" type="button" disabled="@saving" @onclick="() => SaveAsync(submit: true)">
-                @(SelfApproves ? "Сохранить и списать" : "Сохранить и отправить на утверждение")
+                @(IsReport
+                    ? (isWarehouse ? "Сохранить и подтвердить" : "Сохранить и отправить кладовщику")
+                    : (SelfApproves ? "Сохранить и списать" : "Сохранить и отправить на утверждение"))
             </button>
             <button class="btn" type="submit" disabled="@saving">Сохранить черновик</button>
-            <a class="btn" href="@(Id is int id ? $"/acts/{id}" : "/acts")">Отмена</a>
+            <a class="btn" href="@(Id is int id ? $"/acts/{id}" : IsReport ? "/reports" : "/acts")">Отмена</a>
         </div>
         <p class="muted">
-            @if (SelfApproves)
+            @if (IsReport)
+            {
+                @(isWarehouse
+                    ? "Отчёт, внесённый кладовщиком, подтверждается сразу. Позиции остаются в резерве до сводного акта за месяц; вне учёта списывается сразу."
+                    : "До решения кладовщика позиции в резерве: их нельзя вернуть на склад или включить в другой отчёт.")
+            }
+            else if (SelfApproves)
             {
                 @("Руководитель не назначен — вы утверждаете свои акты сами: позиции спишутся сразу.")
             }
@@ -324,6 +344,18 @@ else
     /// <summary>Сотрудник без руководителя, сам себе составляющий акт, утверждает его сразу.</summary>
     private bool SelfApproves => SelectedEmployee is { ManagerId: null } e && e.Id == myEmployeeId;
 
+    /// <summary>Отчёт об использовании («в работе») или акт на списание («подотчёт по 1С»).</summary>
+    private ActKind Kind => act?.Kind ?? (Nav.ToBaseRelativePath(Nav.Uri).StartsWith("reports", StringComparison.OrdinalIgnoreCase)
+        ? ActKind.UsageReport : ActKind.WriteOff);
+
+    private bool IsReport => Kind == ActKind.UsageReport;
+
+    private CustodyKind CustodyOfKind => IsReport ? CustodyKind.Work : CustodyKind.Official;
+
+    private string Title => Id is null
+        ? (IsReport ? "Новый отчёт об использовании" : "Новый акт на списание")
+        : (IsReport ? $"Отчёт {act?.Number}" : $"Акт {act?.Number}");
+
     // ---------- Загрузка ----------
 
     protected override async Task OnInitializedAsync()
@@ -341,7 +373,7 @@ else
             if (isWarehouse)
             {
                 employees = await Api.GetEmployeesAsync(includeInactive: true);
-                custodyHolders = (await Api.GetCustodyAsync()).Select(r => r.EmployeeId).ToHashSet();
+                custodyHolders = (await Api.GetCustodyAsync()).Where(r => r.Kind == CustodyOfKind).Select(r => r.EmployeeId).ToHashSet();
             }
             else if (myEmployeeId is int me)
             {
@@ -392,19 +424,9 @@ else
 
         try
         {
-            // Пока акт сотрудника списывает и «в работе», и «по 1С» — одной строкой на позицию
-            // (при проведении сначала берётся «по 1С»). Отдельный путь для «в работе» — отчёт и акт кладовщика.
+            // Акт — только «подотчёт по 1С», отчёт об использовании — только выданное «в работу».
             custody = (await Api.GetCustodyAsync(employeeId: id))
-                .GroupBy(r => r.ItemId)
-                .Select(g => g.First() with
-                {
-                    Quantity = g.Sum(r => r.Quantity),
-                    Reserved = g.Sum(r => r.Reserved),
-                    Value = g.Any(r => r.Value is not null) ? g.Sum(r => r.Value ?? 0) : null,
-                    ValueIncomplete = g.Any(r => r.ValueIncomplete),
-                    HeldSince = g.Min(r => r.HeldSince),
-                    Kind = g.Any(r => r.Kind == CustodyKind.Official) ? CustodyKind.Official : CustodyKind.Work
-                })
+                .Where(r => r.Kind == CustodyOfKind)
                 .ToList();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
@@ -609,7 +631,8 @@ else
                 l.EquipmentId ?? (string.IsNullOrWhiteSpace(l.Usage) ? defaultEquipmentId : null),
                 string.IsNullOrWhiteSpace(l.Usage) ? defaultUsage : l.Usage,
                 l.UsedOn,
-                l.BatchId)).ToList());
+                l.BatchId)).ToList(),
+            Kind);
 
         saving = true;
         try

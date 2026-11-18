@@ -30,6 +30,13 @@
                     <div class="nav-group">Учёт</div>
                     <NavLink href="/stock">Остатки</NavLink>
                     <NavLink href="/custody">Подотчёт</NavLink>
+                    <NavLink href="/reports">
+                        Отчёты об использовании
+                        @if (reportsToConfirm > 0)
+                        {
+                            <span class="nav-badge" title="Ждут подтверждения кладовщиком">@reportsToConfirm</span>
+                        }
+                    </NavLink>
                     <NavLink href="/acts">
                         Акты на списание
                         @if (actsToApprove > 0)
@@ -122,6 +129,7 @@
     /// <summary>Сайт открыт в приложении «Склад» для Android (там есть сканирование камерой и сканер ТСД).</summary>
     private bool isNativeApp;
     private int actsToApprove;
+    private int reportsToConfirm;
 
     private IJSObjectReference? scannerModule;
     private DotNetObjectReference<MainLayout>? self;
@@ -223,16 +231,21 @@
             return;
         }
 
-        // Значок «ждут утверждения» обновляется при каждом переходе по страницам.
-        if (user.EmployeeIdOf() is not null)
+        // Значки «ждут утверждения / подтверждения» обновляются при каждом переходе по страницам.
+        // Всего ждут решения = акты (мне утверждать) + отчёты (кладовщику подтверждать).
+        if (user.EmployeeIdOf() is not null || user.IsWarehouseStaff())
         {
             try
             {
-                actsToApprove = await Api.GetActsToApproveCountAsync();
+                var total = await Api.GetActsToApproveCountAsync();
+                reportsToConfirm = user.IsWarehouseStaff() && total > 0
+                    ? (await Api.GetActsAsync(ActScope.ToApprove, kind: ActKind.UsageReport)).Count
+                    : 0;
+                actsToApprove = total - reportsToConfirm;
             }
             catch (Exception ex) when (ex is ApiException or HttpRequestException)
             {
-                actsToApprove = 0; // меню не должно ломаться из-за недоступного API
+                actsToApprove = reportsToConfirm = 0; // меню не должно ломаться из-за недоступного API
             }
         }
     }

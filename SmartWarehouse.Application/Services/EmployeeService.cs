@@ -69,13 +69,10 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         IReadOnlyList<ReservedRecord> reserved = employeeIds.Count == 0 ? [] : await repo.ListReservedAsync(employeeIds, ct);
         var issuesByKey = issues.ToLookup(i => (i.EmployeeId, i.ItemId, i.Kind));
         var reservedByKey = reserved
-            .GroupBy(r => (r.EmployeeId, r.ItemId))
+            .GroupBy(r => (r.EmployeeId, r.ItemId, r.Kind))
             .ToDictionary(g => g.Key, g => g.Sum(r => r.Quantity));
 
         // Подотчёт ведётся по партиям — показываем одной строкой «сотрудник × позиция × вид» с суммой.
-        // Резерв актов на утверждении ложится сначала на «подотчёт по 1С», остаток — на «в работу» (как при проведении).
-        var officialQty = balances.Where(b => b.Kind == CustodyKind.Official)
-            .GroupBy(b => (b.EmployeeId, b.ItemId)).ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
         return balances
             .GroupBy(b => (b.EmployeeId, b.ItemId, b.Kind))
             .Select(g =>
@@ -83,9 +80,7 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
                 var b = g.First();
                 var quantity = g.Sum(x => x.Quantity);
                 var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
-                var held = reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId));
-                var official = officialQty.GetValueOrDefault((b.EmployeeId, b.ItemId));
-                var reservedHere = b.Kind == CustodyKind.Official ? Math.Min(held, official) : Math.Max(0, held - official);
+                var reservedHere = reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId, b.Kind));
                 return new CustodyRowDto(
                     b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
                     b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,

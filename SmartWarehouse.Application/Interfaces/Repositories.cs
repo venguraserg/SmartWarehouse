@@ -22,12 +22,15 @@ public record LocationInfo(int Id, string FullCode, bool HasChildren, string? Na
 public record IssueRecord(int EmployeeId, int ItemId, DateTimeOffset OccurredAt, decimal Quantity, CustodyKind Kind = CustodyKind.Work);
 
 /// <summary>Сколько позиции за сотрудником в актах на утверждении.</summary>
-public record ReservedRecord(int EmployeeId, int ItemId, decimal Quantity);
+public record ReservedRecord(int EmployeeId, int ItemId, decimal Quantity, CustodyKind Kind = CustodyKind.Official);
 
 /// <summary>Фильтр списка актов на списание.</summary>
 /// <param name="EmployeeIds">Только акты этих сотрудников (null — всех).</param>
 /// <param name="ApproverId">Только акты на утверждении, которые утверждает этот сотрудник.</param>
-public record ActFilter(IReadOnlyCollection<int>? EmployeeIds, int? ApproverId, ActStatus? Status, int? EmployeeId, int Take);
+/// <param name="ReportsToConfirm">Вместе с <paramref name="ApproverId"/>: ещё и отчёты об использовании на подтверждении (для кладовщика).</param>
+/// <param name="Kind">Только акты или только отчёты (null — все).</param>
+public record ActFilter(IReadOnlyCollection<int>? EmployeeIds, int? ApproverId, ActStatus? Status, int? EmployeeId, int Take,
+    bool ReportsToConfirm = false, ActKind? Kind = null);
 
 /// <summary>Шапка акта с числом строк — для списков.</summary>
 public record ActHeader(WriteOffAct Act, int LineCount);
@@ -61,7 +64,11 @@ public interface IStockRepository
     void AddBatch(Batch batch);
 
     /// <summary>Зарезервировано актами на утверждении по партиям (кроме акта <paramref name="exceptActId"/>).</summary>
-    Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
+    /// <summary>
+    /// Резерв подотчёта сотрудника по партиям и видам: строки актов и отчётов на утверждении/подтверждении,
+    /// а также подтверждённых отчётов об использовании, которые ещё не списаны (кроме вне учёта).
+    /// </summary>
+    Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default);
 
     /// <summary>Партии позиции с остатком: в месте, у сотрудника или везде (склад + подотчёт).</summary>
     // ---------- Приёмка по накладным ----------
@@ -271,7 +278,8 @@ public interface IWriteOffActRepository
     Task<IReadOnlyList<ActHeader>> ListAsync(ActFilter filter, CancellationToken ct = default);
 
     /// <summary>Сколько актов ждут утверждения этим сотрудником.</summary>
-    Task<int> CountToApproveAsync(int approverId, CancellationToken ct = default);
+    /// <summary>Сколько ждут решения: акты, которые утверждает сотрудник, и (для кладовщика) отчёты на подтверждении.</summary>
+    Task<int> CountToApproveAsync(int? approverId, bool reportsToConfirm, CancellationToken ct = default);
 
     void Add(WriteOffAct act);
 

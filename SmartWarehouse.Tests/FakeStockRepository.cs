@@ -62,13 +62,15 @@ internal class FakeStockRepository : IStockRepository
 
     public void AddBatch(Batch batch) => _pendingBatches.Add(batch);
 
-    public Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyDictionary<int, decimal>>(Acts
-            .Where(a => a.EmployeeId == employeeId && a.Status == ActStatus.Pending && a.Id != exceptActId)
-            .SelectMany(a => a.Lines)
-            .Where(l => l.ItemId == itemId && l.BatchId is not null)
-            .GroupBy(l => l.BatchId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity)));
+    public Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>>(Acts
+            .Where(a => a.EmployeeId == employeeId && a.Id != exceptActId)
+            .SelectMany(a => a.Lines.Select(l => (Act: a, Line: l)))
+            .Where(x => x.Line.ItemId == itemId && x.Line.BatchId is not null
+                && (x.Act.Status == ActStatus.Pending
+                    || (x.Act.Kind == ActKind.UsageReport && x.Act.Status == ActStatus.Approved && BatchOf(x.Line.BatchId!.Value)?.OffBook != true)))
+            .GroupBy(x => (x.Line.BatchId!.Value, x.Act.Custody))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Line.Quantity)));
 
     public Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemTotal>>(Balances

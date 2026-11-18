@@ -53,19 +53,28 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public void AddBatch(Batch batch) => db.Batches.Add(batch);
 
-    public async Task<IReadOnlyDictionary<int, decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default)
+    public async Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default)
     {
-        var rows = await db.WriteOffActLines
+        var rows = await ReservedLines(db.WriteOffActLines)
             .Where(l => l.ItemId == itemId
                 && l.BatchId != null
                 && l.Act.EmployeeId == employeeId
-                && l.Act.Status == ActStatus.Pending
                 && (exceptActId == null || l.ActId != exceptActId))
-            .GroupBy(l => l.BatchId!.Value)
-            .Select(g => new { BatchId = g.Key, Quantity = g.Sum(l => l.Quantity) })
+            .GroupBy(l => new { BatchId = l.BatchId!.Value, l.Act.Kind })
+            .Select(g => new { g.Key.BatchId, g.Key.Kind, Quantity = g.Sum(l => l.Quantity) })
             .ToListAsync(ct);
-        return rows.ToDictionary(r => r.BatchId, r => r.Quantity);
+        return rows.ToDictionary(
+            r => (r.BatchId, r.Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official),
+            r => r.Quantity);
     }
+
+    /// <summary>
+    /// Строки, которые держат подотчёт в резерве: акт или отчёт на утверждении (подтверждении),
+    /// а также подтверждённый отчёт об использовании — до сводного акта кладовщика (вне учёта списывается сразу).
+    /// </summary>
+    internal static IQueryable<WriteOffActLine> ReservedLines(IQueryable<WriteOffActLine> lines) =>
+        lines.Where(l => l.Act.Status == ActStatus.Pending
+            || (l.Act.Kind == ActKind.UsageReport && l.Act.Status == ActStatus.Approved && l.Batch != null && !l.Batch.OffBook));
 
     // ---------- Приёмка по накладным ----------
 
@@ -221,10 +230,9 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     public void AddDocument(StockDocument document) => db.Documents.Add(document);
 
     public async Task<decimal> GetReservedAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
-        await db.WriteOffActLines
+        await StockRepository.ReservedLines(db.WriteOffActLines)
             .Where(l => l.ItemId == itemId
                 && l.Act.EmployeeId == employeeId
-                && l.Act.Status == ActStatus.Pending
                 && (exceptActId == null || l.ActId != exceptActId))
             .SumAsync(l => (decimal?)l.Quantity, ct) ?? 0;
 

@@ -26,8 +26,10 @@ public class WriteOffActRepository(WarehouseDbContext db) : IWriteOffActReposito
             var ids = filter.EmployeeIds.ToList();
             query = query.Where(x => ids.Contains(x.EmployeeId));
         }
-        if (filter.ApproverId is int approver)
-            query = ForApprover(query, approver);
+        if (filter.ApproverId is not null || filter.ReportsToConfirm)
+            query = ToDecide(query, filter.ApproverId, filter.ReportsToConfirm);
+        if (filter.Kind is ActKind kind)
+            query = query.Where(x => x.Kind == kind);
         if (filter.Status is ActStatus status)
             query = query.Where(x => x.Status == status);
         if (filter.EmployeeId is int employeeId)
@@ -50,12 +52,18 @@ public class WriteOffActRepository(WarehouseDbContext db) : IWriteOffActReposito
             .ToList();
     }
 
-    public Task<int> CountToApproveAsync(int approverId, CancellationToken ct = default) =>
-        ForApprover(db.WriteOffActs.Where(x => x.Status == ActStatus.Pending), approverId).CountAsync(ct);
+    public Task<int> CountToApproveAsync(int? approverId, bool reportsToConfirm, CancellationToken ct = default) =>
+        ToDecide(db.WriteOffActs, approverId, reportsToConfirm).CountAsync(ct);
 
-    /// <summary>Акты, которые утверждает сотрудник: его подчинённых, а если у автора руководителя нет — его собственные.</summary>
-    private static IQueryable<WriteOffAct> ForApprover(IQueryable<WriteOffAct> query, int approverId) =>
-        query.Where(x => x.Employee.ManagerId == approverId || (x.Employee.ManagerId == null && x.EmployeeId == approverId));
+    /// <summary>
+    /// Ждут решения: акты на утверждении, которые утверждает сотрудник (его подчинённых, а если у автора
+    /// руководителя нет — его собственные), и — для кладовщика — отчёты об использовании на подтверждении.
+    /// </summary>
+    private static IQueryable<WriteOffAct> ToDecide(IQueryable<WriteOffAct> query, int? approverId, bool reportsToConfirm) =>
+        query.Where(x => x.Status == ActStatus.Pending
+            && ((x.Kind == ActKind.WriteOff && approverId != null
+                    && (x.Employee.ManagerId == approverId || (x.Employee.ManagerId == null && x.EmployeeId == approverId)))
+                || (reportsToConfirm && x.Kind == ActKind.UsageReport)));
 
     public void Add(WriteOffAct act) => db.WriteOffActs.Add(act);
 

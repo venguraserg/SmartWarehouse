@@ -49,11 +49,8 @@
             <span class="muted">на сумму @Ui.Value(custody.Any(c => c.Value is not null) ? custody.Sum(c => c.Value ?? 0) : null, custody.Any(c => c.ValueIncomplete))</span>
         }
         <span class="spacer"></span>
-        @if (custody.Count > 0 && (isWarehouse || employee.Id == myEmployeeId))
-        {
-            <a class="btn btn-primary" href="/acts/new?employee=@employee.Id">Акт на списание</a>
-        }
-        <a class="btn" href="/acts?scope=all&employee=@employee.Id">Акты сотрудника</a>
+        <a class="btn" href="/reports?scope=all&employee=@employee.Id">Отчёты</a>
+        <a class="btn" href="/acts?scope=all&employee=@employee.Id">Акты</a>
         <AuthorizeView Roles="@AppRoles.Warehouse">
             @if (custody.Count > 0)
             {
@@ -72,11 +69,25 @@
     @* Два раздела: «выдано в работу» (в 1С — за кладовщиком) и «подотчёт по 1С» (МОЛ — сам сотрудник). *@
     @foreach (var section in custody.GroupBy(c => c.Kind).OrderBy(g => g.Key))
     {
-        <h3 style="margin: 1rem 0 .5rem">
-            <span class="tag @Ui.CustodyKindClass(section.Key)">@Ui.CustodyKindShort(section.Key)</span>
-            @(section.Key == CustodyKind.Official ? "Подотчёт по 1С" : "Выдано в работу")
-            <span class="muted" style="font-weight: 400; font-size: .875rem">— @Ui.CustodyKindTitle(section.Key).Split(':')[1].Trim()</span>
-        </h3>
+        <div class="page-head" style="margin: 1rem 0 .5rem">
+            <h3 style="margin: 0">
+                <span class="tag @Ui.CustodyKindClass(section.Key)">@Ui.CustodyKindShort(section.Key)</span>
+                @(section.Key == CustodyKind.Official ? "Подотчёт по 1С" : "Выдано в работу")
+                <span class="muted" style="font-weight: 400; font-size: .875rem">— @Ui.CustodyKindTitle(section.Key).Split(':')[1].Trim()</span>
+            </h3>
+            <span class="spacer"></span>
+            @if (isWarehouse || employee.Id == myEmployeeId)
+            {
+                @if (section.Key == CustodyKind.Work)
+                {
+                    <a class="btn btn-primary btn-sm" href="/reports/new?employee=@employee.Id">Отчёт об использовании</a>
+                }
+                else
+                {
+                    <a class="btn btn-primary btn-sm" href="/acts/new?employee=@employee.Id">Акт на списание</a>
+                }
+            }
+        </div>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -103,14 +114,14 @@
                                 <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
                                 @if (c.Reserved > 0)
                                 {
-                                    <div class="line-hint">из них @Ui.Qty(c.Reserved) — в актах на утверждении</div>
+                                    <div class="line-hint">из них @Ui.Qty(c.Reserved) — @(c.Kind == CustodyKind.Work ? "в отчётах об использовании" : "в актах на утверждении")</div>
                                 }
                             </td>
                             @if (ShowValue)
                             {
                                 <td class="num">@Ui.Value(c.Value, c.ValueIncomplete)</td>
                             }
-                            <td class="num"><CustodyAge Since="c.HeldSince" /></td>
+                            <td class="num"><CustodyAge Since="c.HeldSince" Kind="c.Kind" Unreported="c.Quantity - c.Reserved" /></td>
                         </tr>
                     }
                 </tbody>

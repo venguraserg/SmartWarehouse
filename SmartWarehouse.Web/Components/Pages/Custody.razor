@@ -87,7 +87,14 @@ else
                                 </AuthorizeView>
                                 @if (isWarehouse || first.EmployeeId == myEmployeeId)
                                 {
-                                    <a class="btn btn-sm" href="/acts/new?employee=@first.EmployeeId">Акт на списание</a>
+                                    @if (group.Any(r => r.Kind == CustodyKind.Work))
+                                    {
+                                        <a class="btn btn-sm" href="/reports/new?employee=@first.EmployeeId">Отчёт</a>
+                                    }
+                                    @if (group.Any(r => r.Kind == CustodyKind.Official))
+                                    {
+                                        <a class="btn btn-sm" href="/acts/new?employee=@first.EmployeeId">Акт на списание</a>
+                                    }
                                 }
                             </div>
                         </td>
@@ -105,14 +112,14 @@ else
                                 @Ui.Qty(r.Quantity) @r.UnitCode
                                 @if (r.Reserved > 0)
                                 {
-                                    <div class="line-hint">из них @Ui.Qty(r.Reserved) — в актах на утверждении</div>
+                                    <div class="line-hint">из них @Ui.Qty(r.Reserved) — @(r.Kind == CustodyKind.Work ? "в отчётах об использовании" : "в актах на утверждении")</div>
                                 }
                             </td>
                             @if (ShowValue)
                             {
                                 <td class="num">@Ui.Value(r.Value, r.ValueIncomplete)</td>
                             }
-                            <td class="num"><CustodyAge Since="r.HeldSince" /></td>
+                            <td class="num"><CustodyAge Since="r.HeldSince" Kind="r.Kind" Unreported="r.Quantity - r.Reserved" /></td>
                         </tr>
                     }
                 }
