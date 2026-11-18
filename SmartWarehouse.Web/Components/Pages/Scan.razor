@@ -28,7 +28,7 @@
             @* В приложении для Android камера — своя (работает и по http). *@
             <button class="btn btn-primary btn-big" type="button" onclick="swApp.scan()">📷 Сканировать камерой</button>
         }
-        else
+        else if (!insecure)
         {
             <button class="btn btn-primary btn-big" type="button" @onclick="StartCameraAsync" disabled="@busy">📷 Сканировать камерой</button>
         }
@@ -36,7 +36,7 @@
 
     @if (cameraHint is not null)
     {
-        <div class="field-hint" style="margin-top: .75rem">@((MarkupString)cameraHint)</div>
+        <div class="alert alert-warn" role="status" style="margin: .75rem 0 0">@((MarkupString)cameraHint)</div>
     }
 
     <form class="scan-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
@@ -61,6 +61,9 @@
     private string? cameraHint;
     private bool isNativeApp;
 
+    /// <summary>Сайт открыт по http: браузер не даёт доступ к камере — кнопку не показываем, объясняем почему.</summary>
+    private bool insecure;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -79,6 +82,7 @@
             module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/scanner.js");
             if (!await module.InvokeAsync<bool>("isSecure"))
             {
+                insecure = true;
                 cameraHint = InsecureHint;
                 StateHasChanged();
             }
@@ -90,9 +94,10 @@
     }
 
     private const string InsecureHint =
-        "Камера внутри приложения работает только при открытии сайта по <b>https</b>. " +
-        "Пока можно сканировать наклейки <b>обычной камерой телефона</b> — откроется нужная страница — " +
-        "или вводить код вручную.";
+        "<b>Камера в браузере недоступна:</b> сайт открыт по <b>http</b>, а браузеры дают доступ к камере только по <b>https</b>. Что можно сделать:" +
+        "<ul><li>на телефоне — приложение «Склад ОЭТО» для Android: в нём своя камера, работает и по http;</li>" +
+        "<li>сканировать QR-наклейку обычной камерой телефона — откроется нужная страница;</li>" +
+        "<li>ручной сканер (USB / Bluetooth) или ввод кода — поле ниже.</li></ul>";
 
     private async Task StartCameraAsync()
     {
