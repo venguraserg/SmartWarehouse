@@ -718,6 +718,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<DateOnly?>("PeriodFrom")
                         .HasColumnType("date");
 

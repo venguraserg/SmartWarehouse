@@ -1,21 +1,30 @@
 @page "/acts"
+@page "/reports"
 @inject ApiClient Api
+@inject NavigationManager Nav
 
-<PageTitle>Акты на списание — Склад ОЭТО</PageTitle>
+<PageTitle>@(IsReport ? "Отчёты об использовании" : "Акты на списание") — Склад ОЭТО</PageTitle>
 
 <div class="page-head">
-    <h1>Акты на списание</h1>
+    <h1>@(IsReport ? "Отчёты об использовании" : "Акты на списание")</h1>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="/acts/new">+ Новый акт</a>
+    <a class="btn btn-primary" href="@(IsReport ? "/reports/new" : "/acts/new")">@(IsReport ? "+ Новый отчёт" : "+ Новый акт")</a>
 </div>
 <p class="muted" style="margin-top: -.5rem">
-    Сотрудник отчитывается, куда израсходовал полученное, руководитель утверждает — тогда позиции списываются.
+    @if (IsReport)
+    {
+        @("Что из выданного ")<span class="tag tag-info">в работу</span>@(" израсходовано и куда. Вносит сотрудник или кладовщик, подтверждает кладовщик, руководитель видит отчёты подчинённых.")
+    }
+    else
+    {
+        @("Сотрудник списывает ")<span class="tag tag-official">подотчёт по 1С</span>@(": отчитывается, куда израсходовал, руководитель утверждает — тогда позиции списываются.")
+    }
 </p>
 
 <div class="toolbar">
     <div class="segmented">
         <button type="button" class="@(scope == "approve" ? "active" : null)" @onclick='() => SetScopeAsync("approve")'>
-            Ждут моего утверждения@(toApprove > 0 ? $" ({toApprove})" : "")
+            @(IsReport ? "Ждут подтверждения" : "Ждут моего утверждения")@(toApprove > 0 ? $" ({toApprove})" : "")
         </button>
         <button type="button" class="@(scope == "all" ? "active" : null)" @onclick='() => SetScopeAsync("all")'>Все доступные</button>
     </div>
@@ -25,7 +34,7 @@
             <option value="">Любое состояние</option>
             @foreach (var s in Enum.GetValues<ActStatus>())
             {
-                <option value="@s">@Ui.ActState(s)</option>
+                <option value="@s">@Ui.ActState(s, Kind)</option>
             }
         </select>
     }
@@ -33,7 +42,7 @@
 
 @if (EmployeeParam is not null && scope == "all")
 {
-    <p class="muted">Показаны акты одного сотрудника. <a href="/acts?scope=all">Показать все</a></p>
+    <p class="muted">Показаны документы одного сотрудника. <a href="@(IsReport ? "/reports" : "/acts")?scope=all">Показать все</a></p>
 }
 
 <Alert Error="@error" />
@@ -48,7 +57,9 @@
 else if (acts.Count == 0)
 {
     <div class="panel empty">
-        @(scope == "approve" ? "Нет актов, ожидающих вашего утверждения." : "Актов пока нет.")
+        @(scope == "approve"
+            ? (IsReport ? "Нет отчётов, ожидающих подтверждения." : "Нет актов, ожидающих вашего утверждения.")
+            : (IsReport ? "Отчётов пока нет." : "Актов пока нет."))
     </div>
 }
 else
@@ -57,12 +68,12 @@ else
         <table>
             <thead>
                 <tr>
-                    <th>Акт</th>
+                    <th>@(IsReport ? "Отчёт" : "Акт")</th>
                     <th>Состояние</th>
                     <th>Сотрудник</th>
                     <th>Период / основание</th>
                     <th class="num">Строк</th>
-                    <th>Утверждает / утвердил</th>
+                    <th>@(IsReport ? "Подтверждает / подтвердил" : "Утверждает / утвердил")</th>
                     <th>Изменён</th>
                 </tr>
             </thead>
@@ -71,7 +82,7 @@ else
                 {
                     <tr>
                         <td class="mono"><a href="/acts/@a.Id">@a.Number</a></td>
-                        <td><span class="tag @Ui.ActStateClass(a.Status)">@Ui.ActState(a.Status)</span></td>
+                        <td><span class="tag @Ui.ActStateClass(a.Status)">@Ui.ActState(a.Status, a.Kind)</span></td>
                         <td><a href="/employees/@a.EmployeeId">@a.EmployeeName</a></td>
                         <td>
                             @(string.Join(" · ", new[] { Ui.Period(a.PeriodFrom, a.PeriodTo), a.ExternalNumber }.Where(x => !string.IsNullOrEmpty(x))))
@@ -98,11 +109,25 @@ else
     private int toApprove;
     private string? error;
 
-    protected override async Task OnInitializedAsync()
+    /// <summary>Страница отчётов об использовании (/reports) или актов на списание (/acts).</summary>
+    private ActKind Kind => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("reports", StringComparison.OrdinalIgnoreCase)
+        ? ActKind.UsageReport : ActKind.WriteOff;
+
+    private bool IsReport => Kind == ActKind.UsageReport;
+
+    private ActKind? loadedKind;
+
+    // Один компонент на /acts и /reports: при переходе между ними параметры обновляются, а не создаётся новый.
+    protected override async Task OnParametersSetAsync()
     {
+        if (loadedKind == Kind)
+            return;
+        loadedKind = Kind;
+        acts = null;
+        status = null;
         try
         {
-            toApprove = await Api.GetActsToApproveCountAsync();
+            toApprove = (await Api.GetActsAsync(ActScope.ToApprove, kind: Kind)).Count;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -126,8 +151,8 @@ else
         try
         {
             acts = scope == "approve"
-                ? await Api.GetActsAsync(ActScope.ToApprove)
-                : await Api.GetActsAsync(ActScope.Visible, status, EmployeeParam);
+                ? await Api.GetActsAsync(ActScope.ToApprove, kind: Kind)
+                : await Api.GetActsAsync(ActScope.Visible, status, EmployeeParam, Kind);
             if (scope == "approve")
                 toApprove = acts.Count;
             error = null;

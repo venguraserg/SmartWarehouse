@@ -135,7 +135,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         var projected = new Dictionary<(int ItemId, int LocationId, int BatchKey), decimal>();
         var storedEmployee = new Dictionary<(int ItemId, int EmployeeId, CustodyKind Kind, int BatchKey), EmployeeBalance>();
         var projectedEmployee = new Dictionary<(int ItemId, int EmployeeId, CustodyKind Kind, int BatchKey), decimal>();
-        var reserved = new Dictionary<(int ItemId, int EmployeeId, int BatchKey), decimal>();
+        var reserved = new Dictionary<(int ItemId, int EmployeeId, CustodyKind Kind, int BatchKey), decimal>();
         var loadedLocations = new HashSet<(int ItemId, int LocationId)>();
         var loadedEmployees = new HashSet<(int ItemId, int EmployeeId)>();
 
@@ -161,9 +161,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 projectedEmployee[(itemId, employeeId, b.Kind, b.BatchId)] = b.Quantity;
                 batches[b.BatchId] = b.Batch;
             }
-            // Зарезервированное в актах на утверждении вернуть или списать другим документом нельзя.
-            foreach (var (batchId, quantity) in await repo.GetReservedByBatchAsync(itemId, employeeId, exceptActId, ct))
-                reserved[(itemId, employeeId, batchId)] = quantity;
+            // Зарезервированное актами и отчётами вернуть или списать другим документом нельзя.
+            foreach (var ((batchId, kind), quantity) in await repo.GetReservedByBatchAsync(itemId, employeeId, exceptActId, ct))
+                reserved[(itemId, employeeId, kind, batchId)] = quantity;
         }
 
         // Порядок «самая старая партия первой».
@@ -221,18 +221,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (line.BatchId is not null && slots.Count == 0)
                     throw new DomainException($"Строка {n} («{item.Name}»): выбранной партии здесь нет.");
 
-                // Резерв актов на утверждении (по партии) ложится сначала на «подотчёт по 1С», остаток — на «в работу».
-                decimal ReservedOf(int slot)
-                {
-                    var (kind, batchKey) = slots[slot];
-                    var held = reserved.GetValueOrDefault((line.ItemId, fromEmp, batchKey));
-                    var official = projectedEmployee.GetValueOrDefault((line.ItemId, fromEmp, CustodyKind.Official, batchKey));
-                    return kind == CustodyKind.Official ? Math.Min(held, official) : Math.Max(0, held - official);
-                }
-
+                // Резерв актов (подотчёт по 1С) и отчётов об использовании («в работе») — каждый на своём виде.
                 Allocate(n, item, line with { BatchId = null }, Enumerable.Range(0, slots.Count),
                     s => projectedEmployee[(line.ItemId, fromEmp, slots[s].Kind, slots[s].BatchKey)],
-                    ReservedOf,
+                    s => reserved.GetValueOrDefault((line.ItemId, fromEmp, slots[s].Kind, slots[s].BatchKey)),
                     taken,
                     (available, held) => new InsufficientStockException(
                         item.Sku, accountable!.ShortName, available, line.Quantity, isEmployee: true, reserved: held));
@@ -455,7 +447,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         await EnsureItemExistsAsync(itemId, ct);
         var rows = await repo.ListBatchStockAsync(itemId, locationId, employeeId, ct);
         IReadOnlyDictionary<int, decimal> held = employeeId is int emp
-            ? await repo.GetReservedByBatchAsync(itemId, emp, null, ct)
+            ? (await repo.GetReservedByBatchAsync(itemId, emp, null, ct))
+                .GroupBy(kv => kv.Key.BatchId).ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value))
             : new Dictionary<int, decimal>();
         return rows
             .OrderBy(r => r.Batch.ReceivedAt).ThenBy(r => r.Batch.Id)

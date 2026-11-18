@@ -1,13 +1,20 @@
-@* Сколько дней числится за сотрудником; давнее (по настройке Custody:AgeWarningDays) подсвечивается. *@
+@* Сколько дней числится за сотрудником; давнее подсвечивается.
+   «Подотчёт по 1С» — порог Custody:AgeWarningDays (30 дн.);
+   «в работе» без отчёта об использовании — порог Custody:WorkReportDays (14 дн.). *@
 @inject CustodyOptions Options
 
 @if (Since is DateTimeOffset since)
 {
     var days = Math.Max(0, (int)Math.Floor((DateTimeOffset.Now - since).TotalDays));
     var title = $"Числится с {Ui.Day(since)}";
-    if (days >= Options.AgeWarningDays)
+    var work = Kind == CustodyKind.Work;
+    var limit = work ? Options.WorkReportDays : Options.AgeWarningDays;
+    // По «в работе» подсвечиваем, только если есть что-то без отчёта.
+    if (days >= limit && (!work || Unreported > 0))
     {
-        <span class="tag tag-warn" title="@title">@days дн.</span>
+        <span class="tag tag-warn" title="@(work ? $"{title}; выдано в работу больше {limit} дн. назад, отчёта об использовании нет" : title)">
+            @days дн.@(work ? " без отчёта" : "")
+        </span>
     }
     else
     {
@@ -21,4 +28,9 @@ else
 
 @code {
     [Parameter] public DateTimeOffset? Since { get; set; }
+
+    [Parameter] public CustodyKind Kind { get; set; } = CustodyKind.Official;
+
+    /// <summary>Сколько ещё не покрыто отчётами (числится минус резерв).</summary>
+    [Parameter] public decimal Unreported { get; set; } = 1;
 }

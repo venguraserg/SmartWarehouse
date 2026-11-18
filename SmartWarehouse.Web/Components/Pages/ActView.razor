@@ -1,4 +1,5 @@
 @page "/acts/{Id:int}"
+@page "/reports/{Id:int}"
 @inject ApiClient Api
 @inject NavigationManager Nav
 
@@ -10,10 +11,14 @@
 {
     <div class="page-head">
         <h1 class="mono">@act.Number</h1>
-        <span class="tag @Ui.ActStateClass(act.Status)">@Ui.ActState(act.Status)</span>
+        <span class="tag @Ui.ActStateClass(act.Status)">@Ui.ActState(act.Status, act.Kind)</span>
+        <span class="muted">@(IsReport ? "отчёт об использовании" : "акт на списание")</span>
         <span class="spacer"></span>
-        <a class="btn" href="/act-pdf/@act.Id" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
-        <a class="btn" href="/acts">К списку</a>
+        @if (!IsReport)
+        {
+            <a class="btn" href="/act-pdf/@act.Id" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
+        }
+        <a class="btn" href="@ListUrl">К списку</a>
     </div>
 
     @if (act.Status == ActStatus.Returned && !string.IsNullOrEmpty(act.ReturnRemark))
@@ -29,7 +34,9 @@
         <div class="panel" style="margin-bottom: 1rem">
             <h2 style="margin-top: 0">Ваше решение</h2>
             <p class="muted" style="margin-top: 0">
-                При утверждении позиции списываются с сотрудника. Если что-то не так — верните акт с замечанием.
+                @(IsReport
+                    ? "Подтверждённое ждёт вашего сводного акта за месяц (до тех пор в резерве); вне учёта списывается сразу. Если что-то не так — верните отчёт с замечанием."
+                    : "При утверждении позиции списываются с сотрудника. Если что-то не так — верните акт с замечанием.")
             </p>
             <div class="field">
                 <label for="remark">Замечание (для возврата)</label>
@@ -37,7 +44,7 @@
                           placeholder="Что нужно исправить"></textarea>
             </div>
             <div class="actions">
-                <button class="btn btn-primary" type="button" disabled="@busy" @onclick="ApproveAsync">Утвердить и списать</button>
+                <button class="btn btn-primary" type="button" disabled="@busy" @onclick="ApproveAsync">@(IsReport ? "Подтвердить" : "Утвердить и списать")</button>
                 <button class="btn" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(remark))" @onclick="ReturnAsync">Вернуть на доработку</button>
             </div>
         </div>
@@ -49,15 +56,15 @@
             @if (act.Can.Submit)
             {
                 <button class="btn btn-primary" type="button" disabled="@busy" @onclick="SubmitAsync">
-                    @(SelfApproves ? "Утвердить и списать" : "Отправить на утверждение")
+                    @(IsReport ? (isWarehouse ? "Подтвердить" : "Отправить кладовщику") : SelfApproves ? "Утвердить и списать" : "Отправить на утверждение")
                 </button>
             }
             @if (act.Can.Edit)
             {
-                <a class="btn" href="/acts/@act.Id/edit">Изменить</a>
+                <a class="btn" href="@(IsReport ? "/reports" : "/acts")/@act.Id/edit">Изменить</a>
                 @if (confirmDelete)
                 {
-                    <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить акт</button>
+                    <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить</button>
                     <button class="btn" type="button" @onclick="() => confirmDelete = false">Не удалять</button>
                 }
                 else
@@ -67,7 +74,7 @@
             }
             @if (act.Can.Recall)
             {
-                <button class="btn" type="button" disabled="@busy" @onclick="RecallAsync">Отозвать с утверждения</button>
+                <button class="btn" type="button" disabled="@busy" @onclick="RecallAsync">@(IsReport ? "Отозвать" : "Отозвать с утверждения")</button>
             }
         </div>
     }
@@ -84,15 +91,28 @@
             </dd>
             @if (act.Status == ActStatus.Approved)
             {
-                <dt>Утвердил</dt>
+                <dt>@(IsReport ? "Подтвердил" : "Утвердил")</dt>
                 <dd>@act.DecidedBy@(act.DecidedAt is { } approvedAt ? $", {Ui.Date(approvedAt)}" : "")</dd>
                 <dt>Документ списания</dt>
                 <dd>
                     @if (act.DocumentId is long documentId)
                     {
                         <a class="mono" href="/documents/@documentId">@act.DocumentNumber</a>
+                        @if (IsReport)
+                        {
+                            <span class="muted"> — списано вне учёта</span>
+                        }
+                    }
+                    else if (IsReport)
+                    {
+                        <span class="muted">ждёт сводного акта кладовщика за месяц</span>
                     }
                 </dd>
+            }
+            else if (IsReport)
+            {
+                <dt>Подтверждает</dt>
+                <dd>кладовщик</dd>
             }
             else
             {
@@ -209,10 +229,20 @@ else if (error is null)
     /// <summary>Руководителя нет и это мой акт — отправка сразу утверждает.</summary>
     private bool SelfApproves => act is not null && act.ApproverId == act.EmployeeId && act.EmployeeId == myEmployeeId;
 
+    private bool IsReport => act?.Kind == ActKind.UsageReport;
+
+    private string ListUrl => IsReport ? "/reports" : "/acts";
+
+    private bool isWarehouse;
+
     protected override async Task OnParametersSetAsync()
     {
         if (AuthState is not null)
-            myEmployeeId = (await AuthState).User.EmployeeIdOf();
+        {
+            var user = (await AuthState).User;
+            myEmployeeId = user.EmployeeIdOf();
+            isWarehouse = user.IsWarehouseStaff();
+        }
 
         try
         {
@@ -225,13 +255,18 @@ else if (error is null)
     }
 
     private Task SubmitAsync() => RunAsync(() => Api.SubmitActAsync(Id),
-        a => a.Status == ActStatus.Approved ? "Акт утверждён, позиции списаны." : $"Отправлен на утверждение: {a.ApproverName}.");
+        a => a.Kind == ActKind.UsageReport
+            ? (a.Status == ActStatus.Approved ? "Отчёт подтверждён." : "Отчёт отправлен кладовщику на подтверждение.")
+            : (a.Status == ActStatus.Approved ? "Акт утверждён, позиции списаны." : $"Отправлен на утверждение: {a.ApproverName}."));
 
-    private Task RecallAsync() => RunAsync(() => Api.RecallActAsync(Id), _ => "Акт отозван — снова черновик.");
+    private Task RecallAsync() => RunAsync(() => Api.RecallActAsync(Id), _ => "Отозван — снова черновик.");
 
-    private Task ApproveAsync() => RunAsync(() => Api.ApproveActAsync(Id), a => $"Акт утверждён, позиции списаны документом {a.DocumentNumber}.");
+    private Task ApproveAsync() => RunAsync(() => Api.ApproveActAsync(Id),
+        a => a.Kind == ActKind.UsageReport
+            ? "Отчёт подтверждён" + (a.DocumentNumber is { } d ? $"; вне учёта списано документом {d}." : ".")
+            : $"Акт утверждён, позиции списаны документом {a.DocumentNumber}.");
 
-    private Task ReturnAsync() => RunAsync(() => Api.ReturnActAsync(Id, remark ?? ""), _ => "Акт возвращён на доработку.");
+    private Task ReturnAsync() => RunAsync(() => Api.ReturnActAsync(Id, remark ?? ""), _ => "Возвращён на доработку.");
 
     private async Task RunAsync(Func<Task<ActDto>> action, Func<ActDto, string> message)
     {
@@ -259,8 +294,9 @@ else if (error is null)
         error = null;
         try
         {
+            var list = ListUrl;
             await Api.DeleteActAsync(Id);
-            Nav.NavigateTo("/acts");
+            Nav.NavigateTo(list);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

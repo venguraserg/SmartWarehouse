@@ -354,15 +354,17 @@ public record LowStockItemDto(
 /// <param name="BatchId">Партия из подотчёта; не указана — самая старая (при нехватке строка делится по партиям).</param>
 public record ActLineRequest(int ItemId, decimal Quantity, int? EquipmentId, string? Usage, DateOnly? UsedOn = null, int? BatchId = null);
 
-/// <summary>Создание или изменение акта (черновика).</summary>
+/// <summary>Создание или изменение акта или отчёта об использовании (черновика).</summary>
 /// <param name="PeriodFrom">Период сводного акта — необязательно.</param>
+/// <param name="Kind">Акт на списание (подотчёт по 1С) или отчёт об использовании (выданное «в работу»).</param>
 public record SaveActRequest(
     int EmployeeId,
     DateOnly? PeriodFrom,
     DateOnly? PeriodTo,
     string? ExternalNumber,
     string? Comment,
-    IReadOnlyList<ActLineRequest> Lines);
+    IReadOnlyList<ActLineRequest> Lines,
+    ActKind Kind = ActKind.WriteOff);
 
 public record ActLineDto(
     int LineNo,
@@ -409,7 +411,8 @@ public record ActDto(
     long? DocumentId,
     string? DocumentNumber,
     IReadOnlyList<ActLineDto> Lines,
-    ActPermissions Can);
+    ActPermissions Can,
+    ActKind Kind = ActKind.WriteOff);
 
 /// <summary>Акт в списке (без строк).</summary>
 public record ActSummaryDto(
@@ -426,7 +429,8 @@ public record ActSummaryDto(
     DateTimeOffset? SubmittedAt,
     string ApproverName,
     string? DecidedBy,
-    DateTimeOffset? DecidedAt);
+    DateTimeOffset? DecidedAt,
+    ActKind Kind = ActKind.WriteOff);
 
 /// <summary>Какие акты показать.</summary>
 public enum ActScope

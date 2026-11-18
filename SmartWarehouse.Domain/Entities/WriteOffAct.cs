@@ -13,8 +13,14 @@ public class WriteOffAct
 {
     public int Id { get; set; }
 
-    /// <summary>Номер акта: АС-000012.</summary>
-    public string Number => FormatNumber(Id);
+    /// <summary>Номер: акт АС-000012, отчёт об использовании ОИ-000012.</summary>
+    public string Number => FormatNumber(Id, Kind);
+
+    /// <summary>Акт на списание (подотчёт по 1С) или отчёт об использовании (выданное «в работу»).</summary>
+    public ActKind Kind { get; set; } = ActKind.WriteOff;
+
+    /// <summary>С какого подотчёта списывается: отчёт — с «в работе», акт — с «подотчёта по 1С».</summary>
+    public CustodyKind Custody => Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official;
 
     public ActStatus Status { get; set; } = ActStatus.Draft;
 
@@ -66,7 +72,8 @@ public class WriteOffAct
     /// <summary>Акт можно менять и удалять: черновик или возвращённый.</summary>
     public bool IsEditable => Status is ActStatus.Draft or ActStatus.Returned;
 
-    public static string FormatNumber(int id) => $"АС-{id:D6}";
+    public static string FormatNumber(int id, ActKind kind = ActKind.WriteOff) =>
+        kind == ActKind.UsageReport ? $"ОИ-{id:D6}" : $"АС-{id:D6}";
 }
 
 /// <summary>Строка акта: что, сколько и куда использовано.</summary>

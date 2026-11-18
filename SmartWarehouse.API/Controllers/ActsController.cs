@@ -14,12 +14,15 @@ namespace SmartWarehouse.API.Controllers;
 [Route("api/acts")]
 public class ActsController(IWriteOffActService acts) : ControllerBase
 {
-    /// <summary>Список. scope=Visible — все доступные; scope=ToApprove — ждут моего утверждения.</summary>
+    /// <summary>
+    /// Список. scope=Visible — все доступные; scope=ToApprove — ждут моего решения (кладовщику — и отчёты на подтверждении).
+    /// kind — только акты (WriteOff) или только отчёты об использовании (UsageReport).
+    /// </summary>
     [HttpGet]
     public Task<IReadOnlyList<ActSummaryDto>> List(
         [FromQuery] ActScope scope = ActScope.Visible, [FromQuery] ActStatus? status = null, [FromQuery] int? employeeId = null,
-        CancellationToken ct = default) =>
-        acts.ListAsync(scope, status, employeeId, User.ToActActor(), ct);
+        [FromQuery] ActKind? kind = null, CancellationToken ct = default) =>
+        acts.ListAsync(scope, status, employeeId, User.ToActActor(), ct, kind);
 
     /// <summary>Сколько актов ждут моего утверждения (для значка в меню).</summary>
     [HttpGet("to-approve/count")]

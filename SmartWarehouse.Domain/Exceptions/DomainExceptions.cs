@@ -32,6 +32,6 @@ public class InsufficientStockException(string itemSku, string locationCode, dec
         if (reserved <= 0)
             return $"Недостаточно: позиция {sku}, за сотрудником {where} числится {available:0.###}, требуется {requested:0.###}.";
         return $"Недостаточно: позиция {sku}, за сотрудником {where} числится {available + reserved:0.###}, " +
-               $"из них {reserved:0.###} — в актах на утверждении; свободно {available:0.###}, требуется {requested:0.###}.";
+               $"из них {reserved:0.###} — в актах и отчётах об использовании; свободно {available:0.###}, требуется {requested:0.###}.";
     }
 }

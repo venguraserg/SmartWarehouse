@@ -579,19 +579,19 @@ public class StockServiceTests
     }
 
     [Fact]
-    public async Task Зарезервированное_актом_на_утверждении_вернуть_нельзя()
+    public async Task Зарезервированное_отчётом_на_подтверждении_вернуть_нельзя()
     {
         await Post(MovementType.Receipt, Line(10, to: CellA));
-        await Post(MovementType.Issue, Line(4, from: CellA));
+        await Post(MovementType.Issue, Line(4, from: CellA));   // «в работу»
         _repo.Acts.Add(new WriteOffAct
         {
-            Id = 7, EmployeeId = Worker, Status = ActStatus.Pending,
+            Id = 7, EmployeeId = Worker, Status = ActStatus.Pending, Kind = ActKind.UsageReport,
             Lines = { new WriteOffActLine { ItemId = Bearing, BatchId = 1, Quantity = 3, Usage = "ремонт" } }
         });
 
         var ex = await Assert.ThrowsAsync<InsufficientStockException>(() => Post(MovementType.Return, Line(2, to: CellB)));
         Assert.Equal(3, ex.Reserved);
-        Assert.Contains("в актах на утверждении", ex.Message);
+        Assert.Contains("в актах и отчётах", ex.Message);
 
         await Post(MovementType.Return, Line(1, to: CellB)); // свободная 1 шт — можно
         Assert.Equal(3, Custody());
