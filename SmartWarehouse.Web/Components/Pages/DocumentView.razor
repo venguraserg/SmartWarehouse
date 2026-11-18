@@ -87,10 +87,10 @@
             <tbody>
                 @foreach (var line in doc.Lines)
                 {
-                    <tr>
+                    <tr class="@(line.OffBook ? "row-offbook" : null)">
                         <td class="num">@line.LineNo</td>
                         <td class="mono"><a href="/items/@line.ItemId">@line.Sku</a></td>
-                        <td>@line.ItemName</td>
+                        <td>@line.ItemName <OffBookTag Quantity="@(line.OffBook ? 1m : 0m)" /></td>
                         <td>@PlaceCell(line.FromLocationName, line.FromLocation)</td>
                         <td>@PlaceCell(line.ToLocationName, line.ToLocation)</td>
                         <td class="num">
@@ -112,13 +112,20 @@
             {
                 <tfoot>
                     <tr>
-                        <td colspan="7" class="num"><strong>Итого</strong></td>
-                        <td class="num"><strong>@Ui.Money(Total)</strong>@(doc.Lines.Any(l => l.UnitPrice is null) ? "*" : "")</td>
+                        <td colspan="7" class="num"><strong>@(HasOffBook ? "Итого по 1С" : "Итого")</strong></td>
+                        <td class="num"><strong>@Ui.Money(Total)</strong>@(MissingPrice ? "*" : "")</td>
                     </tr>
+                    @if (HasOffBook)
+                    {
+                        <tr>
+                            <td colspan="7" class="num muted">Вне учёта (в 1С не числится)</td>
+                            <td class="num muted">@Ui.Money(OffBookTotal)</td>
+                        </tr>
+                    }
                 </tfoot>
             }
         </table>
-        @if (ShowPrices && doc.Lines.Any(l => l.UnitPrice is null))
+        @if (ShowPrices && MissingPrice)
         {
             <div class="field-hint">* без строк, у партий которых цена не указана.</div>
         }
@@ -147,8 +154,17 @@ else if (error is null)
     /// <summary>Цены есть в ответе только у тех, кому их можно видеть.</summary>
     private bool ShowPrices => doc?.Lines.Any(l => l.UnitPrice is not null) == true;
 
-    private decimal Total => doc?.Lines
-        .Where(l => l.UnitPrice is not null)
+    private bool HasOffBook => doc?.Lines.Any(l => l.OffBook) == true;
+
+    /// <summary>У учётной строки нет цены (у вне учёта цена необязательна).</summary>
+    private bool MissingPrice => doc?.Lines.Any(l => l.UnitPrice is null && !l.OffBook) == true;
+
+    private decimal Total => Sum(offBook: false);
+
+    private decimal OffBookTotal => Sum(offBook: true);
+
+    private decimal Sum(bool offBook) => doc?.Lines
+        .Where(l => l.UnitPrice is not null && l.OffBook == offBook)
         .Sum(l => decimal.Round(l.Quantity * l.UnitPrice!.Value, 2, MidpointRounding.AwayFromZero)) ?? 0;
     private List<EquipmentDto> equipment = [];
     private string? error;

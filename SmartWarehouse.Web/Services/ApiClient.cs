@@ -502,6 +502,7 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         if (!string.IsNullOrWhiteSpace(query.Search)) parts.Add($"search={Uri.EscapeDataString(query.Search.Trim())}");
         if (query.CategoryId is not null) parts.Add($"categoryId={query.CategoryId}");
         if (query.BelowMinimum) parts.Add("belowMinimum=true");
+        if (query.OffBook is bool offBook) parts.Add($"offBook={(offBook ? "true" : "false")}");
 
         return GetAsync<StockSearchResult>(parts.Count == 0 ? "api/stock" : $"api/stock?{string.Join('&', parts)}", ct);
     }

@@ -783,7 +783,8 @@ public class WriteOffActService(
         l.Usage, l.UsedOn, l.BatchId, l.Batch?.UnitPrice, l.Batch?.ReceivedAt,
         EmployeeName: report?.Employee.ShortName,
         SourceNumber: report?.Number,
-        SourceId: report?.Id);
+        SourceId: report?.Id,
+        OffBook: l.Batch?.OffBook ?? false);
 
     /// <summary>Кто решает: по акту — руководитель (или сам сотрудник), по отчёту — кладовщик.</summary>
     private static (int Id, string Name) DeciderOf(WriteOffAct act)

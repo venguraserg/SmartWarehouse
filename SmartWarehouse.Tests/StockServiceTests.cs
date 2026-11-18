@@ -364,6 +364,26 @@ public class StockServiceTests
     }
 
     [Fact]
+    public async Task Остатки_показывают_вне_учёта_отдельно_и_фильтруются_по_учёту()
+    {
+        await Post(MovementType.Receipt, Line(3, to: CellA) with { UnitPrice = 10 });
+        await Send(new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(2, to: CellA) with { UnitPrice = 4 }], OffBook: true));
+        await Send(new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(1, to: CellA)], OffBook: true));
+
+        var all = Assert.Single((await _service.SearchStockAsync(new StockQuery())).Rows);
+        Assert.Equal((6m, 3m, 38m, 8m), (all.Quantity, all.OffBookQuantity, all.Value!.Value, all.OffBookValue));
+        Assert.False(all.ValueIncomplete); // у вне учёта цена необязательна
+
+        var accounted = Assert.Single((await _service.SearchStockAsync(new StockQuery(OffBook: false))).Rows);
+        Assert.Equal((3m, 0m), (accounted.Quantity, accounted.OffBookQuantity));
+        var offBook = Assert.Single((await _service.SearchStockAsync(new StockQuery(OffBook: true))).Rows);
+        Assert.Equal((3m, 3m), (offBook.Quantity, offBook.OffBookQuantity));
+
+        var balance = Assert.Single(await _service.GetBalancesAsync(Bearing));
+        Assert.Equal((6m, 3m), (balance.Quantity, balance.OffBookQuantity));
+    }
+
+    [Fact]
     public async Task Пустые_места_не_показываются()
     {
         await Post(MovementType.Receipt, Line(2, to: CellA));

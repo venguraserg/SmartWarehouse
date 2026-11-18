@@ -70,7 +70,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 line.ToLocationId is int t ? Locations[t].FullCode : null,
                 line.Batch.Id, line.Batch.UnitPrice, line.Batch.ReceivedAt,
                 line.FromLocationId is int fn ? Locations[fn].Name : null,
-                line.ToLocationId is int tn ? Locations[tn].Name : null);
+                line.ToLocationId is int tn ? Locations[tn].Name : null,
+                line.Batch.OffBook);
         });
     }
 
@@ -449,7 +450,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             line.LineNo, line.ItemId, line.Item.Sku, line.Item.Name, line.Item.Unit.Code, line.Quantity,
             line.FromLocation?.FullCode, line.ToLocation?.FullCode,
             line.BatchId, line.Batch?.UnitPrice, line.Batch?.ReceivedAt,
-            line.FromLocation?.Name, line.ToLocation?.Name));
+            line.FromLocation?.Name, line.ToLocation?.Name, line.Batch?.OffBook ?? false));
     }
 
     public async Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, CancellationToken ct = default)
@@ -471,7 +472,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .Select(g =>
             {
                 var (value, incomplete) = Valuation.Of(g.Select(b => (b.Quantity, Valuation.Price(b.Batch))));
-                return new StockBalanceDto(g.Key.LocationId, g.Key.FullCode, g.Sum(b => b.Quantity), value, incomplete, g.Key.Name);
+                return new StockBalanceDto(g.Key.LocationId, g.Key.FullCode, g.Sum(b => b.Quantity), value, incomplete, g.Key.Name,
+                    g.Where(b => b.Batch?.OffBook == true).Sum(b => b.Quantity));
             })
             .OrderBy(b => b.LocationCode)
             .ToList();
@@ -528,7 +530,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             LocationCodeMatch.Normalize(query.Location),
             string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
             query.CategoryId,
-            query.BelowMinimum);
+            query.BelowMinimum,
+            query.OffBook);
 
         // Берём на одну строку больше лимита, чтобы понять, что результат обрезан.
         var balances = await repo.SearchBalancesAsync(filter, MaxStockRows + 1, ct);
@@ -541,6 +544,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             {
                 var b = g.First();
                 var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
+                var offBook = g.Where(x => x.Batch?.OffBook == true).ToList();
                 return new StockRowDto(
                     b.ItemId,
                     b.Item.Sku,
@@ -556,7 +560,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                     b.Location.Warehouse.Code,
                     g.Sum(x => x.Quantity),
                     value,
-                    incomplete);
+                    incomplete,
+                    offBook.Sum(x => x.Quantity),
+                    offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)));
             })
             .ToList();
 

@@ -76,16 +76,29 @@ else
             <button type="button" class="@(byItem ? null : "active")" @onclick="() => SetViewAsync(false)">По местам</button>
             <button type="button" class="@(byItem ? "active" : null)" @onclick="() => SetViewAsync(true)">По позициям</button>
         </div>
+        <BookFilter Value="offBook" ValueChanged="SetBookAsync" />
         <span class="spacer"></span>
         <span class="muted">
             Позиций: <strong>@result.Rows.Select(r => r.ItemId).Distinct().Count()</strong> ·
             мест: <strong>@result.Rows.Select(r => r.LocationId).Distinct().Count()</strong>
-            @if (ShowValue)
+            @if (ShowValue && offBook != true)
             {
-                <span> · стоимость: <strong>@Ui.Value(TotalValue, result.Rows.Any(r => r.ValueIncomplete))</strong></span>
+                <span> · стоимость по 1С: <strong>@Ui.Value(AccountedValue, result.Rows.Any(r => r.ValueIncomplete))</strong></span>
             }
         </span>
     </div>
+    @if (OffBookItems > 0)
+    {
+        <p class="muted" style="margin-top: -.25rem">
+            <OffBookTag Quantity="1" />
+            @(offBook == true ? "Показано только" : "Из них") вне учёта: <strong>@OffBookItems</strong> @Plural(OffBookItems, "позиция", "позиции", "позиций")
+            @if (ShowValue && OffBookValue > 0)
+            {
+                <span> (оценка @Ui.Money(OffBookValue) руб., в 1С не числится)</span>
+            }
+            — б/у и неучтённое, в стоимость по 1С не входит.
+        </p>
+    }
 
     @if (result.Truncated)
     {
@@ -131,10 +144,10 @@ else
                         </tr>
                         @foreach (var row in group)
                         {
-                            <tr>
+                            <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
                                 <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
                                 <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                                <td><a href="/items/@row.ItemId">@row.ItemName</a></td>
+                                <td><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /></td>
                                 <td>@row.CategoryName</td>
                                 <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
                                 @if (ShowValue)
@@ -170,11 +183,13 @@ else
                     {
                         var first = group.First();
                         var total = group.Sum(r => r.Quantity);
-                        <tr>
+                        var totalOffBook = group.Sum(r => r.OffBookQuantity);
+                        <tr class="@(totalOffBook >= total ? "row-offbook" : null)">
                             <td><Thumb ItemId="first.ItemId" ImageVersion="first.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@first.ItemId">@first.Sku</a></td>
                             <td>
                                 <a href="/items/@first.ItemId">@first.ItemName</a>
+                                <OffBookTag Quantity="totalOffBook" Total="total" />
                                 @if (belowMinimum)
                                 {
                                     <div class="line-hint">минимум @Ui.Qty(first.MinStock) @first.UnitCode</div>
@@ -190,7 +205,7 @@ else
                                     @foreach (var row in group)
                                     {
                                         <a class="chip" href="@StockUrl(location: row.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(row.LocationCode)">
-                                            <span class="mono">@row.LocationCode</span> <strong>@Ui.Qty(row.Quantity)</strong>
+                                            <span class="mono">@row.LocationCode</span> <strong>@Ui.Qty(row.Quantity)</strong>@(row.OffBookQuantity > 0 ? (row.OffBookQuantity >= row.Quantity ? " б/у" : $" (б/у {Ui.Qty(row.OffBookQuantity)})") : "")
                                         </a>
                                     }
                                 </div>
@@ -211,6 +226,7 @@ else
     [SupplyParameterFromQuery(Name = "category")] public int? CategoryParam { get; set; }
     [SupplyParameterFromQuery(Name = "low")] public bool? LowParam { get; set; }
     [SupplyParameterFromQuery(Name = "view")] public string? ViewParam { get; set; }
+    [SupplyParameterFromQuery(Name = "book")] public string? BookParam { get; set; }
 
     private string? search;
     private string? location;
@@ -218,6 +234,9 @@ else
     private int? categoryId;
     private bool belowMinimum;
     private bool byItem;
+
+    /// <summary>Учёт: null — все, false — по 1С, true — вне учёта.</summary>
+    private bool? offBook;
 
     private List<WarehouseDto> warehouses = [];
     private List<CategoryDto> categories = [];
@@ -228,7 +247,7 @@ else
 
     private bool HasFilters =>
         !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(location)
-        || warehouseId is not null || categoryId is not null || belowMinimum;
+        || warehouseId is not null || categoryId is not null || belowMinimum || offBook is not null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -238,6 +257,7 @@ else
         categoryId = CategoryParam;
         belowMinimum = LowParam ?? false;
         byItem = ViewParam == "items";
+        offBook = BookParam switch { "1c" => false, "off" => true, _ => null };
 
         try
         {
@@ -249,7 +269,7 @@ else
                 referencesLoaded = true;
             }
 
-            result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum));
+            result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum, offBook));
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
@@ -270,12 +290,19 @@ else
         search = location = null;
         warehouseId = categoryId = null;
         belowMinimum = false;
+        offBook = null;
         return ApplyAsync();
     }
 
     private Task SetViewAsync(bool items)
     {
         byItem = items;
+        return ApplyAsync();
+    }
+
+    private Task SetBookAsync(bool? value)
+    {
+        offBook = value;
         return ApplyAsync();
     }
 
@@ -293,7 +320,8 @@ else
         ["warehouse"] = location is null ? warehouseId : null,
         ["category"] = categoryId,
         ["low"] = belowMinimum ? true : null,
-        ["view"] = byItem ? "items" : null
+        ["view"] = byItem ? "items" : null,
+        ["book"] = offBook switch { false => "1c", true => "off", null => null }
     });
 
     private static string Plural(int n, string one, string few, string many)
@@ -311,8 +339,13 @@ else
     /// <summary>Стоимость видна тем, кому API её отдаёт (не рядовым сотрудникам).</summary>
     private bool ShowValue => result?.Rows.Any(r => r.Value is not null || r.ValueIncomplete) == true;
 
-    private decimal? TotalValue =>
-        result?.Rows.Any(r => r.Value is not null) == true ? result.Rows.Sum(r => r.Value ?? 0) : null;
+    /// <summary>Стоимость учётного (по 1С) — без вне учёта.</summary>
+    private decimal? AccountedValue =>
+        result?.Rows.Any(r => r.Value is not null) == true ? result.Rows.Sum(r => (r.Value ?? 0) - r.OffBookValue) : null;
+
+    private int OffBookItems => result?.Rows.Where(r => r.OffBookQuantity > 0).Select(r => r.ItemId).Distinct().Count() ?? 0;
+
+    private decimal OffBookValue => result?.Rows.Sum(r => r.OffBookValue) ?? 0;
 
     private string CsvHref
     {
@@ -320,13 +353,14 @@ else
         {
             var ru = CultureInfo.GetCultureInfo("ru-RU");
             var sb = new StringBuilder("﻿"); // BOM — чтобы Excel понял кодировку
-            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.;Стоимость");
+            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.;Стоимость;Из них вне учёта");
             foreach (var r in result?.Rows ?? Array.Empty<StockRowDto>())
             {
                 sb.AppendLine(string.Join(';',
                     Csv(r.WarehouseCode), Csv(r.LocationCode), Csv(r.LocationName), Csv(r.Sku), Csv(r.ItemName),
                     Csv(r.CategoryName), r.Quantity.ToString("0.###", ru), Csv(r.UnitCode),
-                    r.Value is decimal v ? v.ToString("0.00", ru) : ""));
+                    r.Value is decimal v ? v.ToString("0.00", ru) : "",
+                    r.OffBookQuantity > 0 ? r.OffBookQuantity.ToString("0.###", ru) : ""));
             }
             return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
         }

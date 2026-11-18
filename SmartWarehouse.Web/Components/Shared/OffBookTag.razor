@@ -1,0 +1,19 @@
+@* Метка «вне учёта»: б/у, снятое с оборудования, неучтённое — в 1С не числится.
+   Если вне учёта только часть количества — метка с количеством этой части. *@
+
+@if (Quantity > 0)
+{
+    <span class="tag tag-offbook" title="@Title">вне учёта@(Total is decimal total && Quantity < total ? $" {Ui.Qty(Quantity)}" : "")</span>
+}
+
+@code {
+    /// <summary>Сколько вне учёта.</summary>
+    [Parameter] public decimal Quantity { get; set; }
+
+    /// <summary>Всего в строке; если вне учёта меньше — показывается количество.</summary>
+    [Parameter] public decimal? Total { get; set; }
+
+    private string Title => Total is decimal total && Quantity < total
+        ? $"Из {Ui.Qty(total)} — {Ui.Qty(Quantity)} вне учёта: в 1С не числится (б/у, снятое с оборудования и т.п.)"
+        : "В 1С не числится: б/у, снятое с оборудования и т.п.";
+}
