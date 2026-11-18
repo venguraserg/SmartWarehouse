@@ -360,6 +360,84 @@ public class WriteOffActServiceTests
         Assert.True(report.Can.Edit);
     }
 
+    // ---------- Сводный акт кладовщика за месяц ----------
+
+    private async Task<int> ConfirmedReportAsync(int employee, decimal qty, int item = Bearing, string usage = "замена подшипника")
+    {
+        var report = await _service.CreateAsync(Report(employee, Line(qty, item: item, usage: usage)), AsKeeper);
+        report = await _service.SubmitAsync(report.Id, AsKeeper);   // внесено кладовщиком — подтверждено сразу
+        Assert.Equal(ActStatus.Approved, report.Status);
+        return report.Id;
+    }
+
+    private static SaveSummaryRequest Summary(params int[] reports) =>
+        new(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), null, null, reports);
+
+    [Fact]
+    public async Task Сводный_акт_списывает_выбранные_отчёты_документом_на_каждого_сотрудника()
+    {
+        await GiveAsync(Fitter, Bearing, 5, CustodyKind.Work);
+        await GiveAsync(Other, Belt, 2, CustodyKind.Work);
+        var r1 = await ConfirmedReportAsync(Fitter, 3);
+        var r2 = await ConfirmedReportAsync(Other, 2, Belt, "транспортёр");
+        var r3 = await ConfirmedReportAsync(Fitter, 1);                       // в следующий месяц
+
+        Assert.Equal(3, (await _service.ListSummaryCandidatesAsync(null, AsKeeper)).Count);
+        var summary = await _service.CreateSummaryAsync(Summary(r1, r2), AsKeeper);
+        Assert.StartsWith("СА-", summary.Number);
+        Assert.Equal((ActStatus.Draft, 2, 2), (summary.Status, summary.Lines.Count, summary.Reports!.Count));
+        Assert.Equal(["Петров С.", "Козлов А."], summary.Lines.Select(l => l.EmployeeName));
+        Assert.Single(await _service.ListSummaryCandidatesAsync(null, AsKeeper));   // r3 — свободен
+
+        summary = await _service.PostSummaryAsync(summary.Id, AsKeeper);
+
+        Assert.Equal(ActStatus.Approved, summary.Status);
+        Assert.Equal(2, summary.Documents!.Count);                              // на каждого сотрудника
+        Assert.Equal(2, Held(Fitter, CustodyKind.Work));                        // 5 − 3
+        Assert.Equal(0, Held(Other, CustodyKind.Work, Belt));
+        Assert.True((await _service.GetAsync(r1, AsKeeper)).WrittenOff);
+        Assert.False((await _service.GetAsync(r3, AsKeeper)).WrittenOff);
+
+        // Резерв r3 (1 шт) остаётся, свободная 1 шт возвращается
+        await Assert.ThrowsAsync<InsufficientStockException>(() => _stockService.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Return, null, null, null, null, [new DocumentLineRequest(Bearing, 2, null, Cell)], ReceivedById: Fitter)));
+        await _stockService.PostDocumentAsync(new CreateDocumentRequest(
+            MovementType.Return, null, null, null, null, [new DocumentLineRequest(Bearing, 1, null, Cell)], ReceivedById: Fitter));
+
+        summary = await _service.SetExternalNumberAsync(summary.Id, "АКТ-1С № 154", AsKeeper);
+        Assert.Equal("АКТ-1С № 154", summary.ExternalNumber);
+    }
+
+    [Fact]
+    public async Task Отчёт_только_в_одном_сводном_акте_и_только_подтверждённый()
+    {
+        await GiveAsync(Fitter, Bearing, 5, CustodyKind.Work);
+        var confirmed = await ConfirmedReportAsync(Fitter, 1);
+        var pending = await _service.CreateAsync(Report(Fitter, Line(1)), AsFitter);
+        await _service.SubmitAsync(pending.Id, AsFitter);
+
+        var first = await _service.CreateSummaryAsync(Summary(confirmed), AsKeeper);
+        await Assert.ThrowsAsync<DomainException>(() => _service.CreateSummaryAsync(Summary(confirmed), AsKeeper));
+        await Assert.ThrowsAsync<DomainException>(() => _service.CreateSummaryAsync(Summary(pending.Id), AsKeeper));
+
+        // Удалили черновик — отчёт снова свободен
+        await _service.DeleteAsync(first.Id, AsKeeper);
+        Assert.Single(await _service.ListSummaryCandidatesAsync(null, AsKeeper));
+    }
+
+    [Fact]
+    public async Task Сводный_акт_составляет_и_видит_только_кладовщик()
+    {
+        await GiveAsync(Fitter, Bearing, 1, CustodyKind.Work);
+        var report = await ConfirmedReportAsync(Fitter, 1);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => _service.CreateSummaryAsync(Summary(report), AsBoss));
+        var summary = await _service.CreateSummaryAsync(Summary(report), AsKeeper);
+        await Assert.ThrowsAsync<ForbiddenException>(() => _service.GetAsync(summary.Id, AsBoss));
+        Assert.DoesNotContain(await _service.ListAsync(ActScope.Visible, null, null, AsBoss), a => a.Kind == ActKind.Summary);
+        await Assert.ThrowsAsync<DomainException>(() => _service.SubmitAsync(summary.Id, AsKeeper));
+    }
+
     // ---------- Видимость ----------
 
     [Fact]
@@ -442,6 +520,24 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
         && ((a.Kind == ActKind.WriteOff && approverId is int me && IsApprover(a, me))
             || (reportsToConfirm && a.Kind == ActKind.UsageReport));
 
+    public Task<IReadOnlyList<WriteOffAct>> ListSummaryCandidatesAsync(int? summaryId, CancellationToken ct = default)
+    {
+        foreach (var act in stock.Acts)
+            Populate(act);
+        return Task.FromResult<IReadOnlyList<WriteOffAct>>(stock.Acts
+            .Where(a => a.Kind == ActKind.UsageReport && a.Status == ActStatus.Approved
+                && (a.SummaryActId is null || a.SummaryActId == summaryId)
+                && a.Lines.Any(l => l.DocumentId is null && l.Batch?.OffBook != true))
+            .ToList());
+    }
+
+    public Task<IReadOnlyList<WriteOffAct>> GetManyAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default)
+    {
+        var found = stock.Acts.Where(a => ids.Contains(a.Id)).ToList();
+        found.ForEach(Populate);
+        return Task.FromResult<IReadOnlyList<WriteOffAct>>(found);
+    }
+
     public void Add(WriteOffAct act) => _pending.Add(act);
 
     public void Remove(WriteOffAct act) => stock.Acts.Remove(act);
@@ -457,6 +553,12 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
         _pending.Clear();
         foreach (var act in stock.Acts.Where(a => a.Document is not null))
             act.DocumentId = act.Document!.Id;
+        foreach (var act in stock.Acts)
+        {
+            act.SummaryActId = act.SummaryAct?.Id ?? act.SummaryActId;
+            foreach (var line in act.Lines.Where(l => l.Document is not null))
+                line.DocumentId = line.Document!.Id;
+        }
     }
 
     private static bool IsApprover(WriteOffAct act, int approverId) =>
@@ -466,6 +568,22 @@ internal class FakeActRepository(FakeStockRepository stock) : IWriteOffActReposi
     private void Populate(WriteOffAct act)
     {
         act.Employee = stock.Employees.First(e => e.Id == act.EmployeeId);
+        act.SummaryAct = stock.Acts.FirstOrDefault(a => a.Id == act.SummaryActId) ?? act.SummaryAct;
+        if (act.Kind == ActKind.Summary)
+        {
+            act.Reports = stock.Acts.Where(a => a.SummaryActId == act.Id || a.SummaryAct == act).ToList();
+            foreach (var report in act.Reports)
+            {
+                report.SummaryAct = act;
+                report.Employee = stock.Employees.First(e => e.Id == report.EmployeeId);
+                foreach (var line in report.Lines)
+                {
+                    line.Item = stock.Items.First(i => i.Id == line.ItemId);
+                    line.Equipment = stock.Equipment.FirstOrDefault(e => e.Id == line.EquipmentId);
+                    line.Batch = stock.Batches.FirstOrDefault(b => b.Id == line.BatchId);
+                }
+            }
+        }
         foreach (var line in act.Lines)
         {
             line.Item = stock.Items.First(i => i.Id == line.ItemId);

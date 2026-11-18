@@ -19,8 +19,16 @@ public class WriteOffAct
     /// <summary>Акт на списание (подотчёт по 1С) или отчёт об использовании (выданное «в работу»).</summary>
     public ActKind Kind { get; set; } = ActKind.WriteOff;
 
-    /// <summary>С какого подотчёта списывается: отчёт — с «в работе», акт — с «подотчёта по 1С».</summary>
-    public CustodyKind Custody => Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official;
+    /// <summary>С какого подотчёта списывается: отчёт и сводный акт — с «в работе», акт — с «подотчёта по 1С».</summary>
+    public CustodyKind Custody => Kind == ActKind.WriteOff ? CustodyKind.Official : CustodyKind.Work;
+
+    /// <summary>Отчёт об использовании: в какой сводный акт кладовщика включён.</summary>
+    public int? SummaryActId { get; set; }
+
+    public WriteOffAct? SummaryAct { get; set; }
+
+    /// <summary>Сводный акт: включённые отчёты об использовании.</summary>
+    public ICollection<WriteOffAct> Reports { get; set; } = new List<WriteOffAct>();
 
     public ActStatus Status { get; set; } = ActStatus.Draft;
 
@@ -72,8 +80,12 @@ public class WriteOffAct
     /// <summary>Акт можно менять и удалять: черновик или возвращённый.</summary>
     public bool IsEditable => Status is ActStatus.Draft or ActStatus.Returned;
 
-    public static string FormatNumber(int id, ActKind kind = ActKind.WriteOff) =>
-        kind == ActKind.UsageReport ? $"ОИ-{id:D6}" : $"АС-{id:D6}";
+    public static string FormatNumber(int id, ActKind kind = ActKind.WriteOff) => kind switch
+    {
+        ActKind.UsageReport => $"ОИ-{id:D6}",
+        ActKind.Summary => $"СА-{id:D6}",
+        _ => $"АС-{id:D6}"
+    };
 }
 
 /// <summary>Строка акта: что, сколько и куда использовано.</summary>
@@ -108,4 +120,12 @@ public class WriteOffActLine
 
     /// <summary>Когда израсходовано (для сводного акта).</summary>
     public DateOnly? UsedOn { get; set; }
+
+    /// <summary>
+    /// Отчёт об использовании: документ, которым строка списана — сводным актом кладовщика
+    /// (вне учёта — при подтверждении). Пока не списана, строка держит подотчёт «в работе» в резерве.
+    /// </summary>
+    public long? DocumentId { get; set; }
+
+    public StockDocument? Document { get; set; }
 }

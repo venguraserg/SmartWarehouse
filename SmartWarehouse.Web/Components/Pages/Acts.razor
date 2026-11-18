@@ -1,17 +1,22 @@
 @page "/acts"
 @page "/reports"
+@page "/summary-acts"
 @inject ApiClient Api
 @inject NavigationManager Nav
 
-<PageTitle>@(IsReport ? "Отчёты об использовании" : "Акты на списание") — Склад ОЭТО</PageTitle>
+<PageTitle>@PageName — Склад ОЭТО</PageTitle>
 
 <div class="page-head">
-    <h1>@(IsReport ? "Отчёты об использовании" : "Акты на списание")</h1>
+    <h1>@PageName</h1>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="@(IsReport ? "/reports/new" : "/acts/new")">@(IsReport ? "+ Новый отчёт" : "+ Новый акт")</a>
+    <a class="btn btn-primary" href="@(IsSummary ? "/summary-acts/new" : IsReport ? "/reports/new" : "/acts/new")">@(IsSummary ? "+ Сводный акт" : IsReport ? "+ Новый отчёт" : "+ Новый акт")</a>
 </div>
 <p class="muted" style="margin-top: -.5rem">
-    @if (IsReport)
+    @if (IsSummary)
+    {
+        @("Кладовщик собирает подтверждённые отчёты об использовании за месяц и проводит списание — по этому акту он списывает в 1С со своего МОЛ.")
+    }
+    else if (IsReport)
     {
         @("Что из выданного ")<span class="tag tag-info">в работу</span>@(" израсходовано и куда. Вносит сотрудник или кладовщик, подтверждает кладовщик, руководитель видит отчёты подчинённых.")
     }
@@ -22,7 +27,7 @@
 </p>
 
 <div class="toolbar">
-    <div class="segmented">
+    <div class="segmented" style="@(IsSummary ? "display: none" : null)">
         <button type="button" class="@(scope == "approve" ? "active" : null)" @onclick='() => SetScopeAsync("approve")'>
             @(IsReport ? "Ждут подтверждения" : "Ждут моего утверждения")@(toApprove > 0 ? $" ({toApprove})" : "")
         </button>
@@ -73,7 +78,7 @@ else
                     <th>Сотрудник</th>
                     <th>Период / основание</th>
                     <th class="num">Строк</th>
-                    <th>@(IsReport ? "Подтверждает / подтвердил" : "Утверждает / утвердил")</th>
+                    <th>@(IsSummary ? "Провёл" : IsReport ? "Подтверждает / подтвердил" : "Утверждает / утвердил")</th>
                     <th>Изменён</th>
                 </tr>
             </thead>
@@ -82,7 +87,17 @@ else
                 {
                     <tr>
                         <td class="mono"><a href="/acts/@a.Id">@a.Number</a></td>
-                        <td><span class="tag @Ui.ActStateClass(a.Status)">@Ui.ActState(a.Status, a.Kind)</span></td>
+                        <td>
+                            <span class="tag @Ui.ActStateClass(a.Status)">@Ui.ActState(a.Status, a.Kind)</span>
+                            @if (a.WrittenOff)
+                            {
+                                <span class="tag tag-danger" title="Списано сводным актом @a.SummaryActNumber">списан</span>
+                            }
+                            else if (a.SummaryActNumber is not null)
+                            {
+                                <span class="tag tag-neutral" title="Включён в черновик сводного акта">@a.SummaryActNumber</span>
+                            }
+                        </td>
                         <td><a href="/employees/@a.EmployeeId">@a.EmployeeName</a></td>
                         <td>
                             @(string.Join(" · ", new[] { Ui.Period(a.PeriodFrom, a.PeriodTo), a.ExternalNumber }.Where(x => !string.IsNullOrEmpty(x))))
@@ -110,10 +125,23 @@ else
     private string? error;
 
     /// <summary>Страница отчётов об использовании (/reports) или актов на списание (/acts).</summary>
-    private ActKind Kind => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("reports", StringComparison.OrdinalIgnoreCase)
-        ? ActKind.UsageReport : ActKind.WriteOff;
+    private ActKind Kind => Nav.ToBaseRelativePath(Nav.Uri) switch
+    {
+        var path when path.StartsWith("reports", StringComparison.OrdinalIgnoreCase) => ActKind.UsageReport,
+        var path when path.StartsWith("summary-acts", StringComparison.OrdinalIgnoreCase) => ActKind.Summary,
+        _ => ActKind.WriteOff
+    };
 
     private bool IsReport => Kind == ActKind.UsageReport;
+
+    private bool IsSummary => Kind == ActKind.Summary;
+
+    private string PageName => Kind switch
+    {
+        ActKind.UsageReport => "Отчёты об использовании",
+        ActKind.Summary => "Сводные акты кладовщика",
+        _ => "Акты на списание"
+    };
 
     private ActKind? loadedKind;
 
@@ -127,7 +155,7 @@ else
         status = null;
         try
         {
-            toApprove = (await Api.GetActsAsync(ActScope.ToApprove, kind: Kind)).Count;
+            toApprove = IsSummary ? 0 : (await Api.GetActsAsync(ActScope.ToApprove, kind: Kind)).Count;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -135,8 +163,8 @@ else
             return;
         }
 
-        // Есть что утверждать — открываем эту вкладку.
-        scope = ScopeParam is "approve" or "all" ? ScopeParam : toApprove > 0 ? "approve" : "all";
+        // Есть что утверждать — открываем эту вкладку. Сводные акты не утверждаются — только «все».
+        scope = IsSummary ? "all" : ScopeParam is "approve" or "all" ? ScopeParam : toApprove > 0 ? "approve" : "all";
         await LoadAsync();
     }
 

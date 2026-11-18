@@ -43,6 +43,22 @@ public interface IWriteOffActService
     /// <summary>Вернуть на доработку с замечанием.</summary>
     Task<ActDto> ReturnAsync(int id, string? remark, ActActor actor, CancellationToken ct = default);
 
+    // ---------- Сводный акт кладовщика (СА) ----------
+
+    /// <summary>Отчёты, которые можно включить в сводный акт (и уже включённые в <paramref name="summaryId"/>).</summary>
+    Task<IReadOnlyList<ActSummaryDto>> ListSummaryCandidatesAsync(int? summaryId, ActActor actor, CancellationToken ct = default);
+
+    /// <summary>Новый сводный акт (черновик) из подтверждённых отчётов об использовании.</summary>
+    Task<ActDto> CreateSummaryAsync(SaveSummaryRequest request, ActActor actor, CancellationToken ct = default);
+
+    Task<ActDto> UpdateSummaryAsync(int id, SaveSummaryRequest request, ActActor actor, CancellationToken ct = default);
+
+    /// <summary>Провести: учётные строки включённых отчётов списываются (документ на каждого сотрудника).</summary>
+    Task<ActDto> PostSummaryAsync(int id, ActActor actor, CancellationToken ct = default);
+
+    /// <summary>Вписать номер документа списания в 1С (в том числе после проведения).</summary>
+    Task<ActDto> SetExternalNumberAsync(int id, string? externalNumber, ActActor actor, CancellationToken ct = default);
+
     /// <summary>Сколько ждут решения текущего пользователя: акты подчинённых, а кладовщику — и отчёты на подтверждении.</summary>
     Task<int> CountToApproveAsync(ActActor actor, CancellationToken ct = default);
 }
@@ -85,7 +101,10 @@ public class WriteOffActService(
         }
 
         var headers = await acts.ListAsync(filter, ct);
-        return headers.Select(h => ToSummary(h.Act, h.LineCount)).ToList();
+        return headers
+            .Where(h => actor.IsWarehouse || h.Act.Kind != ActKind.Summary)   // сводные акты — только кладовщику
+            .Select(h => ToSummary(h.Act, h.LineCount))
+            .ToList();
     }
 
     public async Task<ActDto> GetAsync(int id, ActActor actor, CancellationToken ct = default)
@@ -101,6 +120,8 @@ public class WriteOffActService(
 
     public async Task<ActDto> CreateAsync(SaveActRequest request, ActActor actor, CancellationToken ct = default)
     {
+        if (request.Kind == ActKind.Summary)
+            throw new DomainException("Сводный акт кладовщика составляется из отчётов об использовании.");
         if (!actor.IsWarehouse && actor.EmployeeId != request.EmployeeId)
             throw new ForbiddenException(request.Kind == ActKind.UsageReport
                 ? "Отчёт об использовании вносит сам сотрудник (или кладовщик с его слов)."
@@ -132,7 +153,7 @@ public class WriteOffActService(
         EnsureCanEdit(act, actor);
         if (request.EmployeeId != act.EmployeeId)
             throw new DomainException("Сотрудника в акте сменить нельзя — составьте новый акт.");
-        if (request.Kind != act.Kind)
+        if (request.Kind != act.Kind || act.Kind == ActKind.Summary)
             throw new DomainException("Акт нельзя превратить в отчёт об использовании и наоборот — составьте новый.");
 
         await ApplyAsync(act, request, act.Employee, ct);
@@ -147,6 +168,12 @@ public class WriteOffActService(
     {
         var act = await LoadVisibleAsync(id, actor, ct);
         EnsureCanEdit(act, actor);
+        // Черновик сводного акта: включённые отчёты снова свободны.
+        foreach (var report in act.Reports)
+        {
+            report.SummaryActId = null;
+            report.SummaryAct = null;
+        }
         acts.Remove(act);
         await acts.SaveChangesAsync(ct);
     }
@@ -156,6 +183,7 @@ public class WriteOffActService(
     public async Task<ActDto> SubmitAsync(int id, ActActor actor, CancellationToken ct = default)
     {
         var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureNotSummary(act);
         EnsureCanEdit(act, actor);
         if (act.Lines.Count == 0)
             throw new DomainException("В акте нет строк.");
@@ -186,6 +214,7 @@ public class WriteOffActService(
     public async Task<ActDto> RecallAsync(int id, ActActor actor, CancellationToken ct = default)
     {
         var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureNotSummary(act);
         if (!CanRecall(act, actor))
             throw act.Status == ActStatus.Pending
                 ? new ForbiddenException("Отозвать может сам сотрудник или кладовщик.")
@@ -200,6 +229,7 @@ public class WriteOffActService(
     public async Task<ActDto> ApproveAsync(int id, ActActor actor, CancellationToken ct = default)
     {
         var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureNotSummary(act);
         EnsureCanDecide(act, actor);
 
         await ApproveCoreAsync(act, actor, ct);
@@ -210,6 +240,7 @@ public class WriteOffActService(
     public async Task<ActDto> ReturnAsync(int id, string? remark, ActActor actor, CancellationToken ct = default)
     {
         var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureNotSummary(act);
         EnsureCanDecide(act, actor);
 
         var text = Clean(remark) ?? throw new DomainException("Напишите замечание: что нужно исправить.");
@@ -269,6 +300,9 @@ public class WriteOffActService(
             var staged = await stock.StageAsync(request, exceptActId: act.Id, ct);
             act.Document = staged.Document;
             staged.Document.Act = act;
+            if (act.Kind == ActKind.UsageReport)
+                foreach (var l in lines)
+                    l.Document = staged.Document;
         }
 
         var now = clock.GetUtcNow();
@@ -293,6 +327,188 @@ public class WriteOffActService(
         act.DecidedById = approver.Id;
         act.DecidedBy = approver.ShortName;
         act.DecidedByPosition = approver.Position;
+    }
+
+    // ---------- Сводный акт кладовщика ----------
+
+    public const int MaxSummaryReports = 500;
+
+    public async Task<IReadOnlyList<ActSummaryDto>> ListSummaryCandidatesAsync(int? summaryId, ActActor actor, CancellationToken ct = default)
+    {
+        EnsureWarehouse(actor);
+        var reports = await acts.ListSummaryCandidatesAsync(summaryId, ct);
+        return reports.Select(r => ToSummary(r, PendingLines(r).Count())).ToList();
+    }
+
+    public async Task<ActDto> CreateSummaryAsync(SaveSummaryRequest request, ActActor actor, CancellationToken ct = default)
+    {
+        EnsureWarehouse(actor);
+        if (actor.EmployeeId is not int keeper)
+            throw new DomainException("Учётная запись кладовщика не привязана к сотруднику — сводный акт составляется от его имени (МОЛ).");
+
+        var now = clock.GetUtcNow();
+        var act = new WriteOffAct
+        {
+            Kind = ActKind.Summary,
+            EmployeeId = keeper,
+            Status = ActStatus.Draft,
+            CreatedAt = now,
+            UpdatedAt = now,
+            CreatedBy = Clean(actor.DisplayName)
+        };
+        acts.Add(act);
+        await ApplySummaryAsync(act, request, ct);
+
+        await acts.SaveChangesAsync(ct);
+        return await GetAsync(act.Id, actor, ct);
+    }
+
+    public async Task<ActDto> UpdateSummaryAsync(int id, SaveSummaryRequest request, ActActor actor, CancellationToken ct = default)
+    {
+        var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureSummary(act);
+        EnsureCanEdit(act, actor);
+
+        await ApplySummaryAsync(act, request, ct);
+        act.UpdatedAt = clock.GetUtcNow();
+        await acts.SaveChangesAsync(ct);
+        return await GetAsync(act.Id, actor, ct);
+    }
+
+    public async Task<ActDto> PostSummaryAsync(int id, ActActor actor, CancellationToken ct = default)
+    {
+        var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureSummary(act);
+        EnsureCanEdit(act, actor);
+
+        var pending = act.Reports
+            .SelectMany(r => PendingLines(r).Select(l => (Report: r, Line: l)))
+            .ToList();
+        if (pending.Count == 0)
+            throw new DomainException("В сводном акте нет строк к списанию — включите подтверждённые отчёты.");
+
+        // Документ списания на каждого сотрудника: позиции списываются с его «в работе»
+        // (резерв отчётов этого сводного акта не мешает — exceptActId).
+        foreach (var group in pending.GroupBy(x => x.Report.EmployeeId))
+        {
+            var reportNumbers = string.Join(", ", group.Select(x => x.Report.Number).Distinct());
+            foreach (var chunk in group.Chunk(StockService.MaxLines))
+            {
+                var equipment = chunk.Select(x => x.Line.EquipmentId).Distinct().ToList();
+                var request = new CreateDocumentRequest(
+                    MovementType.WriteOff,
+                    act.Number,
+                    equipment.Count == 1 ? equipment[0] : null,
+                    null,
+                    $"По сводному акту {act.Number} (отчёты {reportNumbers})"
+                        + (act.ExternalNumber is null ? "" : $"; в 1С: {act.ExternalNumber}"),
+                    chunk.Select(x => new DocumentLineRequest(x.Line.ItemId, x.Line.Quantity, null, null, x.Line.BatchId)).ToList(),
+                    PerformedById: act.EmployeeId,
+                    ReceivedById: group.Key,
+                    Custody: CustodyKind.Work);
+
+                var staged = await stock.StageAsync(request, exceptActId: act.Id, ct);
+                foreach (var (_, line) in chunk)
+                    line.Document = staged.Document;
+            }
+        }
+
+        var now = clock.GetUtcNow();
+        act.Status = ActStatus.Approved;
+        act.DecidedById = actor.EmployeeId;
+        act.DecidedBy = Clean(actor.DisplayName);
+        act.DecidedAt = now;
+        act.UpdatedAt = now;
+
+        await acts.SaveChangesAsync(ct);
+        return await GetAsync(act.Id, actor, ct);
+    }
+
+    public async Task<ActDto> SetExternalNumberAsync(int id, string? externalNumber, ActActor actor, CancellationToken ct = default)
+    {
+        var act = await LoadVisibleAsync(id, actor, ct);
+        EnsureSummary(act);
+        EnsureWarehouse(actor);
+
+        var number = Clean(externalNumber);
+        if (number?.Length > 100)
+            throw new DomainException("Номер документа 1С — не длиннее 100 символов.");
+        act.ExternalNumber = number;
+        act.UpdatedAt = clock.GetUtcNow();
+        await acts.SaveChangesAsync(ct);
+        return await GetAsync(act.Id, actor, ct);
+    }
+
+    /// <summary>Реквизиты и состав сводного акта: только подтверждённые отчёты с несписанными учётными строками.</summary>
+    private async Task ApplySummaryAsync(WriteOffAct act, SaveSummaryRequest request, CancellationToken ct)
+    {
+        var ids = (request.ReportIds ?? Array.Empty<int>()).Distinct().ToList();
+        if (ids.Count == 0)
+            throw new DomainException("Отметьте отчёты об использовании, которые включить в акт.");
+        if (ids.Count > MaxSummaryReports)
+            throw new DomainException($"Не больше {MaxSummaryReports} отчётов в одном сводном акте.");
+        if (request.PeriodFrom is DateOnly from && request.PeriodTo is DateOnly to && from > to)
+            throw new DomainException("Начало периода позже его окончания.");
+
+        var externalNumber = Clean(request.ExternalNumber);
+        if (externalNumber?.Length > 100)
+            throw new DomainException("Номер документа 1С — не длиннее 100 символов.");
+        var comment = Clean(request.Comment);
+        if (comment?.Length > 1000)
+            throw new DomainException("Комментарий — не длиннее 1000 символов.");
+
+        var reports = await acts.GetManyAsync(ids, ct);
+        foreach (var id in ids)
+        {
+            var report = reports.FirstOrDefault(r => r.Id == id)
+                ?? throw new NotFoundException($"Отчёт {WriteOffAct.FormatNumber(id, ActKind.UsageReport)} не найден.");
+            if (report.Kind != ActKind.UsageReport || report.Status != ActStatus.Approved)
+                throw new DomainException($"{report.Number}: в сводный акт включаются только подтверждённые отчёты об использовании.");
+            if (report.SummaryActId is int other && other != act.Id)
+                throw new DomainException($"{report.Number} уже включён в сводный акт {WriteOffAct.FormatNumber(other, ActKind.Summary)}.");
+            if (!PendingLines(report).Any())
+                throw new DomainException($"{report.Number}: учётные позиции уже списаны.");
+        }
+
+        // Исключённые из черновика отчёты снова свободны; включённые — привязываются.
+        foreach (var report in act.Reports.Where(r => !ids.Contains(r.Id)).ToList())
+        {
+            report.SummaryActId = null;
+            report.SummaryAct = null;
+            act.Reports.Remove(report);
+        }
+        foreach (var report in reports.Where(r => act.Reports.All(x => x.Id != r.Id)))
+        {
+            report.SummaryAct = act;
+            act.Reports.Add(report);
+        }
+
+        act.PeriodFrom = request.PeriodFrom;
+        act.PeriodTo = request.PeriodTo;
+        act.ExternalNumber = externalNumber;
+        act.Comment = comment;
+    }
+
+    /// <summary>Строки отчёта, которые списывает сводный акт: учётные (не вне учёта) и ещё не списанные.</summary>
+    private static IEnumerable<WriteOffActLine> PendingLines(WriteOffAct report) =>
+        report.Lines.Where(l => l.DocumentId is null && l.Document is null && l.Batch?.OffBook != true);
+
+    private static void EnsureWarehouse(ActActor actor)
+    {
+        if (!actor.IsWarehouse)
+            throw new ForbiddenException("Сводный акт составляет кладовщик.");
+    }
+
+    private static void EnsureSummary(WriteOffAct act)
+    {
+        if (act.Kind != ActKind.Summary)
+            throw new DomainException($"{act.Number} — не сводный акт кладовщика.");
+    }
+
+    private static void EnsureNotSummary(WriteOffAct act)
+    {
+        if (act.Kind == ActKind.Summary)
+            throw new DomainException($"Сводный акт {act.Number} не утверждается, а проводится кладовщиком.");
     }
 
     // ---------- Проверки ----------
@@ -445,6 +661,8 @@ public class WriteOffActService(
         var act = await acts.GetAsync(id, ct) ?? throw new NotFoundException($"Акт {id} не найден.");
         if (actor.IsWarehouse || (act.Kind == ActKind.WriteOff && actor.EmployeeId == ApproverOf(act.Employee).Id))
             return act;
+        if (act.Kind == ActKind.Summary)
+            throw new ForbiddenException("Сводные акты видит кладовщик.");
 
         var visible = await VisibleEmployeesAsync(actor, ct);
         if (visible is not null && !visible.Contains(act.EmployeeId))
@@ -468,14 +686,14 @@ public class WriteOffActService(
     internal static Employee ApproverOf(Employee employee) => employee.Manager ?? employee;
 
     private static bool CanEdit(WriteOffAct act, ActActor actor) =>
-        act.IsEditable && (actor.IsWarehouse || actor.EmployeeId == act.EmployeeId);
+        act.IsEditable && (actor.IsWarehouse || (act.Kind != ActKind.Summary && actor.EmployeeId == act.EmployeeId));
 
     private static bool CanRecall(WriteOffAct act, ActActor actor) =>
-        act.Status == ActStatus.Pending && (actor.IsWarehouse || actor.EmployeeId == act.EmployeeId);
+        act.Kind != ActKind.Summary && act.Status == ActStatus.Pending && (actor.IsWarehouse || actor.EmployeeId == act.EmployeeId);
 
     /// <summary>Акт утверждает руководитель сотрудника; отчёт подтверждает кладовщик.</summary>
     private static bool CanDecide(WriteOffAct act, ActActor actor) =>
-        act.Status == ActStatus.Pending && (act.Kind == ActKind.UsageReport
+        act.Kind != ActKind.Summary && act.Status == ActStatus.Pending && (act.Kind == ActKind.UsageReport
             ? actor.IsWarehouse
             : actor.EmployeeId is int me && me == ApproverOf(act.Employee).Id);
 
@@ -509,6 +727,22 @@ public class WriteOffActService(
     private static ActDto ToDto(WriteOffAct act, ActActor actor)
     {
         var approver = DeciderOf(act);
+
+        // Сводный акт: строки — учётные строки включённых отчётов (по дате использования), с сотрудником и отчётом.
+        var lines = act.Kind == ActKind.Summary
+            ? act.Reports
+                .SelectMany(r => r.Lines.Where(l => l.Batch?.OffBook != true).Select(l => (Report: r, Line: l)))
+                .OrderBy(x => x.Line.UsedOn ?? DateOnly.FromDateTime((x.Report.DecidedAt ?? x.Report.UpdatedAt).UtcDateTime))
+                .ThenBy(x => x.Report.Id).ThenBy(x => x.Line.LineNo)
+                .Select((x, i) => LineDto(x.Line, i + 1, x.Report))
+                .ToList()
+            : act.Lines.OrderBy(l => l.LineNo).Select(l => LineDto(l, l.LineNo, null)).ToList();
+        var documents = (act.Kind == ActKind.Summary ? act.Reports.SelectMany(r => r.Lines) : act.Lines)
+            .Where(l => l.DocumentId is not null || l.Document is not null)
+            .Select(l => l.DocumentId ?? l.Document!.Id)
+            .Distinct()
+            .Select(id => new DocumentRefDto(id, StockDocument.FormatNumber(MovementType.WriteOff, id)))
+            .ToList();
         return new ActDto(
             act.Id,
             act.Number,
@@ -533,21 +767,28 @@ public class WriteOffActService(
             act.ReturnRemark,
             act.DocumentId,
             act.DocumentId is long documentId ? StockDocument.FormatNumber(MovementType.WriteOff, documentId) : null,
-            act.Lines
-                .OrderBy(l => l.LineNo)
-                .Select(l => new ActLineDto(
-                    l.LineNo, l.ItemId, l.Item.Sku, l.Item.Name, l.Item.Unit.Code, l.Quantity,
-                    l.EquipmentId, l.Equipment is { } e ? $"{e.Code} — {e.Name}" : null,
-                    l.Usage, l.UsedOn, l.BatchId, l.Batch?.UnitPrice, l.Batch?.ReceivedAt))
-                .ToList(),
+            lines,
             new ActPermissions(CanEdit(act, actor), CanEdit(act, actor), CanRecall(act, actor), CanDecide(act, actor)),
-            act.Kind);
+            act.Kind,
+            act.Kind == ActKind.Summary ? act.Reports.OrderBy(r => r.Id).Select(r => ToSummary(r, r.Lines.Count(l => l.Batch?.OffBook != true))).ToList() : null,
+            documents,
+            act.SummaryActId,
+            act.SummaryActId is int s ? WriteOffAct.FormatNumber(s, ActKind.Summary) : null,
+            act.SummaryAct?.Status == ActStatus.Approved);
     }
+
+    private static ActLineDto LineDto(WriteOffActLine l, int lineNo, WriteOffAct? report) => new(
+        lineNo, l.ItemId, l.Item.Sku, l.Item.Name, l.Item.Unit.Code, l.Quantity,
+        l.EquipmentId, l.Equipment is { } e ? $"{e.Code} — {e.Name}" : null,
+        l.Usage, l.UsedOn, l.BatchId, l.Batch?.UnitPrice, l.Batch?.ReceivedAt,
+        EmployeeName: report?.Employee.ShortName,
+        SourceNumber: report?.Number,
+        SourceId: report?.Id);
 
     /// <summary>Кто решает: по акту — руководитель (или сам сотрудник), по отчёту — кладовщик.</summary>
     private static (int Id, string Name) DeciderOf(WriteOffAct act)
     {
-        if (act.Kind == ActKind.UsageReport)
+        if (act.Kind != ActKind.WriteOff)
             return (0, "кладовщик");
         var approver = ApproverOf(act.Employee);
         return (approver.Id, approver.ShortName);
@@ -568,5 +809,7 @@ public class WriteOffActService(
         DeciderOf(act).Name,
         act.DecidedBy,
         act.DecidedAt,
-        act.Kind);
+        act.Kind,
+        act.SummaryActId is int s ? WriteOffAct.FormatNumber(s, ActKind.Summary) : null,
+        act.SummaryAct?.Status == ActStatus.Approved);
 }

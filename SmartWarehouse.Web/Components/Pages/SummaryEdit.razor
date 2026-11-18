@@ -1,0 +1,193 @@
+@page "/summary-acts/new"
+@page "/summary-acts/{Id:int}/edit"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(Id is null ? "Новый сводный акт" : $"Сводный акт {act?.Number}") — Склад ОЭТО</PageTitle>
+
+<h1>@(Id is null ? "Новый сводный акт" : $"Сводный акт {act?.Number}")</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Отметьте подтверждённые отчёты об использовании, которые списываете в этом месяце. Неотмеченные останутся
+    в резерве и попадут в следующий акт. В акт идут только учётные позиции — вне учёта уже списано при подтверждении.
+</p>
+
+<Alert Error="@error" />
+
+@if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else if (act is not null && !act.Can.Edit)
+{
+    <div class="panel">
+        @act.Number уже проведён. <a href="/acts/@act.Id">Открыть</a>
+    </div>
+}
+else
+{
+    <div class="panel">
+        <div class="field-row">
+            <div class="field">
+                <label for="month">Месяц</label>
+                <input id="month" type="month" value="@month" @onchange="OnMonthChanged" />
+                <div class="field-hint">Задаёт период акта и отмечает отчёты, подтверждённые в этом месяце.</div>
+            </div>
+            <div class="field">
+                <label for="ext">№ документа 1С</label>
+                <input id="ext" type="text" @bind="externalNumber" maxlength="100" placeholder="можно вписать и после проведения" />
+            </div>
+        </div>
+        <div class="field">
+            <label for="comment">Комментарий</label>
+            <input id="comment" type="text" @bind="comment" maxlength="1000" />
+        </div>
+    </div>
+
+    <div class="page-head" style="margin-top: 1.25rem; margin-bottom: .5rem">
+        <h2 style="margin: 0">Отчёты к списанию <span class="muted">(@selected.Count из @candidates.Count)</span></h2>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" type="button" @onclick="() => selected = candidates.Select(c => c.Id).ToHashSet()">Отметить все</button>
+        <button class="btn btn-sm" type="button" @onclick="() => selected.Clear()">Снять все</button>
+    </div>
+
+    @if (candidates.Count == 0)
+    {
+        <div class="panel empty">Нет подтверждённых отчётов с несписанными позициями.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px"></th>
+                        <th>Отчёт</th>
+                        <th>Сотрудник</th>
+                        <th>Подтверждён</th>
+                        <th class="num">Строк к списанию</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in candidates)
+                    {
+                        var on = selected.Contains(c.Id);
+                        <tr class="@(on ? "selected" : null)">
+                            <td><input type="checkbox" checked="@on" @onchange="() => Toggle(c.Id)" aria-label="Включить @c.Number" /></td>
+                            <td class="mono"><a href="/acts/@c.Id" target="_blank" rel="noopener">@c.Number</a></td>
+                            <td>@c.EmployeeName</td>
+                            <td>@(c.DecidedAt is { } d ? Ui.Date(d) : "—") @(c.DecidedBy is { } who ? $"· {who}" : "")</td>
+                            <td class="num">@c.LineCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="actions" style="margin-top: 1.25rem">
+        <button class="btn btn-primary" type="button" disabled="@(saving || selected.Count == 0)" @onclick="() => SaveAsync(post: true)">Сохранить и провести списание</button>
+        <button class="btn" type="button" disabled="@(saving || selected.Count == 0)" @onclick="() => SaveAsync(post: false)">Сохранить черновик</button>
+        <a class="btn" href="@(Id is int id ? $"/acts/{id}" : "/summary-acts")">Отмена</a>
+    </div>
+    <p class="muted">
+        Черновик закрепляет отчёты за этим актом. При проведении позиции списываются с «в работе» сотрудников —
+        документом списания на каждого.
+    </p>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private ActDto? act;
+    private List<ActSummaryDto> candidates = [];
+    private HashSet<int> selected = [];
+    private string month = "";
+    private string? externalNumber;
+    private string? comment;
+    private bool loaded;
+    private bool saving;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            candidates = await Api.GetSummaryCandidatesAsync(Id);
+            if (Id is int id)
+            {
+                act = await Api.GetActAsync(id);
+                externalNumber = act.ExternalNumber;
+                comment = act.Comment;
+                month = act.PeriodFrom is DateOnly from ? from.ToString("yyyy-MM") : "";
+                selected = act.Reports?.Select(r => r.Id).ToHashSet() ?? [];
+            }
+            else
+            {
+                // По умолчанию — прошлый месяц: акт обычно составляют в начале следующего.
+                var prev = DateTime.Today.AddMonths(-1);
+                month = prev.ToString("yyyy-MM");
+                SelectMonth();
+            }
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private (DateOnly From, DateOnly To)? Period =>
+        DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", out var from) ? (from, from.AddMonths(1).AddDays(-1)) : null;
+
+    private void OnMonthChanged(ChangeEventArgs e)
+    {
+        month = e.Value?.ToString() ?? "";
+        SelectMonth();
+    }
+
+    /// <summary>Отметить отчёты, подтверждённые в выбранном месяце и раньше (несписанные хвосты тоже).</summary>
+    private void SelectMonth()
+    {
+        if (Period is not { } p)
+            return;
+        selected = candidates
+            .Where(c => c.DecidedAt is { } d && DateOnly.FromDateTime(d.LocalDateTime) <= p.To)
+            .Select(c => c.Id)
+            .ToHashSet();
+    }
+
+    private void Toggle(int id)
+    {
+        if (!selected.Remove(id))
+            selected.Add(id);
+    }
+
+    private async Task SaveAsync(bool post)
+    {
+        error = null;
+        var request = new SaveSummaryRequest(Period?.From, Period?.To, externalNumber, comment, selected.ToList());
+        saving = true;
+        try
+        {
+            var saved = (act?.Id ?? Id) is int id
+                ? await Api.UpdateSummaryAsync(id, request)
+                : await Api.CreateSummaryAsync(request);
+            act = saved;
+            if (post)
+                saved = await Api.PostSummaryAsync(saved.Id);
+            Nav.NavigateTo($"/acts/{saved.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

@@ -429,6 +429,22 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return GetAsync<List<ActSummaryDto>>($"api/acts?{string.Join('&', parts)}", ct);
     }
 
+    // ---------- Сводный акт кладовщика ----------
+
+    public Task<List<ActSummaryDto>> GetSummaryCandidatesAsync(int? summaryId = null, CancellationToken ct = default) =>
+        GetAsync<List<ActSummaryDto>>($"api/acts/summary-candidates{(summaryId is int id ? $"?summaryId={id}" : "")}", ct);
+
+    public Task<ActDto> CreateSummaryAsync(SaveSummaryRequest request, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Post, "api/acts/summary", request, ct);
+
+    public Task<ActDto> UpdateSummaryAsync(int id, SaveSummaryRequest request, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Put, $"api/acts/summary/{id}", request, ct);
+
+    public Task<ActDto> PostSummaryAsync(int id, CancellationToken ct = default) => ActActionAsync(id, "post", ct);
+
+    public Task<ActDto> SetActExternalNumberAsync(int id, string? number, CancellationToken ct = default) =>
+        SendAsync<ActDto>(HttpMethod.Put, $"api/acts/{id}/external-number", new SetExternalNumberRequest(number), ct);
+
     public async Task<int> GetActsToApproveCountAsync(CancellationToken ct = default) =>
         (await GetAsync<CountBody>("api/acts/to-approve/count", ct)).Count;
 
@@ -463,9 +479,11 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     }
 
     /// <summary>Акт на списание (PDF).</summary>
-    public async Task<byte[]> GetActPdfAsync(int id, CancellationToken ct = default)
+    /// <param name="order">Сводный акт: порядок строк — date (по дате), employee (по сотрудникам), equipment (по оборудованию).</param>
+    public async Task<byte[]> GetActPdfAsync(int id, string? order = null, CancellationToken ct = default)
     {
-        using var response = await SendRawAsync(HttpMethod.Get, $"api/acts/{id}/pdf", ct);
+        var query = string.IsNullOrEmpty(order) ? "" : $"?order={Uri.EscapeDataString(order)}";
+        using var response = await SendRawAsync(HttpMethod.Get, $"api/acts/{id}/pdf{query}", ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadAsByteArrayAsync(ct);
     }

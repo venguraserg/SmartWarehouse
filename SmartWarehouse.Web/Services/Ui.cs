@@ -102,6 +102,7 @@ public static class Ui
         (ActStatus.Pending, ActKind.UsageReport) => "На подтверждении",
         (ActStatus.Pending, _) => "На утверждении",
         (ActStatus.Approved, ActKind.UsageReport) => "Подтверждён",
+        (ActStatus.Approved, ActKind.Summary) => "Проведён",
         (ActStatus.Approved, _) => "Утверждён",
         (ActStatus.Returned, _) => "Возвращён",
         _ => status.ToString()

@@ -37,6 +37,9 @@
                             <span class="nav-badge" title="Ждут подтверждения кладовщиком">@reportsToConfirm</span>
                         }
                     </NavLink>
+                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="summary">
+                        <NavLink href="/summary-acts">Сводные акты</NavLink>
+                    </AuthorizeView>
                     <NavLink href="/acts">
                         Акты на списание
                         @if (actsToApprove > 0)

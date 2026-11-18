@@ -739,6 +739,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("SubmittedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("SummaryActId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -756,6 +759,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("SummaryActId");
 
                     b.HasIndex("EmployeeId", "Status");
 
@@ -775,6 +780,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     b.Property<int?>("BatchId")
                         .HasColumnType("integer");
+
+                    b.Property<long?>("DocumentId")
+                        .HasColumnType("bigint");
 
                     b.Property<int?>("EquipmentId")
                         .HasColumnType("integer");
@@ -799,6 +807,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BatchId");
+
+                    b.HasIndex("DocumentId");
 
                     b.HasIndex("EquipmentId");
 
@@ -1070,11 +1080,18 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartWarehouse.Domain.Entities.WriteOffAct", "SummaryAct")
+                        .WithMany("Reports")
+                        .HasForeignKey("SummaryActId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("DecidedByEmployee");
 
                     b.Navigation("Document");
 
                     b.Navigation("Employee");
+
+                    b.Navigation("SummaryAct");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffActLine", b =>
@@ -1088,6 +1105,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.HasOne("SmartWarehouse.Domain.Entities.Batch", "Batch")
                         .WithMany()
                         .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SmartWarehouse.Domain.Entities.Equipment", "Equipment")
@@ -1104,6 +1126,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Navigation("Act");
 
                     b.Navigation("Batch");
+
+                    b.Navigation("Document");
 
                     b.Navigation("Equipment");
 
@@ -1140,6 +1164,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.WriteOffAct", b =>
                 {
                     b.Navigation("Lines");
+
+                    b.Navigation("Reports");
                 });
 #pragma warning restore 612, 618
         }

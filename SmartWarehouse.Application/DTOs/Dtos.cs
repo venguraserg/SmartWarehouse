@@ -381,7 +381,24 @@ public record ActLineDto(
     decimal? UnitPrice = null,
     DateTimeOffset? BatchDate = null,
     string? FromLocationName = null,
-    string? ToLocationName = null);
+    string? ToLocationName = null,
+    string? EmployeeName = null,
+    string? SourceNumber = null,
+    int? SourceId = null);
+
+/// <summary>Сводный акт кладовщика: какие отчёты включить и реквизиты.</summary>
+/// <param name="ExternalNumber">Номер документа списания в 1С (можно вписать и после проведения).</param>
+public record SaveSummaryRequest(
+    DateOnly? PeriodFrom,
+    DateOnly? PeriodTo,
+    string? ExternalNumber,
+    string? Comment,
+    IReadOnlyList<int> ReportIds);
+
+public record SetExternalNumberRequest(string? ExternalNumber);
+
+/// <summary>Ссылка на складской документ.</summary>
+public record DocumentRefDto(long Id, string Number);
 
 /// <summary>Что текущий пользователь может сделать с актом.</summary>
 public record ActPermissions(bool Edit, bool Submit, bool Recall, bool Decide);
@@ -412,7 +429,12 @@ public record ActDto(
     string? DocumentNumber,
     IReadOnlyList<ActLineDto> Lines,
     ActPermissions Can,
-    ActKind Kind = ActKind.WriteOff);
+    ActKind Kind = ActKind.WriteOff,
+    IReadOnlyList<ActSummaryDto>? Reports = null,
+    IReadOnlyList<DocumentRefDto>? Documents = null,
+    int? SummaryActId = null,
+    string? SummaryActNumber = null,
+    bool WrittenOff = false);
 
 /// <summary>Акт в списке (без строк).</summary>
 public record ActSummaryDto(
@@ -430,7 +452,9 @@ public record ActSummaryDto(
     string ApproverName,
     string? DecidedBy,
     DateTimeOffset? DecidedAt,
-    ActKind Kind = ActKind.WriteOff);
+    ActKind Kind = ActKind.WriteOff,
+    string? SummaryActNumber = null,
+    bool WrittenOff = false);
 
 /// <summary>Какие акты показать.</summary>
 public enum ActScope

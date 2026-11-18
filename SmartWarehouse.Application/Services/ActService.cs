@@ -50,8 +50,12 @@ public interface IActService
     /// <summary>Акт на списание по документу списания (PDF): по акту — сам акт, по старому документу — акт из документа.</summary>
     Task<(byte[] Pdf, string FileName)> GetWriteOffActAsync(long documentId, ActActor actor, CancellationToken ct = default);
 
-    /// <summary>Акт на списание (PDF). Неутверждённый — с надписью «ЧЕРНОВИК».</summary>
-    Task<(byte[] Pdf, string FileName)> GetActPdfAsync(int actId, ActActor actor, CancellationToken ct = default);
+    /// <summary>
+    /// Акт на списание (PDF). Неутверждённый — с надписью «ЧЕРНОВИК».
+    /// Сводный акт кладовщика: в «куда использовано» — сотрудник и отчёт; <paramref name="order"/> —
+    /// порядок строк: date (по дате, по умолчанию), employee (по сотрудникам), equipment (по оборудованию).
+    /// </summary>
+    Task<(byte[] Pdf, string FileName)> GetActPdfAsync(int actId, ActActor actor, CancellationToken ct = default, string? order = null);
 
     /// <summary>Образец акта по текущему шаблону — проверить настройки.</summary>
     Task<(byte[] Pdf, string FileName)> GetSampleAsync(CancellationToken ct = default);
@@ -67,9 +71,26 @@ public class ActService(
 {
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
 
-    public async Task<(byte[] Pdf, string FileName)> GetActPdfAsync(int actId, ActActor actor, CancellationToken ct = default)
+    public async Task<(byte[] Pdf, string FileName)> GetActPdfAsync(int actId, ActActor actor, CancellationToken ct = default, string? order = null)
     {
         var act = await acts.GetAsync(actId, actor, ct);
+        if (act.Kind == ActKind.UsageReport)
+            throw new DomainException("Отчёт об использовании не печатается — в бухгалтерию идёт сводный акт кладовщика.");
+
+        // Сводный акт: строки в выбранном порядке, номера по порядку.
+        IEnumerable<ActLineDto> ordered = act.Lines;
+        if (act.Kind == ActKind.Summary)
+            ordered = order switch
+            {
+                "employee" => act.Lines.OrderBy(l => l.EmployeeName).ThenBy(l => l.LineNo),
+                "equipment" => act.Lines.OrderBy(l => l.Equipment is null).ThenBy(l => l.Equipment).ThenBy(l => l.LineNo),
+                _ => act.Lines.OrderBy(l => l.LineNo)
+            };
+        var lines = ordered
+            .Select((l, i) => new WriteOffActLineData(i + 1, l.Sku, l.ItemName, l.UnitCode, l.Quantity,
+                act.Kind == ActKind.Summary ? SummaryUsage(l) : Usage(l),
+                actor.SeesPrices ? l.UnitPrice : null))
+            .ToList();
         var employee = await employees.GetAsync(act.EmployeeId, ct);
         var template = await settings.GetActTemplateAsync(ct);
 
@@ -91,10 +112,7 @@ public class ActService(
             period,
             act.ExternalNumber,
             act.Comment,
-            act.Lines
-                .Select(l => new WriteOffActLineData(l.LineNo, l.Sku, l.ItemName, l.UnitCode, l.Quantity, Usage(l),
-                    actor.SeesPrices ? l.UnitPrice : null))
-                .ToList(),
+            lines,
             act.Status == ActStatus.Approved && act.DecidedBy is not null && act.DecidedAt is { } at
                 ? new ActApprovalData(await DecidedByFullAsync(act, ct), act.DecidedByPosition, at)
                 : null,
@@ -104,7 +122,7 @@ public class ActService(
                 ActStatus.Pending => "НА УТВЕРЖДЕНИИ",
                 _ => "ЧЕРНОВИК"
             },
-            act.DocumentNumber,
+            act.Kind == ActKind.Summary ? string.Join(", ", act.Documents?.Select(d => d.Number) ?? []) : act.DocumentNumber,
             template);
 
         return (renderer.RenderWriteOffAct(data), $"Акт_{act.Number}.pdf");
@@ -186,5 +204,13 @@ public class ActService(
             .Where(s => !string.IsNullOrWhiteSpace(s));
         var text = string.Join("; ", parts);
         return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>Строка сводного акта: «Петров С. (ОИ-000012): Насос Н-3; замена подшипника; 15.10.2026».</summary>
+    private static string? SummaryUsage(ActLineDto line)
+    {
+        var who = line.EmployeeName is null ? null : line.SourceNumber is null ? line.EmployeeName : $"{line.EmployeeName} ({line.SourceNumber})";
+        var usage = Usage(line);
+        return who is null ? usage : usage is null ? who : $"{who}: {usage}";
     }
 }

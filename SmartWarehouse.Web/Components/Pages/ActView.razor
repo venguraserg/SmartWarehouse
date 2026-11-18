@@ -12,11 +12,27 @@
     <div class="page-head">
         <h1 class="mono">@act.Number</h1>
         <span class="tag @Ui.ActStateClass(act.Status)">@Ui.ActState(act.Status, act.Kind)</span>
-        <span class="muted">@(IsReport ? "отчёт об использовании" : "акт на списание")</span>
+        <span class="muted">@(IsSummary ? "сводный акт кладовщика" : IsReport ? "отчёт об использовании" : "акт на списание")</span>
+        @if (IsReport && act.WrittenOff)
+        {
+            <span class="tag tag-danger">списан актом @act.SummaryActNumber</span>
+        }
+        else if (IsReport && act.SummaryActNumber is not null)
+        {
+            <span class="tag tag-neutral">в черновике @act.SummaryActNumber</span>
+        }
         <span class="spacer"></span>
+        @if (IsSummary)
+        {
+            <select @bind="pdfOrder" style="max-width: 210px" aria-label="Порядок строк в PDF">
+                <option value="date">Строки по дате</option>
+                <option value="employee">По сотрудникам</option>
+                <option value="equipment">По оборудованию</option>
+            </select>
+        }
         @if (!IsReport)
         {
-            <a class="btn" href="/act-pdf/@act.Id" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
+            <a class="btn" href="@PdfUrl" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
         }
         <a class="btn" href="@ListUrl">К списку</a>
     </div>
@@ -50,7 +66,23 @@
         </div>
     }
 
-    @if (act.Can.Edit || act.Can.Recall)
+    @if (IsSummary && act.Can.Edit)
+    {
+        <div class="actions" style="margin-bottom: 1rem">
+            <button class="btn btn-primary" type="button" disabled="@busy" @onclick="PostSummaryAsync">Провести списание</button>
+            <a class="btn" href="/summary-acts/@act.Id/edit">Изменить состав</a>
+            @if (confirmDelete)
+            {
+                <button class="btn btn-danger" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить (отчёты освободятся)</button>
+                <button class="btn" type="button" @onclick="() => confirmDelete = false">Не удалять</button>
+            }
+            else
+            {
+                <button class="btn" type="button" @onclick="() => confirmDelete = true">Удалить</button>
+            }
+        </div>
+    }
+    else if (act.Can.Edit || act.Can.Recall)
     {
         <div class="actions" style="margin-bottom: 1rem">
             @if (act.Can.Submit)
@@ -89,7 +121,43 @@
                     <span class="muted">· @act.EmployeePosition</span>
                 }
             </dd>
-            @if (act.Status == ActStatus.Approved)
+            @if (IsSummary)
+            {
+                <dt>№ документа 1С</dt>
+                <dd>
+                    <span class="input-with-btn" style="max-width: 360px">
+                        <input type="text" @bind="externalNumber" maxlength="100" placeholder="номер акта списания в 1С" aria-label="№ документа 1С" />
+                        <button class="btn btn-sm" type="button" disabled="@(busy || externalNumber == act.ExternalNumber)" @onclick="SaveExternalNumberAsync">Сохранить</button>
+                    </span>
+                </dd>
+                @if (act.Status == ActStatus.Approved)
+                {
+                    <dt>Провёл</dt>
+                    <dd>@act.DecidedBy@(act.DecidedAt is { } postedAt ? $", {Ui.Date(postedAt)}" : "")</dd>
+                }
+                <dt>Документы списания</dt>
+                <dd>
+                    @if (act.Documents is { Count: > 0 } docs)
+                    {
+                        @foreach (var d in docs)
+                        {
+                            <a class="mono" href="/documents/@d.Id" style="margin-right: .6rem">@d.Number</a>
+                        }
+                    }
+                    else
+                    {
+                        <span class="muted">появятся после проведения — на каждого сотрудника</span>
+                    }
+                </dd>
+                <dt>Отчёты</dt>
+                <dd>
+                    @foreach (var r in act.Reports ?? [])
+                    {
+                        <a class="mono" href="/acts/@r.Id" style="margin-right: .6rem">@r.Number</a>
+                    }
+                </dd>
+            }
+            else if (act.Status == ActStatus.Approved)
             {
                 <dt>@(IsReport ? "Подтвердил" : "Утвердил")</dt>
                 <dd>@act.DecidedBy@(act.DecidedAt is { } approvedAt ? $", {Ui.Date(approvedAt)}" : "")</dd>
@@ -124,7 +192,7 @@
                 <dt>Период</dt>
                 <dd>@period</dd>
             }
-            @if (!string.IsNullOrEmpty(act.ExternalNumber))
+            @if (!IsSummary && !string.IsNullOrEmpty(act.ExternalNumber))
             {
                 <dt>Основание</dt>
                 <dd>@act.ExternalNumber</dd>
@@ -158,6 +226,10 @@
                         <th class="num">Цена</th>
                         <th class="num">Сумма</th>
                     }
+                    @if (IsSummary)
+                    {
+                        <th>Сотрудник / отчёт</th>
+                    }
                     <th>Куда использовано</th>
                     <th>Дата</th>
                 </tr>
@@ -180,6 +252,16 @@
                         {
                             <td class="num">@(l.UnitPrice is decimal p ? Ui.Price(p) : "—")</td>
                             <td class="num">@(l.UnitPrice is decimal q ? Ui.Money(decimal.Round(l.Quantity * q, 2, MidpointRounding.AwayFromZero)) : "—")</td>
+                        }
+                        @if (IsSummary)
+                        {
+                            <td>
+                                @l.EmployeeName
+                                @if (l.SourceId is int sourceId)
+                                {
+                                    <div class="line-hint"><a class="mono" href="/acts/@sourceId">@l.SourceNumber</a></div>
+                                }
+                            </td>
                         }
                         <td>
                             @if (l.Equipment is not null)
@@ -231,7 +313,18 @@ else if (error is null)
 
     private bool IsReport => act?.Kind == ActKind.UsageReport;
 
-    private string ListUrl => IsReport ? "/reports" : "/acts";
+    private bool IsSummary => act?.Kind == ActKind.Summary;
+    private string PdfUrl => $"/act-pdf/{act?.Id}" + (IsSummary ? $"?order={pdfOrder}" : "");
+
+    private string ListUrl => IsSummary ? "/summary-acts" : IsReport ? "/reports" : "/acts";
+
+    private string pdfOrder = "date";
+    private string? externalNumber;
+
+    private Task PostSummaryAsync() => RunAsync(() => Api.PostSummaryAsync(Id),
+        a => $"Сводный акт проведён: списано документами {string.Join(", ", a.Documents?.Select(d => d.Number) ?? [])}.");
+
+    private Task SaveExternalNumberAsync() => RunAsync(() => Api.SetActExternalNumberAsync(Id, externalNumber), _ => "Номер документа 1С сохранён.");
 
     private bool isWarehouse;
 
@@ -247,6 +340,7 @@ else if (error is null)
         try
         {
             act = await Api.GetActAsync(Id);
+            externalNumber = act.ExternalNumber;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -275,6 +369,7 @@ else if (error is null)
         try
         {
             act = await action();
+            externalNumber = act.ExternalNumber;
             success = message(act);
             remark = null;
         }

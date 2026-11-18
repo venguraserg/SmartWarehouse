@@ -95,11 +95,11 @@ app.MapGet("/document-act/{id:long}", async (long id, ApiClient api, Cancellatio
 }).RequireAuthorization();
 
 // Акт на списание по номеру акта (черновик — с надписью «ЧЕРНОВИК»).
-app.MapGet("/act-pdf/{id:int}", async (int id, ApiClient api, CancellationToken ct) =>
+app.MapGet("/act-pdf/{id:int}", async (int id, string? order, ApiClient api, CancellationToken ct) =>
 {
     try
     {
-        var pdf = await api.GetActPdfAsync(id, ct);
+        var pdf = await api.GetActPdfAsync(id, order, ct);
         return Results.File(pdf, "application/pdf");
     }
     catch (ApiException ex)
