@@ -32,7 +32,7 @@
         }
         @if (!IsReport)
         {
-            <a class="btn" href="/act-pdf/@act.Id@(IsSummary ? $"?order={pdfOrder}" : "")" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
+            <a class="btn" href="@PdfUrl" target="_blank" rel="noopener">PDF@(act.Status == ActStatus.Approved ? "" : " (черновик)")</a>
         }
         <a class="btn" href="@ListUrl">К списку</a>
     </div>
@@ -314,6 +314,7 @@ else if (error is null)
     private bool IsReport => act?.Kind == ActKind.UsageReport;
 
     private bool IsSummary => act?.Kind == ActKind.Summary;
+    private string PdfUrl => $"/act-pdf/{act?.Id}" + (IsSummary ? $"?order={pdfOrder}" : "");
 
     private string ListUrl => IsSummary ? "/summary-acts" : IsReport ? "/reports" : "/acts";
 
