@@ -96,12 +96,14 @@ public static class Ui
         _ => null
     };
 
-    public static string ActState(ActStatus status) => status switch
+    public static string ActState(ActStatus status, ActKind kind = ActKind.WriteOff) => (status, kind) switch
     {
-        ActStatus.Draft => "Черновик",
-        ActStatus.Pending => "На утверждении",
-        ActStatus.Approved => "Утверждён",
-        ActStatus.Returned => "Возвращён",
+        (ActStatus.Draft, _) => "Черновик",
+        (ActStatus.Pending, ActKind.UsageReport) => "На подтверждении",
+        (ActStatus.Pending, _) => "На утверждении",
+        (ActStatus.Approved, ActKind.UsageReport) => "Подтверждён",
+        (ActStatus.Approved, _) => "Утверждён",
+        (ActStatus.Returned, _) => "Возвращён",
         _ => status.ToString()
     };
 

@@ -419,11 +419,13 @@ public class ApiClient(HttpClient http, IServiceProvider services)
 
     // ---------- Акты на списание ----------
 
-    public Task<List<ActSummaryDto>> GetActsAsync(ActScope scope = ActScope.Visible, ActStatus? status = null, int? employeeId = null, CancellationToken ct = default)
+    public Task<List<ActSummaryDto>> GetActsAsync(ActScope scope = ActScope.Visible, ActStatus? status = null, int? employeeId = null,
+        ActKind? kind = null, CancellationToken ct = default)
     {
         var parts = new List<string> { $"scope={scope}" };
         if (status is not null) parts.Add($"status={status}");
         if (employeeId is not null) parts.Add($"employeeId={employeeId}");
+        if (kind is not null) parts.Add($"kind={kind}");
         return GetAsync<List<ActSummaryDto>>($"api/acts?{string.Join('&', parts)}", ct);
     }
 
