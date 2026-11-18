@@ -89,6 +89,10 @@ public class ReconcileService(IStockRepository stock, IEmployeeService employees
                 rows.Add(new ReconcileRowDto(ReconcileStatus.OnlyInApp, c.Sku, c.Name, c.Unit, mol, place!,
                     c.ItemId, 0, c.Quantity, null, c.Value));
 
+        var conversions = await SuggestConversionsAsync(batches, molPlace, custody, ct);
+        if (conversions.Count > 0)
+            notes.Add($"Позиций к переводу «в работе» → «подотчёт по 1С»: {conversions.Count} — в 1С они уже на МОЛ сотрудников.");
+
         var otherCustody = custody.Select(c => c.Key).Except(molPlace.Values.Select(v => v.EmployeeId).OfType<int>()).Count();
         if (otherCustody > 0)
             notes.Add($"Подотчёт ещё {otherCustody} сотрудников не сверялся — их ведомостей 1С нет среди загруженных.");
@@ -100,7 +104,38 @@ public class ReconcileService(IStockRepository stock, IEmployeeService employees
             .ThenBy(r => r.Mol)
             .ThenBy(r => r.Code, StringComparer.Ordinal)
             .ToList();
-        return new ReconcileResultDto(asOf.FirstOrDefault(), warehouseMol, mols, rows, notes);
+        return new ReconcileResultDto(asOf.FirstOrDefault(), warehouseMol, mols, rows, notes, conversions);
+    }
+
+    /// <summary>
+    /// Что перевести из «в работе» в «подотчёт по 1С»: в 1С на МОЛ сотрудника позиции больше, чем у него «по 1С»
+    /// в приложении, — значит, бухгалтерия передала её с МОЛ кладовщика. Переводится не больше свободного «в работе».
+    /// </summary>
+    private async Task<List<ReconcileConvertDto>> SuggestConversionsAsync(
+        List<SaldoBatch> batches,
+        Dictionary<string, (string? Place, int? EmployeeId)> molPlace,
+        ILookup<int, CustodyTotal> custody,
+        CancellationToken ct)
+    {
+        var result = new List<ReconcileConvertDto>();
+        if (!molPlace.Values.Any(p => p.EmployeeId is not null))
+            return result;
+
+        var work = (await stock.ListWorkFreeTotalsAsync(ct)).ToLookup(w => w.EmployeeId);
+        foreach (var g in batches.GroupBy(b => (b.Mol, Code: Key(b.Code))))
+        {
+            var (place, employeeId) = molPlace[g.Key.Mol];
+            if (employeeId is not int eid || work[eid].FirstOrDefault(w => Key(w.Sku) == g.Key.Code) is not { } w)
+                continue;
+            var qty1C = g.Sum(b => b.Quantity);
+            var official = custody[eid].Where(c => Key(c.Sku) == g.Key.Code).Sum(c => c.Quantity);
+            var suggested = Math.Min(qty1C - official, w.Quantity);
+            if (suggested <= 0)
+                continue;
+            result.Add(new ReconcileConvertDto(eid, place!, g.Key.Mol, w.ItemId, w.Sku, w.Name, w.Unit,
+                qty1C, official, w.Quantity, suggested));
+        }
+        return result.OrderBy(r => r.EmployeeName).ThenBy(r => r.Name).ToList();
     }
 
     /// <summary>Код для сравнения: 0000032353 и 32353 — один код.</summary>

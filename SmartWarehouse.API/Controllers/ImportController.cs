@@ -46,6 +46,12 @@ public class ImportController(IImportFileReader reader, IOpeningImportService op
         return await reconcile.ReconcileAsync(sheets, warehouseMol, ct);
     }
 
+    /// <summary>Перевести «выдано в работу» → «подотчёт по 1С» по предложениям сверки (кладовщик подтвердил).</summary>
+    [HttpPost("reconcile/convert")]
+    [Authorize(Roles = Roles.Warehouse)]
+    public Task<IReadOnlyList<DocumentRefDto>> Convert(ConvertCustodyRequest request, [FromServices] IStockService stock, CancellationToken ct) =>
+        stock.ConvertToOfficialAsync(request, User.EmployeeId(), ct);
+
     private static async Task<MemoryStream> BufferAsync(IFormFile file, CancellationToken ct)
     {
         if (file.Length == 0)

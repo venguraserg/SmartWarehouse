@@ -17,6 +17,7 @@ public static class Ui
         MovementType.WriteOff => "Списание",
         MovementType.Adjustment => "Корректировка",
         MovementType.Return => "Возврат",
+        MovementType.CustodyChange => "Перевод в подотчёт по 1С",
         _ => type.ToString()
     };
 
@@ -58,6 +59,7 @@ public static class Ui
         MovementType.Issue => "Кому выдано",
         MovementType.WriteOff => "С кого списано",
         MovementType.Return => "Кто вернул",
+        MovementType.CustodyChange => "За кем числится",
         _ => "Сотрудник"
     };
 

@@ -267,6 +267,34 @@ public class ImportTests
     }
 
     [Fact]
+    public async Task Сверка_предлагает_перевести_в_подотчёт_по_1С_то_что_в_1С_уже_на_МОЛ_сотрудника()
+    {
+        var stock = new FakeStockRepository();
+        var unit = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" };
+        stock.Items.Add(new Item { Id = 1, Sku = "23148", Name = "Ремень", UnitId = 1, Unit = unit });
+        stock.Batches.Add(new Batch { Id = 1, ItemId = 1, UnitPrice = 10 });
+        stock.Batches.Add(new Batch { Id = 2, ItemId = 1, UnitPrice = null, OffBook = true });
+        stock.EmployeeBalances.AddRange([
+            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 1, Quantity = 4, Kind = CustodyKind.Work },
+            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 2, Quantity = 9, Kind = CustodyKind.Work },   // вне учёта
+            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 1, Quantity = 1, Kind = CustodyKind.Official }]);
+
+        var employees = new FakeEmployeeRepository();
+        employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
+        var service = new ReconcileService(stock, new EmployeeService(employees));
+
+        SaldoBatch B(string mol, string code, decimal qty) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, qty * 10);
+        var result = await service.ReconcileAsync(
+            [new SaldoSheet("склад.xlsx", "17.11.2026", [B("Дорофей С.М.", "77777", 50)]),
+             new SaldoSheet("рудаков.xlsx", "17.11.2026", [B("Рудаков М.А.", "0000023148", 3)])],
+            "Дорофей С.М.");
+
+        // В 1С за Рудаковым 3, «по 1С» в приложении 1 → не хватает 2; учётного «в работе» 4 → перевести 2.
+        var c = Assert.Single(result.Conversions!);
+        Assert.Equal((7, 1, 3m, 1m, 4m, 2m), (c.EmployeeId, c.ItemId, c.Qty1C, c.QtyOfficial, c.WorkFree, c.Suggested));
+    }
+
+    [Fact]
     public async Task Сверка_склада_по_указанному_МОЛ()
     {
         var stock = new FakeStockRepository();

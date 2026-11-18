@@ -39,7 +39,7 @@
                     @(doc.PerformedBy ?? "—")
                 }
             </dd>
-            @if (doc.Type is MovementType.Issue or MovementType.WriteOff or MovementType.Return)
+            @if (doc.Type is MovementType.Issue or MovementType.WriteOff or MovementType.Return or MovementType.CustodyChange)
             {
                 <dt>@Ui.AccountableLabel(doc.Type)</dt>
                 <dd>

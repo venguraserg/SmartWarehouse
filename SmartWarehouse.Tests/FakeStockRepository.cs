@@ -101,6 +101,24 @@ internal class FakeStockRepository : IStockRepository
             })
             .ToList());
 
+    public Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<WorkTotal>>(EmployeeBalances
+            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && BatchOf(b.BatchId)?.OffBook != true)
+            .GroupBy(b => (b.EmployeeId, b.ItemId))
+            .Select(g =>
+            {
+                var item = Items.First(i => i.Id == g.Key.ItemId);
+                var reserved = Acts
+                    .Where(a => a.EmployeeId == g.Key.EmployeeId && a.Kind != ActKind.WriteOff
+                        && (a.Status == ActStatus.Pending || (a.Status == ActStatus.Approved && a.Kind == ActKind.UsageReport)))
+                    .SelectMany(a => a.Lines)
+                    .Where(l => l.ItemId == g.Key.ItemId && l.DocumentId is null && l.BatchId is int bid && BatchOf(bid)?.OffBook != true)
+                    .Sum(l => l.Quantity);
+                return new WorkTotal(g.Key.EmployeeId, g.Key.ItemId, item.Sku, item.Name, item.Unit?.Code ?? "", g.Sum(b => b.Quantity) - reserved);
+            })
+            .Where(w => w.Quantity > 0)
+            .ToList());
+
     private Batch? BatchOf(int id) => Batches.FirstOrDefault(b => b.Id == id);
 
     // ---------- Приёмка по накладным ----------

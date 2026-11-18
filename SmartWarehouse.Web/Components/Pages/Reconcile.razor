@@ -70,6 +70,73 @@
         </ul>
     }
 
+    @if (converted is { Count: > 0 })
+    {
+        <div class="alert alert-success">
+            Переведено в подотчёт по 1С:
+            @foreach (var d in converted)
+            {
+                <a class="mono" href="/documents/@d.Id" style="margin-left: .35rem">@d.Number</a>
+            }
+        </div>
+    }
+
+    @if (r.Conversions is { Count: > 0 } conv)
+    {
+        <div class="panel" style="margin-bottom: 1rem">
+            <div class="page-head" style="margin-bottom: .5rem">
+                <h2 style="margin: 0">Перевести в подотчёт по 1С <span class="muted">(@toConvert.Count из @conv.Count)</span></h2>
+                <span class="spacer"></span>
+                <button class="btn btn-sm" type="button" @onclick="() => toConvert = conv.Select(ConvKey).ToHashSet()">Отметить все</button>
+                <button class="btn btn-sm" type="button" @onclick="() => toConvert.Clear()">Снять все</button>
+            </div>
+            <p class="muted" style="margin-top: 0">
+                В 1С эти позиции уже на МОЛ сотрудника, а в приложении числятся у него <span class="tag tag-info">в работе</span>.
+                После перевода они станут <span class="tag tag-official">по 1С</span> — сотрудник спишет их своим актом.
+                Позиции в отчётах об использовании и вне учёта не переводятся.
+            </p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px"></th>
+                            <th>Сотрудник</th>
+                            <th>Код</th>
+                            <th>Наименование</th>
+                            <th class="num">В 1С на МОЛ</th>
+                            <th class="num">По 1С в прил.</th>
+                            <th class="num">В работе</th>
+                            <th class="num" style="width: 120px">Перевести</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in conv)
+                        {
+                            var key = ConvKey(c);
+                            var on = toConvert.Contains(key);
+                            <tr class="@(on ? "selected" : null)">
+                                <td><input type="checkbox" checked="@on" @onchange="() => ToggleConvert(key)" aria-label="Перевести @c.Code" /></td>
+                                <td><a href="/employees/@c.EmployeeId">@c.EmployeeName</a></td>
+                                <td class="mono"><a href="/items/@c.ItemId">@c.Code</a></td>
+                                <td>@c.Name</td>
+                                <td class="num">@Ui.Qty(c.Qty1C) @c.Unit</td>
+                                <td class="num">@Ui.Qty(c.QtyOfficial)</td>
+                                <td class="num">@Ui.Qty(c.WorkFree)</td>
+                                <td class="num">
+                                    <input type="number" min="0" max="@c.WorkFree" step="any" style="width: 100px; text-align: right"
+                                           value="@ConvQty(c)" @onchange="e => SetConvQty(key, e.Value)" disabled="@(!on)" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="actions" style="margin-top: .75rem">
+                <button class="btn btn-primary" type="button" disabled="@(busy || toConvert.Count == 0)" @onclick="ConvertAsync">Перевести отмеченное</button>
+            </div>
+        </div>
+    }
+
     <details style="margin-bottom: 1rem">
         <summary>МОЛ из файлов (@r.Mols.Count)</summary>
         <div class="table-wrap" style="max-width: 820px">
@@ -161,6 +228,59 @@
     private bool busy;
     private string? error;
 
+    // ---------- Перевод «в работе» → «по 1С» ----------
+    private HashSet<(int EmployeeId, int ItemId)> toConvert = [];
+    private readonly Dictionary<(int EmployeeId, int ItemId), decimal> convQty = [];
+    private List<DocumentRefDto>? converted;
+
+    private static (int EmployeeId, int ItemId) ConvKey(ReconcileConvertDto c) => (c.EmployeeId, c.ItemId);
+
+    private string ConvQty(ReconcileConvertDto c) =>
+        (convQty.TryGetValue(ConvKey(c), out var q) ? q : c.Suggested).ToString("0.###", CultureInfo.InvariantCulture);
+
+    private void SetConvQty((int EmployeeId, int ItemId) key, object? value)
+    {
+        var text = value?.ToString()?.Replace(',', '.');
+        if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var q) && q >= 0)
+            convQty[key] = q;
+    }
+
+    private void ToggleConvert((int EmployeeId, int ItemId) key)
+    {
+        if (!toConvert.Remove(key))
+            toConvert.Add(key);
+    }
+
+    private async Task ConvertAsync()
+    {
+        if (result?.Conversions is not { } conv)
+            return;
+        var lines = conv
+            .Where(c => toConvert.Contains(ConvKey(c)))
+            .Select(c => new ConvertCustodyLine(c.EmployeeId, c.ItemId, convQty.TryGetValue(ConvKey(c), out var q) ? q : c.Suggested))
+            .Where(l => l.Quantity > 0)
+            .ToList();
+        if (lines.Count == 0)
+            return;
+        busy = true;
+        error = null;
+        try
+        {
+            var docs = await Api.ConvertCustodyAsync(new ConvertCustodyRequest(lines, result.AsOf is null ? null : $"По сверке с 1С на {result.AsOf}"));
+            busy = false;
+            await RunAsync();
+            converted = docs;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
     private IEnumerable<ReconcileRowDto> Visible => (result?.Rows ?? []).Where(r => filter is null || r.Status == filter);
 
     private static string Title(ReconcileStatus s) => s switch
@@ -222,6 +342,9 @@
         {
             result = await Api.ReconcileAsync(files, warehouseMol);
             warehouseMol = result.WarehouseMol;
+            converted = null;
+            convQty.Clear();
+            toConvert = result.Conversions?.Select(ConvKey).ToHashSet() ?? [];
             filter = result.Rows.Any(r => r.Status != ReconcileStatus.Match) ? null : ReconcileStatus.Match;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

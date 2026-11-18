@@ -64,6 +64,7 @@ public class StockDocument
             MovementType.WriteOff => "СП",
             MovementType.Adjustment => "КОР",
             MovementType.Return => "ВЗ",
+            MovementType.CustodyChange => "ПП",
             _ => "ДОК"
         };
         return $"{prefix}-{id:D6}";

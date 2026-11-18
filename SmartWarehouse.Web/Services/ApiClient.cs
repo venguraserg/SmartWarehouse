@@ -388,6 +388,9 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await ReadAsync<ReconcileResultDto>(response, ct);
     }
 
+    public Task<List<DocumentRefDto>> ConvertCustodyAsync(ConvertCustodyRequest request, CancellationToken ct = default) =>
+        SendAsync<List<DocumentRefDto>>(HttpMethod.Post, "api/import/reconcile/convert", request, ct);
+
     private static ByteArrayContent XlsxContent(byte[] data)
     {
         var file = new ByteArrayContent(data);
