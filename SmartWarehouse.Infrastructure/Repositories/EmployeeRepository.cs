@@ -118,7 +118,7 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
         return rows
             .GroupBy(x => (x.EmployeeId, x.ItemId, x.Kind))
             .Select(g => new ReservedRecord(g.Key.EmployeeId, g.Key.ItemId, g.Sum(x => x.Quantity),
-                g.Key.Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official))
+                g.Key.Kind == ActKind.WriteOff ? CustodyKind.Official : CustodyKind.Work))
             .ToList();
     }
 

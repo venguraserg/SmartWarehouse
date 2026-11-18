@@ -32,11 +32,14 @@ public class ActsController(IWriteOffActService acts) : ControllerBase
     [HttpGet("{id:int}")]
     public Task<ActDto> Get(int id, CancellationToken ct) => acts.GetAsync(id, User.ToActActor(), ct);
 
-    /// <summary>Акт в PDF; неутверждённый — с надписью «ЧЕРНОВИК» / «НА УТВЕРЖДЕНИИ».</summary>
+    /// <summary>
+    /// Акт в PDF; неутверждённый — с надписью «ЧЕРНОВИК» / «НА УТВЕРЖДЕНИИ».
+    /// Сводный акт: order = date | employee | equipment — порядок строк.
+    /// </summary>
     [HttpGet("{id:int}/pdf")]
-    public async Task<IActionResult> Pdf(int id, [FromServices] IActService pdf, CancellationToken ct)
+    public async Task<IActionResult> Pdf(int id, [FromServices] IActService pdf, [FromQuery] string? order, CancellationToken ct)
     {
-        var (bytes, fileName) = await pdf.GetActPdfAsync(id, User.ToActActor(), ct);
+        var (bytes, fileName) = await pdf.GetActPdfAsync(id, User.ToActActor(), ct, order);
         return File(bytes, "application/pdf", fileName);
     }
 
@@ -66,6 +69,33 @@ public class ActsController(IWriteOffActService acts) : ControllerBase
 
     [HttpPost("{id:int}/approve")]
     public Task<ActDto> Approve(int id, CancellationToken ct) => acts.ApproveAsync(id, User.ToActActor(), ct);
+
+    // ---------- Сводный акт кладовщика ----------
+
+    /// <summary>Подтверждённые отчёты, которые можно включить в сводный акт (и уже включённые в summaryId).</summary>
+    [HttpGet("summary-candidates")]
+    public Task<IReadOnlyList<ActSummaryDto>> SummaryCandidates([FromQuery] int? summaryId, CancellationToken ct) =>
+        acts.ListSummaryCandidatesAsync(summaryId, User.ToActActor(), ct);
+
+    [HttpPost("summary")]
+    public async Task<ActionResult<ActDto>> CreateSummary(SaveSummaryRequest request, CancellationToken ct)
+    {
+        var act = await acts.CreateSummaryAsync(request, User.ToActActor(), ct);
+        return CreatedAtAction(nameof(Get), new { id = act.Id }, act);
+    }
+
+    [HttpPut("summary/{id:int}")]
+    public Task<ActDto> UpdateSummary(int id, SaveSummaryRequest request, CancellationToken ct) =>
+        acts.UpdateSummaryAsync(id, request, User.ToActActor(), ct);
+
+    /// <summary>Провести сводный акт: списать учётные строки включённых отчётов.</summary>
+    [HttpPost("{id:int}/post")]
+    public Task<ActDto> PostSummary(int id, CancellationToken ct) => acts.PostSummaryAsync(id, User.ToActActor(), ct);
+
+    /// <summary>Номер документа списания в 1С (можно и после проведения).</summary>
+    [HttpPut("{id:int}/external-number")]
+    public Task<ActDto> SetExternalNumber(int id, SetExternalNumberRequest request, CancellationToken ct) =>
+        acts.SetExternalNumberAsync(id, request.ExternalNumber, User.ToActActor(), ct);
 
     [HttpPost("{id:int}/return")]
     public Task<ActDto> Return(int id, ReturnActRequest request, CancellationToken ct) =>

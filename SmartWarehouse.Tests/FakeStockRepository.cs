@@ -64,11 +64,12 @@ internal class FakeStockRepository : IStockRepository
 
     public Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>>(Acts
-            .Where(a => a.EmployeeId == employeeId && a.Id != exceptActId)
+            .Where(a => a.EmployeeId == employeeId && a.Id != exceptActId && (exceptActId is null || a.SummaryActId != exceptActId))
             .SelectMany(a => a.Lines.Select(l => (Act: a, Line: l)))
             .Where(x => x.Line.ItemId == itemId && x.Line.BatchId is not null
                 && (x.Act.Status == ActStatus.Pending
-                    || (x.Act.Kind == ActKind.UsageReport && x.Act.Status == ActStatus.Approved && BatchOf(x.Line.BatchId!.Value)?.OffBook != true)))
+                    || (x.Act.Kind == ActKind.UsageReport && x.Act.Status == ActStatus.Approved && x.Line.DocumentId is null
+                        && x.Line.Document is null && BatchOf(x.Line.BatchId!.Value)?.OffBook != true)))
             .GroupBy(x => (x.Line.BatchId!.Value, x.Act.Custody))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Line.Quantity)));
 

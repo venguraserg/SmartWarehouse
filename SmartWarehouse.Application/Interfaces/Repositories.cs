@@ -278,6 +278,16 @@ public interface IWriteOffActRepository
     Task<IReadOnlyList<ActHeader>> ListAsync(ActFilter filter, CancellationToken ct = default);
 
     /// <summary>Сколько актов ждут утверждения этим сотрудником.</summary>
+    /// <summary>
+    /// Отчёты об использовании для сводного акта: подтверждённые, с несписанными учётными строками,
+    /// ещё не включённые в другой сводный акт (включённые в <paramref name="summaryId"/> — тоже).
+    /// Со строками, партиями, позициями и сотрудником.
+    /// </summary>
+    Task<IReadOnlyList<WriteOffAct>> ListSummaryCandidatesAsync(int? summaryId, CancellationToken ct = default);
+
+    /// <summary>Отчёты по номерам — со строками (для включения в сводный акт).</summary>
+    Task<IReadOnlyList<WriteOffAct>> GetManyAsync(IReadOnlyCollection<int> ids, CancellationToken ct = default);
+
     /// <summary>Сколько ждут решения: акты, которые утверждает сотрудник, и (для кладовщика) отчёты на подтверждении.</summary>
     Task<int> CountToApproveAsync(int? approverId, bool reportsToConfirm, CancellationToken ct = default);
 

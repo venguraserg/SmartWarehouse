@@ -59,22 +59,24 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Where(l => l.ItemId == itemId
                 && l.BatchId != null
                 && l.Act.EmployeeId == employeeId
-                && (exceptActId == null || l.ActId != exceptActId))
+                && (exceptActId == null || (l.ActId != exceptActId && l.Act.SummaryActId != exceptActId)))
             .GroupBy(l => new { BatchId = l.BatchId!.Value, l.Act.Kind })
             .Select(g => new { g.Key.BatchId, g.Key.Kind, Quantity = g.Sum(l => l.Quantity) })
             .ToListAsync(ct);
         return rows.ToDictionary(
-            r => (r.BatchId, r.Kind == ActKind.UsageReport ? CustodyKind.Work : CustodyKind.Official),
+            r => (r.BatchId, r.Kind == ActKind.WriteOff ? CustodyKind.Official : CustodyKind.Work),
             r => r.Quantity);
     }
 
     /// <summary>
     /// Строки, которые держат подотчёт в резерве: акт или отчёт на утверждении (подтверждении),
-    /// а также подтверждённый отчёт об использовании — до сводного акта кладовщика (вне учёта списывается сразу).
+    /// а также подтверждённый отчёт об использовании, пока строка не списана сводным актом кладовщика
+    /// (вне учёта списывается сразу при подтверждении).
     /// </summary>
     internal static IQueryable<WriteOffActLine> ReservedLines(IQueryable<WriteOffActLine> lines) =>
         lines.Where(l => l.Act.Status == ActStatus.Pending
-            || (l.Act.Kind == ActKind.UsageReport && l.Act.Status == ActStatus.Approved && l.Batch != null && !l.Batch.OffBook));
+            || (l.Act.Kind == ActKind.UsageReport && l.Act.Status == ActStatus.Approved && l.DocumentId == null
+                && l.Batch != null && !l.Batch.OffBook));
 
     // ---------- Приёмка по накладным ----------
 
@@ -233,7 +235,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         await StockRepository.ReservedLines(db.WriteOffActLines)
             .Where(l => l.ItemId == itemId
                 && l.Act.EmployeeId == employeeId
-                && (exceptActId == null || l.ActId != exceptActId))
+                && (exceptActId == null || (l.ActId != exceptActId && l.Act.SummaryActId != exceptActId)))
             .SumAsync(l => (decimal?)l.Quantity, ct) ?? 0;
 
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>

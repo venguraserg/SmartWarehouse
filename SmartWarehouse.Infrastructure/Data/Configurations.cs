@@ -301,6 +301,11 @@ internal class WriteOffActConfiguration : IEntityTypeConfiguration<WriteOffAct>
         // Строки удаляются вместе с актом (и при замене строк в черновике).
         b.HasMany(x => x.Lines).WithOne(x => x.Act).HasForeignKey(x => x.ActId).OnDelete(DeleteBehavior.Cascade);
 
+        // Отчёты об использовании в сводном акте кладовщика; удалили черновик сводного — отчёты свободны.
+        b.HasMany(x => x.Reports).WithOne(x => x.SummaryAct).HasForeignKey(x => x.SummaryActId).OnDelete(DeleteBehavior.SetNull);
+        b.HasIndex(x => x.SummaryActId);
+        b.Ignore(x => x.Custody);
+
         // Защита от одновременного утверждения одного акта дважды.
         b.Property<uint>("Version").IsRowVersion();
     }
@@ -316,6 +321,7 @@ internal class WriteOffActLineConfiguration : IEntityTypeConfiguration<WriteOffA
         b.HasOne(x => x.Batch).WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Equipment).WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Document).WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ActId, x.LineNo }).IsUnique();
         b.HasIndex(x => x.ItemId);
     }
