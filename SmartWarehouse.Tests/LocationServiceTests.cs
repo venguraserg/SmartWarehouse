@@ -56,13 +56,14 @@ public class LocationServiceTests
     }
 
     [Fact]
-    public async Task В_место_с_товаром_нельзя_добавить_вложенное()
+    public async Task На_полку_с_товаром_можно_поставить_ящики()
     {
         var wh = await WarehouseAsync();
         var shelf = await AddAsync(wh, null, LocationType.Shelf, "01");
         _repo.LocationsWithStock.Add(shelf.Id);
 
-        await Assert.ThrowsAsync<DomainException>(() => AddAsync(wh, shelf.Id, LocationType.Cell, "01"));
+        var cell = await AddAsync(wh, shelf.Id, LocationType.Cell, "01");
+        Assert.EndsWith("01", cell.FullCode);
     }
 
     [Fact]

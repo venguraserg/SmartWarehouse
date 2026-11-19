@@ -124,21 +124,16 @@ else
 {
     <div class="toolbar">
         <div class="field" style="min-width: 320px; flex: 2">
-            <label for="cell">Куда кладу (ячейка)</label>
-            <select id="cell" @bind="targetId" class="place-select" style="max-width: none">
-                <option value="">— выберите или отсканируйте ячейку —</option>
-                @foreach (var l in places.OrderBy(l => PlacePath(l.Id), StringComparer.CurrentCultureIgnoreCase))
-                {
-                    <option value="@l.Id" title="@l.FullCode">@PlacePath(l.Id) · @l.FullCode</option>
-                }
-            </select>
+            <label>Куда кладу</label>
+            <PlacePicker Tree="placeTree" @bind-Value="targetId" Exclude="notPlaces" Title="Куда кладу"
+                         Placeholder="— выберите или отсканируйте место —" />
         </div>
         <div class="field">
             <label for="find">Найти</label>
             <input id="find" type="search" @bind="filter" @bind:event="oninput" placeholder="код, наименование, прежнее место" />
         </div>
     </div>
-    <p class="muted">Сканер: код ячейки — выбирает ячейку, код позиции — находит её в списке. Затем «Сюда».</p>
+    <p class="muted">Сканер: код места — выбирает место (ящик, полку, стеллаж), код позиции — находит её в списке. Затем «Сюда».</p>
 
     <div class="table-wrap">
         <table>
@@ -266,7 +261,10 @@ else
 
     private List<PendingPlacementDto> pending = [];
     private List<DiscrepancyDto> discrepancies = [];
-    private List<LocationNodeDto> places = [];
+    private PlaceTree placeTree = new();
+
+    /// <summary>Куда раскладывать нельзя: «Приёмка», «Сортировка», временное место ввода остатков (и вложенное в них).</summary>
+    private HashSet<int> notPlaces = [];
     private Dictionary<int, string> placePaths = [];
     private readonly Dictionary<int, decimal> quantities = [];
     private int? targetId;
@@ -324,11 +322,13 @@ else
     {
         pending = await Api.GetPendingPlacementAsync();
         discrepancies = await Api.GetDiscrepanciesAsync();
-        var (leaves, paths) = await Api.GetPlacesAsync();
-        var reception = pending.Select(p => p.LocationId).ToHashSet();
-        // Раскладывать — в обычные ячейки: не в «Приёмку»/«Сортировку» и не во временное место ввода остатков.
-        places = leaves.Where(l => !reception.Contains(l.Id) && l.Code is not ("RCV" or "IMP" or "SORT")).ToList();
-        placePaths = paths;
+        placeTree = await Api.GetPlacesAsync();
+        // Раскладывать — в обычные места: не в «Приёмку»/«Сортировку» и не во временное место ввода остатков.
+        notPlaces = pending.Select(p => p.LocationId)
+            .Concat(placeTree.All.Where(l => l.Code is "RCV" or "IMP" or "SORT").Select(l => l.Id))
+            .SelectMany(placeTree.SubtreeOf)
+            .ToHashSet();
+        placePaths = placeTree.Paths;
         quantities.Clear();
     }
 
@@ -445,15 +445,15 @@ else
             var found = await Api.ScanAsync(code);
             if (found.Kind == ScanKind.Location)
             {
-                if (places.Any(l => l.Id == found.Id))
+                if (placeTree.ById.ContainsKey(found.Id) && !notPlaces.Contains(found.Id))
                 {
                     targetId = found.Id;
                     error = null;
-                    success = $"Ячейка: {PlacePath(found.Id)}";
+                    success = $"Место: {PlacePath(found.Id)}";
                 }
                 else
                 {
-                    error = $"{found.Code}: сюда класть нельзя — выберите конечную ячейку.";
+                    error = $"{found.Code}: сюда раскладывать нельзя — это приёмка или сортировка.";
                 }
             }
             else

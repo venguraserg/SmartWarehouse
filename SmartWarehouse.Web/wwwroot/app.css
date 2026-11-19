@@ -278,6 +278,47 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
 .tree-toggle, .tree-toggle-space { flex: 0 0 1.5rem; width: 1.5rem; height: 1.5rem; }
 .tree-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface); color: var(--text-muted); font: 600 .95rem/1 "Inter", system-ui, sans-serif; cursor: pointer; }
 .tree-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ===== Выбор места хранения деревом (PlacePicker): поле + окно с деревом и поиском ===== */
+.place-picker { min-width: 0; }
+.place-picker-field {
+    display: flex; align-items: center; gap: .5rem; width: 100%; min-height: 40px; padding: .4rem .6rem .4rem .7rem;
+    font: inherit; font-size: .9375rem; text-align: left; color: inherit; cursor: pointer;
+    border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface);
+}
+.place-picker-field:hover { border-color: var(--brand-primary); }
+.place-picker-field:focus-visible { outline: none; border-color: var(--brand-primary); box-shadow: var(--focus-ring); }
+.place-picker-field:disabled { background: #F1F3F6; color: var(--disabled); cursor: default; }
+.place-picker-field.invalid { border-color: var(--danger); }
+.place-picker-text { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+.place-picker-code { font-size: .75rem; color: var(--text-muted); }
+.place-picker-caret { color: var(--text-muted); }
+.place-picker-backdrop { position: fixed; inset: 0; background: rgba(0, 20, 8, .35); z-index: 950; }
+.place-picker-dialog {
+    position: fixed; z-index: 960; left: 50%; top: 8vh; transform: translateX(-50%);
+    width: min(720px, calc(100vw - 1.5rem)); max-height: 84vh; display: flex; flex-direction: column;
+    background: var(--surface); border-radius: var(--radius-card); box-shadow: 0 18px 48px rgba(0, 0, 0, .3); padding: .9rem;
+}
+.place-picker-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .6rem; }
+.place-picker-head .spacer { flex: 1; }
+.place-picker-search { margin-bottom: .6rem; }
+.place-picker-tree { overflow-y: auto; flex: 1; min-height: 120px; border: 1px solid var(--border); border-radius: var(--radius); padding: .3rem; }
+.place-picker-group { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: .5rem .4rem .2rem; }
+.place-picker-row { display: flex; align-items: center; gap: .35rem; border-radius: var(--radius); }
+.place-picker-row:hover { background: var(--surface-alt); }
+.place-picker-row.selected { background: var(--brand-light); }
+.place-picker-item {
+    flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .5rem;
+    padding: .4rem .4rem; min-height: 36px; border: none; background: none; font: inherit; font-size: .9375rem;
+    text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius);
+}
+.place-picker-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.place-picker-type { font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); min-width: 4.5rem; }
+.place-picker-foot { margin-top: .6rem; display: flex; justify-content: flex-end; }
+@media (max-width: 600px) {
+    .place-picker-dialog { top: 0; max-height: 100vh; height: 100vh; width: 100vw; border-radius: 0; }
+    .place-picker-item { min-height: 44px; }
+}
 .tree-count { margin-left: auto; font-size: .75rem; color: var(--text-muted); background: #EEF1F4; border-radius: 999px; padding: 0 .45rem; font-variant-numeric: tabular-nums; }
 .tree-find { display: flex; gap: .4rem; margin-bottom: .5rem; }
 .tree-find input { flex: 1; min-width: 0; }

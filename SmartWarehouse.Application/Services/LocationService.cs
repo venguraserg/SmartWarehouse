@@ -54,10 +54,7 @@ public class LocationService(ILocationRepository repo) : ILocationService
                 throw new DomainException(
                     $"Нельзя вложить «{TypeName(request.Type)}» в «{TypeName(parent.Type)}»: вложенность только вниз (зона → стеллаж → полка → ячейка).");
 
-            // Товар хранится только в конечных местах: в место с остатком нельзя добавить вложенное.
-            if (await repo.LocationHasStockAsync(parent.Id, ct))
-                throw new DomainException($"В месте {parent.FullCode} лежит товар. Сначала переместите его, затем добавляйте вложенные места.");
-
+            // Товар может лежать на любом уровне: на полке с товаром можно поставить и ящики.
             prefix = parent.FullCode;
         }
 

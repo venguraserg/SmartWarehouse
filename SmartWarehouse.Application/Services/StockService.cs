@@ -148,10 +148,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
 
             foreach (var locationId in new[] { line.FromLocationId, line.ToLocationId }.OfType<int>())
             {
-                if (!locations.TryGetValue(locationId, out var location))
+                // Хранить можно на любом уровне: деталь может лежать прямо на полке, где стоят и ящики.
+                if (!locations.ContainsKey(locationId))
                     throw new NotFoundException($"Строка {n}: место хранения {locationId} не найдено.");
-                if (location.HasChildren)
-                    throw new DomainException($"Строка {n}: {location.FullCode} содержит вложенные места — укажите конкретную ячейку.");
             }
         }
 

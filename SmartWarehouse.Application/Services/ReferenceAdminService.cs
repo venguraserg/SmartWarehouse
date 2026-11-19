@@ -29,7 +29,7 @@ public interface IReferenceAdminService
 /// документы и остатки ссылаются на записи по номеру, а не по коду или названию.
 /// Ограничения:
 /// — у места хранения при смене кода или вложения меняется полный код (и у всех вложенных) — их QR-наклейки нужно перепечатать;
-/// — товар хранится только в конечных местах: вложить место в место с товаром нельзя;
+/// — товар может лежать на любом уровне (на полке и в её ящиках), поэтому вкладывать можно и в место с товаром;
 /// — удалить можно только то, что ни разу не использовалось в учёте (иначе пропала бы история).
 /// </summary>
 public class ReferenceAdminService(IReferenceAdminRepository repo) : IReferenceAdminService
@@ -103,8 +103,6 @@ public class ReferenceAdminService(IReferenceAdminRepository repo) : IReferenceA
             if (request.Type <= parent.Type)
                 throw new DomainException(
                     $"Нельзя вложить «{LocationService.TypeName(request.Type)}» в «{LocationService.TypeName(parent.Type)}»: вложенность только вниз (зона → стеллаж → полка → ячейка).");
-            if (parent.Id != self.ParentId && await repo.LocationHasStockAsync(parent.Id, ct))
-                throw new DomainException($"В месте {parent.FullCode} лежит товар — вложить в него другое место нельзя.");
         }
 
         if (children.FirstOrDefault(c => c.Type <= request.Type) is { } wrongChild)
