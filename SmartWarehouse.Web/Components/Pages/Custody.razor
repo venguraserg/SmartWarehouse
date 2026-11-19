@@ -107,7 +107,7 @@ else
                         <tr class="@(book == true || r.OffBookQuantity >= r.Quantity ? "row-offbook" : null)">
                             <td><Thumb ItemId="r.ItemId" ImageVersion="r.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@r.ItemId">@r.Sku</a></td>
-                            <td>
+                            <td class="col-name">
                                 @r.ItemName
                                 <span class="tag @Ui.CustodyKindClass(r.Kind)" title="@Ui.CustodyKindTitle(r.Kind)">@Ui.CustodyKindShort(r.Kind)</span>
                                 @if (book != false)

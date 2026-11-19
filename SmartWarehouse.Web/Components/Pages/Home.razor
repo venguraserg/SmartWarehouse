@@ -75,7 +75,7 @@ else
                 {
                     <tr>
                         <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                        <td>@row.Name</td>
+                        <td class="col-name">@row.Name</td>
                         <td class="num">@Ui.Qty(row.Total) @row.UnitCode</td>
                         <td class="num">@Ui.Qty(row.MinStock)</td>
                         <td class="num"><span class="tag tag-warn">@Ui.Qty(row.ToOrder) @row.UnitCode</span></td>

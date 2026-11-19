@@ -240,7 +240,7 @@
                     <tr class="@(l.OffBook ? "row-offbook" : null)">
                         <td class="num">@l.LineNo</td>
                         <td class="mono"><a href="/items/@l.ItemId">@l.Sku</a></td>
-                        <td>@l.ItemName <OffBookTag Quantity="@(l.OffBook ? 1m : 0m)" /></td>
+                        <td class="col-name">@l.ItemName <OffBookTag Quantity="@(l.OffBook ? 1m : 0m)" /></td>
                         <td class="num">
                             @Ui.Qty(l.Quantity) @l.UnitCode
                             @if (l.BatchDate is { } batchDate)

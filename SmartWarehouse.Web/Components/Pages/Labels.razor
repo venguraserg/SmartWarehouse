@@ -121,7 +121,7 @@ else
                     <tr @onclick="() => Toggle(r.Id)" style="cursor: pointer">
                         <td><input type="checkbox" checked="@chosen.Contains(r.Id)" @onclick:stopPropagation @onchange="() => Toggle(r.Id)" /></td>
                         <td class="mono" style="padding-left: @Indent(r.Depth)">@r.Code</td>
-                        <td>@r.Name</td>
+                        <td class="col-name">@r.Name</td>
                         <td class="muted">@r.Note</td>
                     </tr>
                 }

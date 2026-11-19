@@ -72,7 +72,7 @@
                         {
                             <tr>
                                 <td class="mono">@b.Code</td>
-                                <td>
+                                <td class="col-name">
                                     @b.Name
                                     @if (b.Warning is not null)
                                     {
@@ -150,7 +150,7 @@ else
                 {
                     <tr>
                         <td class="mono"><a href="/items/@p.ItemId">@p.Sku</a></td>
-                        <td>
+                        <td class="col-name">
                             @p.ItemName
                             @if (p.HasDiscrepancy)
                             {
@@ -228,7 +228,7 @@ else
                     <tr>
                         <td>@d.Invoice</td>
                         <td class="mono"><a href="/items/@d.ItemId">@d.Sku</a></td>
-                        <td>@d.ItemName</td>
+                        <td class="col-name">@d.ItemName</td>
                         <td class="num">@Ui.Qty(d.Expected) @d.UnitCode</td>
                         <td class="num">@Ui.Qty(d.Actual)</td>
                         <td class="num">@((d.Actual - d.Expected > 0 ? "+" : "") + Ui.Qty(d.Actual - d.Expected))</td>

@@ -90,7 +90,7 @@
                     <tr class="@(line.OffBook ? "row-offbook" : null)">
                         <td class="num">@line.LineNo</td>
                         <td class="mono"><a href="/items/@line.ItemId">@line.Sku</a></td>
-                        <td>@line.ItemName <OffBookTag Quantity="@(line.OffBook ? 1m : 0m)" /></td>
+                        <td class="col-name">@line.ItemName <OffBookTag Quantity="@(line.OffBook ? 1m : 0m)" /></td>
                         <td>@PlaceCell(line.FromLocationName, line.FromLocation)</td>
                         <td>@PlaceCell(line.ToLocationName, line.ToLocation)</td>
                         <td class="num">
