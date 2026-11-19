@@ -1,0 +1,42 @@
+@* Выбор оборудования деревом: цех → линия → агрегат; «+» раскрывает уровень, поиск по коду и названию. *@
+
+<TreePicker Tree="tree" Value="Value" ValueChanged="ValueChanged" Title="@Title" Placeholder="@Placeholder"
+            SearchPlaceholder="Поиск: код или название оборудования" Invalid="Invalid" Disabled="Disabled"
+            AllowClear="AllowClear" ClearText="@ClearText" Exclude="Exclude" />
+
+@code {
+    /// <summary>Всё оборудование плоским списком (дерево строится по ParentId).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<EquipmentDto> All { get; set; } = [];
+
+    [Parameter] public int? Value { get; set; }
+
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Оборудование";
+
+    [Parameter] public string Placeholder { get; set; } = "— не указано —";
+
+    [Parameter] public bool Invalid { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>По умолчанию оборудование необязательно — можно сбросить.</summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+
+    [Parameter] public string ClearText { get; set; } = "Не указывать";
+
+    /// <summary>Что выбрать нельзя (и всё вложенное) — например, само оборудование при выборе «Входит в».</summary>
+    [Parameter] public IReadOnlySet<int>? Exclude { get; set; }
+
+    private PickTree tree = new();
+    private IReadOnlyList<EquipmentDto>? builtFrom;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(builtFrom, All))
+        {
+            tree = PickTree.FromEquipment(All);
+            builtFrom = All;
+        }
+    }
+}

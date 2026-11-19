@@ -19,17 +19,24 @@ public sealed class PlaceTree
     public Dictionary<int, string> Paths { get; } = [];
 
     /// <summary>Места одного склада; подписи-пути строятся из описаний (уровень без описания — «стеллаж A»).</summary>
+    /// <summary>То же дерево для общего компонента выбора (TreePicker).</summary>
+    public PickTree Pick { get; } = new();
+
     public PlaceTree AddGroup(string? warehouse, IReadOnlyList<LocationNodeDto> roots)
     {
         Groups.Add(new PlaceGroup(warehouse, roots));
         Walk(roots, warehouse);
+        Pick.AddGroup(warehouse, roots.Select(ToPick).ToList());
         return this;
+
+        static PickNode ToPick(LocationNodeDto n) =>
+            new(n.Id, n.ParentId, Ui.LocType(n.Type), LabelOf(n), n.FullCode, n.Children.Select(ToPick).ToList());
 
         void Walk(IEnumerable<LocationNodeDto> nodes, string? parentPath)
         {
             foreach (var node in nodes)
             {
-                var label = string.IsNullOrWhiteSpace(node.Name) ? $"{Ui.LocType(node.Type).ToLowerInvariant()} {node.Code}" : node.Name.Trim();
+                var label = LabelOf(node);
                 var path = parentPath is null ? label : $"{parentPath} › {label}";
                 Paths[node.Id] = path;
                 ById[node.Id] = node;
@@ -38,6 +45,10 @@ public sealed class PlaceTree
             }
         }
     }
+
+    /// <summary>Подпись места: описание, а без него — тип и код («стеллаж A»).</summary>
+    public static string LabelOf(LocationNodeDto n) =>
+        string.IsNullOrWhiteSpace(n.Name) ? $"{Ui.LocType(n.Type).ToLowerInvariant()} {n.Code}" : n.Name.Trim();
 
     public string PathOf(int id, string? fallback = null) =>
         Paths.TryGetValue(id, out var path) ? path : fallback ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture);

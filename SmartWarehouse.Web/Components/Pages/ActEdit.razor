@@ -97,13 +97,7 @@ else
                 <div class="field">
                     <label for="def-eq">Оборудование — для всех строк</label>
                     <div class="select-with-add">
-                        <select id="def-eq" @bind="defaultEquipmentId">
-                            <option value="">— не указано —</option>
-                            @foreach (var e in equipment)
-                            {
-                                <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
-                            }
-                        </select>
+                        <EquipmentPicker All="equipmentList" @bind-Value="defaultEquipmentId" Title="Оборудование — для всех строк" />
                         @if (isWarehouse)
                         {
                             <button class="btn btn-sm" type="button" title="Новое оборудование" @onclick="() => quickEquipment = !quickEquipment">+</button>
@@ -111,7 +105,7 @@ else
                     </div>
                     @if (quickEquipment)
                     {
-                        <QuickEquipment All="@equipment.Select(e => e.Item).ToList()" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
+                        <QuickEquipment All="equipmentList" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
                     }
                 </div>
                 <div class="field" style="grid-column: span 2">
@@ -211,13 +205,8 @@ else
                                     }
                                 </td>
                                 <td>
-                                    <select @bind="line.EquipmentId">
-                                        <option value="">@(defaultEquipmentId is null ? "— не указано —" : "как для всех")</option>
-                                        @foreach (var e in equipment)
-                                        {
-                                            <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
-                                        }
-                                    </select>
+                                    <EquipmentPicker All="equipmentList" @bind-Value="line.EquipmentId" Title="Оборудование для строки"
+                                                     Placeholder="@(defaultEquipmentId is null ? "— не указано —" : "как для всех")" />
                                 </td>
                                 <td>
                                     <input type="text" @bind="line.Usage" @bind:event="oninput" maxlength="500"
@@ -297,7 +286,8 @@ else
     {
         try
         {
-            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            equipmentList = await Api.GetEquipmentAsync();
+            equipment = EquipmentTree.Flatten(equipmentList);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -321,6 +311,9 @@ else
     private List<EmployeeDto> employees = [];
     private HashSet<int> custodyHolders = [];
     private List<(EquipmentDto Item, int Depth)> equipment = [];
+
+    /// <summary>Оборудование плоским списком — для выбора деревом.</summary>
+    private List<EquipmentDto> equipmentList = [];
     private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
 
     private int? employeeId;
@@ -367,7 +360,8 @@ else
 
         try
         {
-            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            equipmentList = await Api.GetEquipmentAsync();
+            equipment = EquipmentTree.Flatten(equipmentList);
             fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
 
             if (isWarehouse)

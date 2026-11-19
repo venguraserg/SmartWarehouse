@@ -5,14 +5,9 @@
     <div class="quick-add-title">Новое оборудование</div>
     <div class="inline-form">
         <div class="field">
-            <label for="qe-parent">Входит в</label>
-            <select id="qe-parent" @bind="parentId" @bind:after="SuggestCode">
-                <option value="">— верхний уровень (участок) —</option>
-                @foreach (var (e, depth) in EquipmentTree.Flatten(All))
-                {
-                    <option value="@e.Id">@(new string('\u00A0', depth * 3))@e.Code — @e.Name</option>
-                }
-            </select>
+            <label>Входит в</label>
+            <EquipmentPicker All="All" @bind-Value="parentId" @bind-Value:after="SuggestCode" Title="Входит в"
+                             Placeholder="— верхний уровень (участок) —" ClearText="Верхний уровень (участок)" />
         </div>
         <div class="field" style="max-width: 150px">
             <label for="qe-code">Код <span class="req">*</span></label>

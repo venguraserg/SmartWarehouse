@@ -137,14 +137,9 @@
     <p class="muted">Участки, установки и узлы — на них оформляется выдача запчастей.</p>
     <form class="inline-form" @onsubmit="AddEquipmentAsync" @onsubmit:preventDefault>
         <div class="field">
-            <label for="eq-parent">Входит в</label>
-            <select id="eq-parent" @bind="equipmentParentId" @bind:after="SuggestEquipmentCode">
-                <option value="">— верхний уровень (участок) —</option>
-                @foreach (var e in equipmentTree)
-                {
-                    <option value="@e.Item.Id">@(new string(' ', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
-                }
-            </select>
+            <label>Входит в</label>
+            <EquipmentPicker All="equipment" @bind-Value="equipmentParentId" @bind-Value:after="SuggestEquipmentCode" Title="Входит в"
+                             Placeholder="— верхний уровень (участок) —" ClearText="Верхний уровень (участок)" />
         </div>
         <div class="field" style="max-width: 160px">
             <label for="eq-code">Код <span class="req">*</span></label>
@@ -172,13 +167,8 @@
                                 <div class="inline-form">
                                     <div class="field">
                                         <label>Входит в</label>
-                                        <select @bind="editParentId">
-                                            <option value="">— верхний уровень —</option>
-                                            @foreach (var p in EquipmentParentChoices(e.Item.Id))
-                                            {
-                                                <option value="@p.Item.Id">@(new string('\u00A0', p.Depth * 3))@p.Item.Code — @p.Item.Name</option>
-                                            }
-                                        </select>
+                                        <EquipmentPicker All="equipment" @bind-Value="editParentId" Title="Перенести в" Exclude="OnlyId(e.Item.Id)"
+                                                         Placeholder="— верхний уровень —" ClearText="Верхний уровень" />
                                     </div>
                                     <div class="field" style="max-width: 160px">
                                         <label>Код</label>
@@ -268,19 +258,8 @@
         confirming = false;
     }
 
-    /// <summary>Куда можно перенести оборудование: не в себя и не в свои узлы.</summary>
-    private IEnumerable<(EquipmentDto Item, int Depth)> EquipmentParentChoices(int id)
-    {
-        var excluded = new HashSet<int> { id };
-        bool changed;
-        do
-        {
-            changed = false;
-            foreach (var e in equipment.Where(e => e.ParentId is int p && excluded.Contains(p)))
-                changed |= excluded.Add(e.Id);
-        } while (changed);
-        return equipmentTree.Where(x => !excluded.Contains(x.Item.Id));
-    }
+    /// <summary>Перенести оборудование нельзя в себя и в свои узлы — дерево выбора скрывает их.</summary>
+    private static HashSet<int> OnlyId(int id) => [id];
 
     private Task SaveAsync(Func<Task<ReferenceChangeResult>> save) => RunAsync(async () =>
     {
