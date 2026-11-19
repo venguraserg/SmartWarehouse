@@ -1,0 +1,9 @@
+@page "/reports/new"
+@page "/reports/{Id:int}/edit"
+
+@* Отчёт об использовании — та же форма, что и акт (ActEdit); вид берётся из адреса. *@
+<ActEdit Id="Id" />
+
+@code {
+    [Parameter] public int? Id { get; set; }
+}

@@ -1,7 +1,7 @@
 @page "/acts/new"
 @page "/acts/{Id:int}/edit"
-@page "/reports/new"
-@page "/reports/{Id:int}/edit"
+@* Отчёты (/reports/new, /reports/{Id}/edit) открываются страницей ReportEdit — отдельным типом,
+   чтобы переход «акт ↔ отчёт» создавал новый экземпляр формы. *@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject ScannerHub Scanner

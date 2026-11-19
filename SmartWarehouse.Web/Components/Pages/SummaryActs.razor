@@ -1,0 +1,5 @@
+@page "/summary-acts"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+
+@* Сводные акты кладовщика — тот же список, что и акты (Acts); вид берётся из адреса. *@
+<Acts />

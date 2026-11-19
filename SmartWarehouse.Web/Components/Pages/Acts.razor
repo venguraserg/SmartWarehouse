@@ -1,6 +1,6 @@
 @page "/acts"
-@page "/reports"
-@page "/summary-acts"
+@* Тот же список открывают страницы Reports (/reports) и SummaryActs (/summary-acts) — отдельными типами,
+   чтобы при переходе между пунктами меню создавался новый экземпляр и список перезагружался. *@
 @inject ApiClient Api
 @inject NavigationManager Nav
 
@@ -145,7 +145,6 @@ else
 
     private ActKind? loadedKind;
 
-    // Один компонент на /acts и /reports: при переходе между ними параметры обновляются, а не создаётся новый.
     protected override async Task OnParametersSetAsync()
     {
         if (loadedKind == Kind)
