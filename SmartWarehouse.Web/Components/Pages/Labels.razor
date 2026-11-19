@@ -73,8 +73,12 @@ else if (qr is not null && LinkBase is { } shown)
                 <option value="@w.Id">@w.Code — @w.Name</option>
             }
         </select>
+        <div style="min-width: 280px; flex: 1; max-width: 520px">
+            <PlacePicker Tree="branchTree" @bind-Value="branchId" Title="Наклейки для места и всего, что в нём"
+                         AllowClear="true" ClearText="Весь склад" Placeholder="Весь склад — или выберите стеллаж, полку" />
+        </div>
         <input type="search" placeholder="Фильтр по коду: A-01" @bind="filter" @bind:event="oninput" style="max-width: 220px" />
-        <label class="checkbox"><input type="checkbox" @bind="onlyLeaves" /> только ячейки (конечные места)</label>
+        <label class="checkbox"><input type="checkbox" @bind="onlyLeaves" /> только конечные места (без вложенных)</label>
     </div>
 }
 else
@@ -146,6 +150,12 @@ else
     private List<WarehouseDto> warehouses = [];
     private int? warehouseId;
     private bool onlyLeaves = true;
+
+    /// <summary>Места склада деревом — выбрать стеллаж или полку и печатать всё, что в ней.</summary>
+    private PlaceTree branchTree = new();
+
+    /// <summary>Выбранная ветка: показываются она и всё вложенное; null — весь склад.</summary>
+    private int? branchId;
     private string? filter;
 
     private List<Row>? rows;
@@ -169,9 +179,23 @@ else
     private List<Row> Visible =>
         (rows ?? new List<Row>())
             .Where(r => kind != LabelKind.Location || !onlyLeaves || r.IsLeaf)
+            .Where(r => kind != LabelKind.Location || branchId is not int b || InBranch(b, r.Id))
             .Where(r => kind != LabelKind.Location || string.IsNullOrWhiteSpace(filter)
                         || r.Code.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+    private HashSet<int>? branchIds;
+    private int? branchIdsFor;
+
+    private bool InBranch(int branch, int id)
+    {
+        if (branchIdsFor != branch || branchIds is null)
+        {
+            branchIds = branchTree.SubtreeOf(branch).ToHashSet();
+            branchIdsFor = branch;
+        }
+        return branchIds.Contains(id);
+    }
 
     private string PdfUrl =>
         $"/labels.pdf?kind={kind}&layout={Uri.EscapeDataString(layout)}&skip={Math.Clamp(skip, 0, PerSheet - 1)}" +
@@ -218,8 +242,12 @@ else
         try
         {
             var result = new List<Row>();
-            Flatten(await Api.GetLocationTreeAsync(id), 0, result);
+            var roots = await Api.GetLocationTreeAsync(id);
+            Flatten(roots, 0, result);
             rows = result;
+            branchTree = new PlaceTree().AddGroup(null, roots);
+            branchId = null;
+            branchIdsFor = null;
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

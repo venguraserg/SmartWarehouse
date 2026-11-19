@@ -138,13 +138,7 @@ else
                     <div class="field">
                         <label for="eq">@(type == MovementType.WriteOff ? "Оборудование (куда установлено)" : "Оборудование")</label>
                         <div class="select-with-add">
-                            <select id="eq" @bind="equipmentId">
-                                <option value="">— не указано —</option>
-                                @foreach (var e in equipment)
-                                {
-                                    <option value="@e.Item.Id">@(new string('\u00A0', e.Depth * 3))@e.Item.Code — @e.Item.Name</option>
-                                }
-                            </select>
+                            <EquipmentPicker All="equipmentList" @bind-Value="equipmentId" Title="Оборудование" />
                             @if (isStaff)
                             {
                                 <button class="btn btn-sm" type="button" title="Новое оборудование" @onclick="() => quickEquipment = !quickEquipment">+</button>
@@ -152,7 +146,7 @@ else
                         </div>
                         @if (quickEquipment)
                         {
-                            <QuickEquipment All="@equipment.Select(e => e.Item).ToList()" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
+                            <QuickEquipment All="equipmentList" OnCreated="OnEquipmentCreatedAsync" OnCancel="() => quickEquipment = false" />
                         }
                     </div>
                 }
@@ -500,7 +494,8 @@ else
     {
         try
         {
-            equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+            equipmentList = await Api.GetEquipmentAsync();
+            equipment = EquipmentTree.Flatten(equipmentList);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -557,6 +552,9 @@ else
     private Dictionary<int, string> MarksFor(LineModel line) =>
         line.Item is null ? [] : line.Available.ToDictionary(a => a.LocationId, a => $"есть {Ui.Qty(a.Quantity)} {line.Item.UnitCode}");
     private List<(EquipmentDto Item, int Depth)> equipment = [];
+
+    /// <summary>Оборудование плоским списком — для выбора деревом.</summary>
+    private List<EquipmentDto> equipmentList = [];
     private List<EmployeeDto> allEmployees = [];
     private List<EmployeeDto> activeEmployees = [];
     private HashSet<int> custodyHolders = [];
@@ -701,7 +699,8 @@ else
                 itemsByLabel = items.ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
                 placeTree = await Api.GetPlacesAsync();
                 placePaths = placeTree.Paths;
-                equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
+                equipmentList = await Api.GetEquipmentAsync();
+                equipment = EquipmentTree.Flatten(equipmentList);
                 units = await Api.GetUnitsAsync();
                 fractionalByUnit = units.ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
                 allEmployees = await Api.GetEmployeesAsync(includeInactive: true);
