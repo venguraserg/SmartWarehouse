@@ -17,6 +17,19 @@
 
 <Alert Error="@error" />
 
+@if (issueRequest is not null)
+{
+    <div class="alert alert-info">
+        Выдача по запросу <a class="mono" href="/requests/@issueRequest.Id">@issueRequest.Number</a> — @issueRequest.EmployeeName.
+        Строки собраны из запроса: откуда брать — места, где позиции больше всего. Проверьте и поправьте при сборке —
+        выдать можно меньше, запрос закроется этой выдачей.
+        @if (requestShortages.Count > 0)
+        {
+            <div style="margin-top: .35rem"><strong>Не хватает на складе:</strong> @string.Join("; ", requestShortages)</div>
+        }
+    </div>
+}
+
 @if (notAllowed)
 {
     <p>Старший смены оформляет только <a href="/documents/new/Issue">выдачу со склада</a> и <a href="/documents/new/Return">возврат</a>. Остальное — кладовщик.</p>
@@ -525,6 +538,14 @@ else
     /// <summary>Сотрудник подставляется сразу (переход «Списать» / «Вернуть» из карточки сотрудника).</summary>
     [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeParam { get; set; }
 
+    /// <summary>Выдача по запросу сотрудника: строки и сотрудник — из запроса.</summary>
+    [SupplyParameterFromQuery(Name = "request")] public int? RequestParam { get; set; }
+
+    private IssueRequestDto? issueRequest;
+
+    /// <summary>Чего не хватило на складе при сборке по запросу.</summary>
+    private List<string> requestShortages = [];
+
     private MovementType? type;
     private bool loaded;
     private bool saving;
@@ -663,6 +684,8 @@ else
         showErrors = false;
         scannedLocationId = null;
         scanInfo = null;
+        issueRequest = null;
+        requestShortages = [];
 
         if (type is null)
             return;
@@ -700,6 +723,67 @@ else
         {
             accountableId = employeeId;
             await OnAccountableChangedAsync();
+        }
+
+        if (type == MovementType.Issue && RequestParam is int requestId)
+            await PrefillFromRequestAsync(requestId);
+    }
+
+    /// <summary>
+    /// Выдача по запросу: сотрудник, основание и строки — из запроса. Каждая позиция берётся из мест,
+    /// где её больше всего (несколько строк, если в одном месте не хватает); чего нет — в «Не хватает».
+    /// </summary>
+    private async Task PrefillFromRequestAsync(int requestId)
+    {
+        try
+        {
+            var request = await Api.GetIssueRequestAsync(requestId);
+            if (!request.Can.Issue)
+            {
+                error = $"Запрос {request.Number}: {Ui.RequestState(request.Status).ToLowerInvariant()} — выдать по нему нельзя.";
+                return;
+            }
+            issueRequest = request;
+            accountableId = request.EmployeeId;
+            await OnAccountableChangedAsync();
+            externalNumber = request.Number;
+            comment = request.Comment;
+
+            var built = new List<LineModel>();
+            foreach (var r in request.Lines)
+            {
+                var label = itemsByLabel.FirstOrDefault(kv => kv.Value.Id == r.ItemId).Key;
+                if (label is null)
+                {
+                    requestShortages.Add($"{r.Name} — позиция недоступна");
+                    continue;
+                }
+
+                var balances = (await Api.GetBalancesAsync(r.ItemId)).OrderByDescending(b => b.Quantity).ToList();
+                var left = r.Quantity;
+                foreach (var place in balances)
+                {
+                    if (left <= 0)
+                        break;
+                    var take = Math.Min(left, place.Quantity);
+                    var line = new LineModel { ItemText = label, Quantity = take };
+                    await OnItemChangedAsync(line);
+                    if (line.FromId != place.LocationId)
+                    {
+                        line.FromId = place.LocationId;
+                        await LoadBatchesAsync(line);
+                    }
+                    built.Add(line);
+                    left -= take;
+                }
+                if (left > 0)
+                    requestShortages.Add($"{r.Name} — не хватает {Ui.Qty(left)} {r.UnitCode}");
+            }
+            lines = built.Count > 0 ? built : [new()];
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
         }
     }
 
@@ -919,7 +1003,8 @@ else
                 NeedsPrice(l) ? l.UnitPrice : null)).ToList(),
             PerformedById: performedById,
             ReceivedById: UsesAccountable ? accountableId : null,
-            OffBook: PriceOptional);
+            OffBook: PriceOptional,
+            IssueRequestId: type == MovementType.Issue ? issueRequest?.Id : null);
 
         saving = true;
         try

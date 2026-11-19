@@ -236,6 +236,7 @@ tr.row-offbook > td { background: repeating-linear-gradient(-45deg, transparent 
 .alert-success { background: var(--ok-weak); color: var(--ok-text); border-color: #C3DFC5; border-left-color: var(--ok); }
 .alert-warn { background: var(--warn-weak); color: var(--text); border-color: #F2CF9A; border-left-color: var(--warn); }
 .alert-warn ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+.alert-info { background: var(--info-weak); color: var(--text); border-color: var(--border); border-left-color: var(--info); }
 
 .loading { color: var(--text-muted); padding: 1rem 0; }
 

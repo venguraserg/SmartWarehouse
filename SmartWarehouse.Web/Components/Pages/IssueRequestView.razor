@@ -1,0 +1,213 @@
+@page "/requests/{Id:int}"
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(request?.Number ?? "Запрос на выдачу") — Склад ОЭТО</PageTitle>
+
+<Alert Error="@error" />
+
+@if (request is null)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="page-head">
+        <h1>Запрос <span class="mono">@request.Number</span></h1>
+        <span class="tag @Ui.RequestStateClass(request.Status)">@Ui.RequestState(request.Status)</span>
+        <span class="spacer"></span>
+        @if (request.Can.Issue)
+        {
+            <a class="btn btn-primary" href="/documents/new/Issue?request=@request.Id">Собрать и оформить выдачу</a>
+        }
+        @if (request.Can.Reject && !rejecting)
+        {
+            <button class="btn" type="button" @onclick="() => rejecting = true">Отклонить</button>
+        }
+        @if (request.Can.Cancel)
+        {
+            <button class="btn" type="button" disabled="@busy" @onclick="CancelAsync">Отменить запрос</button>
+        }
+    </div>
+
+    @if (rejecting)
+    {
+        <form class="panel" style="margin-bottom: 1rem; max-width: 640px" @onsubmit="RejectAsync" @onsubmit:preventDefault>
+            <div class="field">
+                <label for="reason">Причина отклонения <span class="req">*</span></label>
+                <input id="reason" type="text" maxlength="1000" @bind="reason" placeholder="например: нет на складе, заказано" />
+                <div class="field-hint">Сотрудник увидит её в запросе.</div>
+            </div>
+            <div class="actions">
+                <button class="btn btn-danger" type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(reason))">Отклонить запрос</button>
+                <button class="btn" type="button" @onclick="() => rejecting = false">Не отклонять</button>
+            </div>
+        </form>
+    }
+
+    <div class="panel" style="margin-bottom: 1rem">
+        <dl class="props">
+            <dt>Кому</dt>
+            <dd><a href="/employees/@request.EmployeeId">@request.EmployeeName</a>@(string.IsNullOrEmpty(request.EmployeePosition) ? "" : $", {request.EmployeePosition}")</dd>
+            <dt>Создан</dt>
+            <dd>@Ui.Date(request.CreatedAt)@(request.CreatedBy is null ? "" : $" · {request.CreatedBy}")</dd>
+            @if (!string.IsNullOrEmpty(request.Comment))
+            {
+                <dt>Комментарий</dt>
+                <dd>@request.Comment</dd>
+            }
+            @if (request.ClosedAt is { } closed)
+            {
+                <dt>@(request.Status switch { IssueRequestStatus.Issued => "Выдал", IssueRequestStatus.Rejected => "Отклонил", _ => "Отменил" })</dt>
+                <dd>@Ui.Date(closed)@(request.ClosedBy is null ? "" : $" · {request.ClosedBy}")</dd>
+            }
+            @if (!string.IsNullOrEmpty(request.CloseNote))
+            {
+                <dt>Причина</dt>
+                <dd>@request.CloseNote</dd>
+            }
+            @if (request.DocumentId is long docId)
+            {
+                <dt>Документ выдачи</dt>
+                <dd class="mono"><a href="/documents/@docId">@request.DocumentNumber</a></dd>
+            }
+        </dl>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th class="num">№</th>
+                    <th>Код</th>
+                    <th>Наименование</th>
+                    <th class="num">Нужно</th>
+                    @if (Open)
+                    {
+                        <th class="num">На складе</th>
+                    }
+                    @if (request.Status == IssueRequestStatus.Issued)
+                    {
+                        <th class="num">Выдано</th>
+                    }
+                    @if (ShowPlaces)
+                    {
+                        <th>Где лежит</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in request.Lines)
+                {
+                    <tr>
+                        <td class="num">@l.LineNo</td>
+                        <td class="mono"><a href="/items/@l.ItemId">@l.Sku</a></td>
+                        <td class="col-name">@l.Name</td>
+                        <td class="num">@Ui.Qty(l.Quantity) @l.UnitCode</td>
+                        @if (Open)
+                        {
+                            <td class="num">
+                                @Ui.Qty(l.OnHand)
+                                @if (l.OnHand < l.Quantity)
+                                {
+                                    <span class="tag tag-out">@(l.OnHand <= 0 ? "нет" : "не хватает")</span>
+                                }
+                            </td>
+                        }
+                        @if (request.Status == IssueRequestStatus.Issued)
+                        {
+                            var issued = l.Issued ?? 0;
+                            <td class="num">
+                                @Ui.Qty(issued)
+                                @if (issued < l.Quantity)
+                                {
+                                    <span class="tag tag-warn">меньше</span>
+                                }
+                            </td>
+                        }
+                        @if (ShowPlaces)
+                        {
+                            <td>
+                                <div class="chips">
+                                    @foreach (var p in l.Places)
+                                    {
+                                        <span class="chip" title="@p.LocationName"><span class="mono">@p.LocationCode</span> @Ui.Qty(p.Quantity)</span>
+                                    }
+                                </div>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted"><a href="/requests">← Все запросы</a></p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private IssueRequestDto? request;
+    private bool busy;
+    private bool rejecting;
+    private string? reason;
+    private string? error;
+
+    private bool Open => request?.Status == IssueRequestStatus.Open;
+
+    /// <summary>«Где лежит» — тем, кто собирает заказ.</summary>
+    private bool ShowPlaces => Open && request!.Can.Issue;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            request = await Api.GetIssueRequestAsync(Id);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        busy = true;
+        try
+        {
+            request = await Api.CancelIssueRequestAsync(Id);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task RejectAsync()
+    {
+        busy = true;
+        try
+        {
+            request = await Api.RejectIssueRequestAsync(Id, reason);
+            rejecting = false;
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

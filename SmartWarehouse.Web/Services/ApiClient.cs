@@ -310,6 +310,26 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<List<DocumentSummaryDto>> GetDocumentsAsync(MovementType? type = null, int take = 100, CancellationToken ct = default) =>
         GetAsync<List<DocumentSummaryDto>>(type is null ? $"api/documents?take={take}" : $"api/documents?type={type}&take={take}", ct);
 
+    // ---------- Запросы на выдачу ----------
+
+    public Task<List<IssueRequestSummaryDto>> GetIssueRequestsAsync(IssueRequestStatus? status = null, CancellationToken ct = default) =>
+        GetAsync<List<IssueRequestSummaryDto>>(status is null ? "api/issue-requests" : $"api/issue-requests?status={status}", ct);
+
+    public Task<int> GetOpenIssueRequestCountAsync(CancellationToken ct = default) =>
+        GetAsync<int>("api/issue-requests/open-count", ct);
+
+    public Task<IssueRequestDto> GetIssueRequestAsync(int id, CancellationToken ct = default) =>
+        GetAsync<IssueRequestDto>($"api/issue-requests/{id}", ct);
+
+    public Task<IssueRequestDto> CreateIssueRequestAsync(CreateIssueRequestRequest request, CancellationToken ct = default) =>
+        SendAsync<IssueRequestDto>(HttpMethod.Post, "api/issue-requests", request, ct);
+
+    public Task<IssueRequestDto> CancelIssueRequestAsync(int id, CancellationToken ct = default) =>
+        SendAsync<IssueRequestDto>(HttpMethod.Post, $"api/issue-requests/{id}/cancel", new { }, ct);
+
+    public Task<IssueRequestDto> RejectIssueRequestAsync(int id, string? reason, CancellationToken ct = default) =>
+        SendAsync<IssueRequestDto>(HttpMethod.Post, $"api/issue-requests/{id}/reject", new RejectIssueRequestRequest(reason), ct);
+
     public Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default) =>
         GetAsync<DocumentDto>($"api/documents/{id}", ct);
 

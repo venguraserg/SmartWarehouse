@@ -13,7 +13,7 @@ namespace SmartWarehouse.API.Controllers;
 /// <summary>Складские документы: приход, выдача, возврат, перемещение, корректировка; списание — по актам.</summary>
 [ApiController]
 [Route("api/documents")]
-public class DocumentsController(IStockService stock, IEmployeeService employees) : ControllerBase
+public class DocumentsController(IStockService stock, IEmployeeService employees, IIssueRequestService issueRequests) : ControllerBase
 {
     /// <summary>
     /// Список документов, новые первыми; можно отфильтровать по типу.
@@ -62,7 +62,21 @@ public class DocumentsController(IStockService stock, IEmployeeService employees
         if (request.PerformedById is null && string.IsNullOrWhiteSpace(request.PerformedBy) && User.EmployeeId() is int me)
             request = request with { PerformedById = me };
 
+        // Выдача по запросу сотрудника: запрос должен быть открыт и на того же сотрудника; после проведения закрывается.
+        IssueRequestActor? requestActor = null;
+        if (request.IssueRequestId is int requestId)
+        {
+            if (request.Type != MovementType.Issue)
+                throw new DomainException("По запросу оформляется только выдача.");
+            requestActor = await User.ToIssueRequestActorAsync(employees, ct);
+            await issueRequests.EnsureCanIssueAsync(requestId, request.ReceivedById, requestActor, ct);
+        }
+
         var document = await stock.PostDocumentAsync(request, ct);
+
+        if (request.IssueRequestId is int issuedRequestId)
+            await issueRequests.MarkIssuedAsync(issuedRequestId, document.Id, requestActor!, ct);
+
         return CreatedAtAction(nameof(Get), new { id = document.Id }, document);
     }
 }

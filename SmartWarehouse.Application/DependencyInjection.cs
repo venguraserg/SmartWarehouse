@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddScoped<StockService>();
         services.AddScoped<IStockService>(sp => sp.GetRequiredService<StockService>());
         services.AddScoped<IWriteOffActService, WriteOffActService>();
+        services.AddScoped<IIssueRequestService, IssueRequestService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IEmployeeService, EmployeeService>();

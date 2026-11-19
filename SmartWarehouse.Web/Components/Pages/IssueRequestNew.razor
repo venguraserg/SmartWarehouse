@@ -1,0 +1,255 @@
+@page "/requests/new"
+@using System.Globalization
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Новый запрос на выдачу — Склад ОЭТО</PageTitle>
+
+<h1>Новый запрос на выдачу</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Найдите нужное в остатках склада и добавьте в запрос с количеством. Кладовщик соберёт заказ и выдаст.
+</p>
+
+<Alert Error="@error" />
+
+@if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="grid-2 request-grid">
+        <section>
+            <h2 style="margin-top: 0">Остатки склада</h2>
+            <form class="toolbar" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+                <input type="search" placeholder="Артикул или наименование" @bind="search" aria-label="Поиск по остаткам" />
+                <button class="btn" type="submit">Найти</button>
+            </form>
+            @if (found is null)
+            {
+                <div class="panel empty">Введите артикул или часть наименования.</div>
+            }
+            else if (found.Count == 0)
+            {
+                <div class="panel empty">На складе ничего не найдено.</div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Код</th><th>Наименование</th><th class="num">На складе</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var f in found)
+                            {
+                                var added = cart.Any(c => c.ItemId == f.ItemId);
+                                <tr>
+                                    <td class="mono">@f.Sku</td>
+                                    <td class="col-name">@f.Name <OffBookTag Quantity="f.OffBook" Total="f.Total" /></td>
+                                    <td class="num">@Ui.Qty(f.Total) @f.UnitCode</td>
+                                    <td class="row-actions">
+                                        <button class="btn btn-sm @(added ? null : "btn-primary")" type="button" disabled="@added" @onclick="() => Add(f)">
+                                            @(added ? "В запросе" : "Добавить")
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (truncated)
+                {
+                    <p class="muted">Показаны не все — уточните поиск.</p>
+                }
+            }
+        </section>
+
+        <section>
+            <h2 style="margin-top: 0">Запрос <span class="muted">(@cart.Count)</span></h2>
+            <form class="panel" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+                @if (canIssue)
+                {
+                    <div class="field">
+                        <label for="employee">Кому выдать</label>
+                        <select id="employee" @bind="employeeId">
+                            @foreach (var e in employees)
+                            {
+                                <option value="@e.Id">@e.ShortName@(string.IsNullOrEmpty(e.Position) ? "" : $" — {e.Position}")</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                @if (cart.Count == 0)
+                {
+                    <div class="empty" style="padding: 1rem 0">Пока пусто — добавьте позиции из остатков.</div>
+                }
+                else
+                {
+                    <div class="table-wrap" style="margin-bottom: .9rem">
+                        <table>
+                            <thead><tr><th>Наименование</th><th class="num" style="width: 140px">Количество</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var c in cart)
+                                {
+                                    var lineError = LineError(c);
+                                    <tr>
+                                        <td class="col-name">
+                                            <span class="mono muted">@c.Sku</span> @c.Name
+                                            <div class="line-hint">на складе @Ui.Qty(c.OnHand) @c.UnitCode</div>
+                                        </td>
+                                        <td class="num">
+                                            <input type="number" min="0" step="@(c.Fractional ? "any" : "1")" value="@c.Quantity.ToString(CultureInfo.InvariantCulture)"
+                                                   @onchange="e => SetQty(c, e.Value)" aria-label="Количество" class="@(lineError is not null ? "invalid" : null)" />
+                                            <FieldError Message="@lineError" />
+                                        </td>
+                                        <td class="row-actions">
+                                            <button class="btn btn-sm" type="button" @onclick="() => cart.Remove(c)" aria-label="Убрать">✕</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <div class="field">
+                    <label for="comment">Комментарий</label>
+                    <textarea id="comment" rows="2" maxlength="1000" @bind="comment" placeholder="для чего, к какому сроку"></textarea>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit" disabled="@(saving || cart.Count == 0 || cart.Any(c => LineError(c) is not null))">Отправить кладовщику</button>
+                    <a class="btn" href="/requests">Отмена</a>
+                </div>
+            </form>
+        </section>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private sealed class CartLine
+    {
+        public int ItemId { get; init; }
+        public string Sku { get; init; } = "";
+        public string Name { get; init; } = "";
+        public string UnitCode { get; init; } = "";
+        public bool Fractional { get; init; }
+        public decimal OnHand { get; init; }
+        public decimal Quantity { get; set; } = 1;
+    }
+
+    private sealed record Found(int ItemId, string Sku, string Name, string UnitCode, decimal Total, decimal OffBook);
+
+    private bool loaded;
+    private bool saving;
+    private bool canIssue;
+    private string? error;
+    private string? search;
+    private string? comment;
+    private int? employeeId;
+    private bool truncated;
+    private List<Found>? found;
+    private readonly List<CartLine> cart = [];
+    private List<EmployeeDto> employees = [];
+    private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthState is null ? null : (await AuthState).User;
+        canIssue = user is not null
+            && (user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin) || user.IsInRole(AppRoles.ShiftLead));
+        employeeId = user?.EmployeeIdOf();
+        try
+        {
+            fractionalByUnit = (await Api.GetUnitsAsync()).ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
+            if (canIssue)
+            {
+                employees = (await Api.GetEmployeesAsync()).Where(e => e.IsActive).OrderBy(e => e.FullName).ToList();
+                employeeId ??= employees.FirstOrDefault()?.Id;
+            }
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            found = null;
+            return;
+        }
+        try
+        {
+            var result = await Api.SearchStockAsync(new StockQuery(Search: search.Trim()));
+            truncated = result.Truncated;
+            found = result.Rows
+                .GroupBy(r => r.ItemId)
+                .Select(g => new Found(g.Key, g.First().Sku, g.First().ItemName, g.First().UnitCode,
+                    g.Sum(r => r.Quantity), g.Sum(r => r.OffBookQuantity)))
+                .Where(f => f.Total > 0)
+                .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void Add(Found f)
+    {
+        if (cart.Any(c => c.ItemId == f.ItemId))
+            return;
+        cart.Add(new CartLine
+        {
+            ItemId = f.ItemId, Sku = f.Sku, Name = f.Name, UnitCode = f.UnitCode, OnHand = f.Total,
+            Fractional = fractionalByUnit.GetValueOrDefault(f.UnitCode),
+            Quantity = Math.Min(1, f.Total)
+        });
+    }
+
+    private static void SetQty(CartLine line, object? value)
+    {
+        var text = value?.ToString()?.Replace(',', '.');
+        if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var q))
+            line.Quantity = q;
+    }
+
+    private static string? LineError(CartLine c) =>
+        c.Quantity <= 0 ? "Больше нуля."
+        : !c.Fractional && c.Quantity != decimal.Truncate(c.Quantity) ? $"«{c.UnitCode}» — целое."
+        : c.Quantity > c.OnHand ? $"На складе {Ui.Qty(c.OnHand)}."
+        : null;
+
+    private async Task SubmitAsync()
+    {
+        if (cart.Count == 0 || cart.Any(c => LineError(c) is not null))
+            return;
+        saving = true;
+        error = null;
+        try
+        {
+            var created = await Api.CreateIssueRequestAsync(new CreateIssueRequestRequest(
+                canIssue ? employeeId : null, comment,
+                cart.Select(c => new IssueRequestLineRequest(c.ItemId, c.Quantity)).ToList()));
+            Nav.NavigateTo($"/requests/{created.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

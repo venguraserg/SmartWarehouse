@@ -311,6 +311,42 @@ internal class WriteOffActConfiguration : IEntityTypeConfiguration<WriteOffAct>
     }
 }
 
+internal class IssueRequestConfiguration : IEntityTypeConfiguration<IssueRequest>
+{
+    public void Configure(EntityTypeBuilder<IssueRequest> b)
+    {
+        b.ToTable("issue_requests");
+        b.Ignore(x => x.Number);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.Comment).HasMaxLength(1000);
+        b.Property(x => x.CreatedBy).HasMaxLength(128);
+        b.Property(x => x.ClosedBy).HasMaxLength(128);
+        b.Property(x => x.CloseNote).HasMaxLength(1000);
+
+        b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Document).WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.DocumentId);
+        b.HasIndex(x => new { x.Status, x.CreatedAt });
+        b.HasIndex(x => x.EmployeeId);
+        b.HasMany(x => x.Lines).WithOne(x => x.Request).HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
+
+        // Защита от одновременной выдачи по одному запросу дважды.
+        b.Property<uint>("Version").IsRowVersion();
+    }
+}
+
+internal class IssueRequestLineConfiguration : IEntityTypeConfiguration<IssueRequestLine>
+{
+    public void Configure(EntityTypeBuilder<IssueRequestLine> b)
+    {
+        b.ToTable("issue_request_lines", t => t.HasCheckConstraint("ck_issue_request_lines_quantity_positive", "\"Quantity\" > 0"));
+        b.Property(x => x.Quantity).HasPrecision(Precision.Total, Precision.Scale);
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.RequestId, x.LineNo }).IsUnique();
+        b.HasIndex(x => x.ItemId);
+    }
+}
+
 internal class WriteOffActLineConfiguration : IEntityTypeConfiguration<WriteOffActLine>
 {
     public void Configure(EntityTypeBuilder<WriteOffActLine> b)
