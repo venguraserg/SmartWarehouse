@@ -313,6 +313,7 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
     text-align: left; color: inherit; cursor: pointer; border-radius: var(--radius);
 }
 .place-picker-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.place-picker-item:disabled { color: var(--disabled); cursor: default; }
 .place-picker-type { font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); min-width: 4.5rem; }
 .place-picker-foot { margin-top: .6rem; display: flex; justify-content: flex-end; }
 @media (max-width: 600px) {

@@ -285,25 +285,8 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         var result = new PlaceTree();
         var warehouses = await GetWarehousesAsync(ct);
         foreach (var warehouse in warehouses)
-        {
-            var roots = await GetLocationTreeAsync(warehouse.Id, ct);
-            result.Groups.Add(new PlaceGroup(warehouses.Count > 1 ? warehouse.Name : null, roots));
-            Walk(roots, warehouses.Count > 1 ? warehouse.Name : null);
-        }
+            result.AddGroup(warehouses.Count > 1 ? warehouse.Name : null, await GetLocationTreeAsync(warehouse.Id, ct));
         return result;
-
-        void Walk(IEnumerable<LocationNodeDto> nodes, string? parentPath)
-        {
-            foreach (var node in nodes)
-            {
-                var label = string.IsNullOrWhiteSpace(node.Name) ? $"{Ui.LocType(node.Type).ToLowerInvariant()} {node.Code}" : node.Name.Trim();
-                var path = parentPath is null ? label : $"{parentPath} › {label}";
-                result.Paths[node.Id] = path;
-                result.ById[node.Id] = node;
-                result.All.Add(node);
-                Walk(node.Children, path);
-            }
-        }
     }
 
     // ---------- Документы и остатки ----------
@@ -526,24 +509,6 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         if (query.OffBook is bool offBook) parts.Add($"offBook={(offBook ? "true" : "false")}");
 
         return GetAsync<StockSearchResult>(parts.Count == 0 ? "api/stock" : $"api/stock?{string.Join('&', parts)}", ct);
-    }
-
-    /// <summary>Все места всех складов (любого уровня) — для подсказок в фильтре.</summary>
-    public async Task<List<LocationNodeDto>> GetAllLocationsAsync(CancellationToken ct = default)
-    {
-        var result = new List<LocationNodeDto>();
-        foreach (var warehouse in await GetWarehousesAsync(ct))
-            Collect(await GetLocationTreeAsync(warehouse.Id, ct), result);
-        return result.OrderBy(l => l.FullCode).ToList();
-
-        static void Collect(IEnumerable<LocationNodeDto> nodes, List<LocationNodeDto> into)
-        {
-            foreach (var node in nodes)
-            {
-                into.Add(node);
-                Collect(node.Children, into);
-            }
-        }
     }
 
     public Task<List<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default) =>
