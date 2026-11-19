@@ -276,21 +276,21 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         GetAsync<LocationDto>($"api/locations/by-code/{Uri.EscapeDataString(fullCode.Trim())}", ct);
 
     /// <summary>
-    /// Конечные места (куда кладут товар) и подписи всех мест строкой из описаний по дереву:
-    /// «Склад запчастей › Стеллаж у ворот › Подшипники». Склад указывается, если складов несколько;
+    /// Все места хранения деревом (товар может лежать на любом уровне) и подписи мест строкой из описаний
+    /// по дереву: «Склад запчастей › Стеллаж у ворот › Подшипники». Склад указывается, если складов несколько;
     /// уровень без описания подписывается типом и кодом («стеллаж A»).
     /// </summary>
-    public async Task<(List<LocationNodeDto> Leaves, Dictionary<int, string> Paths)> GetPlacesAsync(CancellationToken ct = default)
+    public async Task<PlaceTree> GetPlacesAsync(CancellationToken ct = default)
     {
-        var leaves = new List<LocationNodeDto>();
-        var paths = new Dictionary<int, string>();
+        var result = new PlaceTree();
         var warehouses = await GetWarehousesAsync(ct);
         foreach (var warehouse in warehouses)
         {
-            var tree = await GetLocationTreeAsync(warehouse.Id, ct);
-            Walk(tree, warehouses.Count > 1 ? warehouse.Name : null);
+            var roots = await GetLocationTreeAsync(warehouse.Id, ct);
+            result.Groups.Add(new PlaceGroup(warehouses.Count > 1 ? warehouse.Name : null, roots));
+            Walk(roots, warehouses.Count > 1 ? warehouse.Name : null);
         }
-        return (leaves, paths);
+        return result;
 
         void Walk(IEnumerable<LocationNodeDto> nodes, string? parentPath)
         {
@@ -298,9 +298,10 @@ public class ApiClient(HttpClient http, IServiceProvider services)
             {
                 var label = string.IsNullOrWhiteSpace(node.Name) ? $"{Ui.LocType(node.Type).ToLowerInvariant()} {node.Code}" : node.Name.Trim();
                 var path = parentPath is null ? label : $"{parentPath} › {label}";
-                paths[node.Id] = path;
-                if (node.Children.Count == 0) leaves.Add(node);
-                else Walk(node.Children, path);
+                result.Paths[node.Id] = path;
+                result.ById[node.Id] = node;
+                result.All.Add(node);
+                Walk(node.Children, path);
             }
         }
     }

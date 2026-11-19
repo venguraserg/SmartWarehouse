@@ -1,0 +1,205 @@
+@* Выбор места хранения деревом, как в «Склады и места»: уровни раскрываются «+», выбрать можно любой
+   (товар может лежать и прямо на полке, где стоят ящики). Есть поиск по коду и описанию. *@
+
+<div class="place-picker">
+    <button type="button" class="place-picker-field @(Invalid ? "invalid" : null)" disabled="@Disabled" @onclick="OpenAsync"
+            title="@(Value is int t ? Tree.PathOf(t) : null)">
+        @if (Value is int id && Tree.ById.TryGetValue(id, out var chosen))
+        {
+            <span class="place-picker-text">@Tree.PathOf(id)</span>
+            <span class="place-picker-code mono">@chosen.FullCode</span>
+        }
+        else
+        {
+            <span class="place-picker-text muted">@Placeholder</span>
+        }
+        <span class="place-picker-caret" aria-hidden="true">▾</span>
+    </button>
+</div>
+
+@if (open)
+{
+    <div class="place-picker-backdrop" @onclick="Close"></div>
+    <div class="place-picker-dialog" role="dialog" aria-label="@Title" @onkeydown="OnKeyDown">
+        <div class="place-picker-head">
+            <strong>@Title</strong>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn-sm" @onclick="ExpandAll">Раскрыть всё</button>
+            <button type="button" class="btn btn-sm" @onclick="() => expanded.Clear()">Свернуть</button>
+            <button type="button" class="btn btn-sm" @onclick="Close" aria-label="Закрыть">✕</button>
+        </div>
+        <input type="search" class="place-picker-search" placeholder="Поиск: код или описание места" @ref="searchRef"
+               @bind="filter" @bind:event="oninput" @bind:after="OnFilterChanged" aria-label="Поиск места" />
+        <div class="place-picker-tree">
+            @foreach (var group in Tree.Groups)
+            {
+                @if (group.Warehouse is not null)
+                {
+                    <div class="place-picker-group">@group.Warehouse</div>
+                }
+                @foreach (var node in group.Roots)
+                {
+                    @RenderNode(node, 0)
+                }
+            }
+            @if (visible is { Count: 0 })
+            {
+                <div class="empty">Ничего не найдено.</div>
+            }
+        </div>
+        @if (Value is not null && AllowClear)
+        {
+            <div class="place-picker-foot">
+                <button type="button" class="btn btn-sm" @onclick="() => SelectAsync(null)">Очистить выбор</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public PlaceTree Tree { get; set; } = new();
+
+    [Parameter] public int? Value { get; set; }
+
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+
+    /// <summary>Заголовок окна выбора: «Куда положить».</summary>
+    [Parameter] public string Title { get; set; } = "Выберите место";
+
+    [Parameter] public string Placeholder { get; set; } = "— выберите место —";
+
+    [Parameter] public bool Invalid { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public bool AllowClear { get; set; }
+
+    /// <summary>Места, которые выбрать нельзя (и всё, что в них вложено), — например, «Приёмка».</summary>
+    [Parameter] public IReadOnlySet<int>? Exclude { get; set; }
+
+    /// <summary>Пометки у мест: «есть 5 шт» — где позиция уже лежит.</summary>
+    [Parameter] public IReadOnlyDictionary<int, string>? Marks { get; set; }
+
+    private bool open;
+    private string? filter;
+    private ElementReference searchRef;
+    private bool focusSearch;
+    private readonly HashSet<int> expanded = [];
+
+    /// <summary>При поиске — подходящие места и путь к ним; null — без поиска (всё дерево).</summary>
+    private HashSet<int>? visible;
+
+    private HashSet<int> excluded = [];
+
+    protected override void OnParametersSet()
+    {
+        excluded = Exclude is null ? [] : Exclude.SelectMany(Tree.SubtreeOf).ToHashSet();
+    }
+
+    private Task OpenAsync()
+    {
+        open = true;
+        filter = null;
+        visible = null;
+        focusSearch = true;
+        // Выбранное и путь к нему — раскрыты; иначе — верхний уровень (зоны), чтобы сразу было куда идти.
+        if (Value is int id)
+            foreach (var p in Tree.PathIds(id).SkipLast(1))
+                expanded.Add(p);
+        else if (expanded.Count == 0)
+            foreach (var root in Tree.Groups.SelectMany(g => g.Roots))
+                expanded.Add(root.Id);
+        return Task.CompletedTask;
+    }
+
+    private void Close() => open = false;
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            Close();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (open && focusSearch)
+        {
+            focusSearch = false;
+            try { await searchRef.FocusAsync(); } catch (Exception) { /* окно уже закрыли */ }
+        }
+    }
+
+    private void ExpandAll()
+    {
+        foreach (var n in Tree.All.Where(n => n.Children.Count > 0))
+            expanded.Add(n.Id);
+    }
+
+    private void Toggle(int id)
+    {
+        if (!expanded.Remove(id))
+            expanded.Add(id);
+    }
+
+    private void OnFilterChanged()
+    {
+        var text = filter?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            visible = null;
+            return;
+        }
+        visible = [];
+        foreach (var n in Tree.All.Where(n => !excluded.Contains(n.Id)))
+        {
+            if (n.FullCode.Contains(text, StringComparison.OrdinalIgnoreCase)
+                || Tree.PathOf(n.Id).Contains(text, StringComparison.OrdinalIgnoreCase))
+                foreach (var p in Tree.PathIds(n.Id))
+                    visible.Add(p);
+        }
+    }
+
+    private async Task SelectAsync(int? id)
+    {
+        open = false;
+        Value = id;
+        await ValueChanged.InvokeAsync(id);
+    }
+
+    private static string Label(LocationNodeDto n) =>
+        string.IsNullOrWhiteSpace(n.Name) ? $"{Ui.LocType(n.Type).ToLowerInvariant()} {n.Code}" : n.Name.Trim();
+
+    private RenderFragment RenderNode(LocationNodeDto node, int depth) => __builder =>
+    {
+        if (excluded.Contains(node.Id) || (visible is not null && !visible.Contains(node.Id)))
+            return;
+        var hasChildren = node.Children.Any(c => !excluded.Contains(c.Id));
+        var isOpen = visible is not null || expanded.Contains(node.Id);
+        var mark = Marks?.GetValueOrDefault(node.Id);
+        <div class="place-picker-row @(node.Id == Value ? "selected" : null)" style="padding-left: @((depth * 1.25 + .25).ToString(System.Globalization.CultureInfo.InvariantCulture))rem">
+            @if (hasChildren)
+            {
+                <button type="button" class="tree-toggle" @onclick="() => Toggle(node.Id)" aria-label="@(isOpen ? "Свернуть" : "Раскрыть")"
+                        aria-expanded="@(isOpen ? "true" : "false")">@(isOpen ? "−" : "+")</button>
+            }
+            else
+            {
+                <span class="tree-toggle-space"></span>
+            }
+            <button type="button" class="place-picker-item" @onclick="() => SelectAsync(node.Id)">
+                <span class="place-picker-type">@Ui.LocType(node.Type)</span>
+                <span>@Label(node)</span>
+                <span class="mono muted">@node.FullCode</span>
+                @if (mark is not null)
+                {
+                    <span class="tag tag-info">@mark</span>
+                }
+            </button>
+        </div>
+        @if (hasChildren && isOpen)
+        {
+            foreach (var child in node.Children)
+                __builder.AddContent(0, RenderNode(child, depth + 1));
+        }
+    };
+}

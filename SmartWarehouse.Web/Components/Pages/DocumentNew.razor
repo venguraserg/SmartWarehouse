@@ -369,13 +369,9 @@ else
                                 <td>
                                     @if (NeedsTo(line))
                                     {
-                                        <select @bind="line.ToId" class="place-select">
-                                            <option value="">— выберите —</option>
-                                            @foreach (var l in leaves.OrderBy(l => PlacePath(l.Id), StringComparer.CurrentCultureIgnoreCase))
-                                            {
-                                                <option value="@l.Id" title="@l.FullCode">@PlacePath(l.Id)</option>
-                                            }
-                                        </select>
+                                        <PlacePicker Tree="placeTree" @bind-Value="line.ToId" Title="Куда положить"
+                                                     Placeholder="— выберите, куда —" Marks="MarksFor(line)"
+                                                     Invalid="@(showErrors && line.ToId is null)" />
                                     }
                                     else
                                     {
@@ -445,7 +441,7 @@ else
             }
         </div>
 
-        @if (leaves.Count == 0 && ShowToColumn)
+        @if (placeTree.All.Count == 0 && ShowToColumn)
         {
             <div class="alert alert-error" style="margin-top: 1rem">
                 Нет ни одного места хранения. Сначала создайте склад и ячейки в разделе <a href="/warehouses">Склады и места</a>.
@@ -554,7 +550,12 @@ else
 
     private Dictionary<string, ItemDto> itemsByLabel = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, bool> fractionalByUnit = new(StringComparer.OrdinalIgnoreCase);
-    private List<LocationNodeDto> leaves = [];
+    /// <summary>Места хранения: товар может лежать на любом уровне (на полке и в её ящиках).</summary>
+    private PlaceTree placeTree = new();
+
+    /// <summary>В окне выбора «куда» — где позиция уже лежит.</summary>
+    private Dictionary<int, string> MarksFor(LineModel line) =>
+        line.Item is null ? [] : line.Available.ToDictionary(a => a.LocationId, a => $"есть {Ui.Qty(a.Quantity)} {line.Item.UnitCode}");
     private List<(EquipmentDto Item, int Depth)> equipment = [];
     private List<EmployeeDto> allEmployees = [];
     private List<EmployeeDto> activeEmployees = [];
@@ -698,7 +699,8 @@ else
                 // за сотрудником — вернуть или списать его надо уметь.
                 var items = await Api.GetItemsAsync(all: true);
                 itemsByLabel = items.ToDictionary(i => $"{i.Sku} · {i.Name}", StringComparer.OrdinalIgnoreCase);
-                (leaves, placePaths) = await Api.GetPlacesAsync();
+                placeTree = await Api.GetPlacesAsync();
+                placePaths = placeTree.Paths;
                 equipment = EquipmentTree.Flatten(await Api.GetEquipmentAsync());
                 units = await Api.GetUnitsAsync();
                 fractionalByUnit = units.ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
@@ -867,13 +869,13 @@ else
             var whereItLies = line.Available
                 .OrderByDescending(a => a.Quantity)
                 .Select(a => (int?)a.LocationId)
-                .FirstOrDefault(id => leaves.Any(l => l.Id == id));
+                .FirstOrDefault(id => id is int x && placeTree.ById.ContainsKey(x));
 
             var lastTo = await Store.GetIntAsync("doc.lastTo");
 
             line.ToId = whereItLies
-                ?? (leaves.Any(l => l.Id == lastTo) ? lastTo : null)
-                ?? (leaves.Count == 1 ? (int?)leaves[0].Id : null);
+                ?? (lastTo is int last && placeTree.ById.ContainsKey(last) ? lastTo : null)
+                ?? (placeTree.All.Count == 1 ? (int?)placeTree.All[0].Id : null);
         }
 
         StateHasChanged();
@@ -1137,7 +1139,7 @@ else
         // Ранее отсканированная ячейка — в новую строку.
         if (scannedLocationId is int locationId)
         {
-            if (NeedsTo(line) && type != MovementType.Transfer && leaves.Any(l => l.Id == locationId))
+            if (NeedsTo(line) && type != MovementType.Transfer && placeTree.ById.ContainsKey(locationId))
                 line.ToId = locationId;
             else if (NeedsFrom(line) && line.Available.Any(a => a.LocationId == locationId))
             {
@@ -1151,10 +1153,9 @@ else
 
     private void ApplyScannedLocation(ScanResultDto found)
     {
-        var leaf = leaves.FirstOrDefault(l => l.Id == found.Id);
-        if (leaf is null)
+        if (!placeTree.ById.ContainsKey(found.Id))
         {
-            error = $"{found.Code} содержит вложенные места — отсканируйте конкретную ячейку.";
+            error = $"Место {found.Code} не найдено — обновите страницу.";
             return;
         }
 

@@ -187,10 +187,14 @@
                         }
                     </div>
 
-                    @if (selected is not null && selected.Children.Count == 0)
+                    @if (selected is not null)
                     {
                         <div class="panel">
-                            <h2 style="margin-top: 0">Что лежит</h2>
+                            <h2 style="margin-top: 0">@(selected.Children.Count == 0 ? "Что лежит" : "Что лежит прямо здесь")</h2>
+                            @if (selected.Children.Count > 0)
+                            {
+                                <p class="muted" style="margin-top: -.5rem">Без вложенных мест — их содержимое видно, если выбрать их в дереве.</p>
+                            }
                             @if (content.Count == 0)
                             {
                                 <p class="muted">Пусто.</p>
@@ -350,7 +354,7 @@
         error = success = null;
         ResetNewType();
 
-        if (node is not null && node.Children.Count == 0)
+        if (node is not null)
         {
             try
             {

@@ -221,10 +221,13 @@ public class StockServiceTests
     }
 
     [Fact]
-    public async Task Хранить_товар_в_месте_с_вложенными_ячейками_нельзя()
+    public async Task Товар_может_лежать_прямо_на_полке_где_есть_ячейки()
     {
-        var ex = await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(1, to: Shelf)));
-        Assert.Contains("СК1-A-01", ex.Message);
+        await Post(MovementType.Receipt, Line(2, to: Shelf));
+        await Post(MovementType.Receipt, Line(3, to: CellA));
+        await Post(MovementType.Transfer, Line(1, from: Shelf, to: CellB));
+
+        Assert.Equal((1m, 3m, 1m), (Balance(Shelf), Balance(CellA), Balance(CellB)));
     }
 
     [Fact]

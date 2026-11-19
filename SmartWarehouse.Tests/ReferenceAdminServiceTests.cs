@@ -77,18 +77,16 @@ public class ReferenceAdminServiceTests
     }
 
     [Fact]
-    public async Task Нельзя_занять_существующий_код_и_вложить_в_место_с_товаром()
+    public async Task Нельзя_занять_существующий_код_но_вложить_в_место_с_товаром_можно()
     {
         var taken = await Assert.ThrowsAsync<DomainException>(() =>
             _service.UpdateLocationAsync(Cell2, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", "Описание")));
         Assert.Contains("WH1-A-01-01", taken.Message);
 
-        // Товар хранится только в конечных местах — в место с товаром вложить нельзя.
+        // Товар может лежать на любом уровне: на стеллаж с товаром можно поставить и полку.
         _repo.LocationsWithStock.Add(RackB);
         Add(99, null, LocationType.Shelf, "X");
-        var stock = await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(99, new UpdateLocationRequest(RackB, LocationType.Shelf, "X", "Описание")));
-        Assert.Contains("товар", stock.Message);
+        await _service.UpdateLocationAsync(99, new UpdateLocationRequest(RackB, LocationType.Shelf, "X", "Описание"));
     }
 
     [Fact]
