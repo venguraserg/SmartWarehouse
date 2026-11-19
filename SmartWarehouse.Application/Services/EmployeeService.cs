@@ -81,13 +81,15 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
                 var quantity = g.Sum(x => x.Quantity);
                 var (value, incomplete) = Valuation.Of(g.Select(x => (x.Quantity, Valuation.Price(x.Batch))));
                 var reservedHere = reservedByKey.GetValueOrDefault((b.EmployeeId, b.ItemId, b.Kind));
+                var offBook = g.Where(x => x.Batch?.OffBook == true).ToList();
                 return new CustodyRowDto(
                     b.EmployeeId, b.Employee.ShortName, b.Employee.Position, b.Employee.IsActive,
                     b.ItemId, b.Item.Sku, b.Item.Name, b.Item.Unit.Code,
                     b.Item.ImageUpdatedAt?.ToUnixTimeMilliseconds(), quantity,
                     HeldSince(quantity, issuesByKey[(b.EmployeeId, b.ItemId, b.Kind)]),
                     reservedHere,
-                    value, incomplete, b.Kind);
+                    value, incomplete, b.Kind,
+                    offBook.Sum(x => x.Quantity), offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)));
             })
             .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName).ThenBy(r => r.Kind)
             .ToList();

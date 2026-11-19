@@ -223,6 +223,13 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .tag-reserve { background: var(--reserve-weak); color: var(--reserve-text); }
 .tag-neutral, .tag-draft { background: var(--draft-weak); color: var(--draft-text); }
 .tag-official { background: var(--brand-light); color: var(--brand-dark); }   /* подотчёт по 1С */
+/* Вне учёта (б/у, неучтённое): в 1С не числится — штриховка и пунктир, чтобы не спутать с учётным. */
+.tag-offbook {
+    background: repeating-linear-gradient(-45deg, var(--draft-weak) 0 5px, transparent 5px 9px);
+    color: var(--draft-text); border: 1px dashed var(--draft); padding: calc(.1rem - 1px) calc(.55rem - 1px);
+}
+.tag-offbook::before { background: transparent; border: 1.5px solid currentColor; box-sizing: border-box; }
+tr.row-offbook > td { background: repeating-linear-gradient(-45deg, transparent 0 8px, var(--draft-weak) 8px 10px); }
 
 .alert { padding: .7rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; border: 1px solid; border-left-width: 4px; }
 .alert-error { background: var(--danger-weak); color: var(--danger-text); border-color: #F0C4C4; border-left-color: var(--danger); }

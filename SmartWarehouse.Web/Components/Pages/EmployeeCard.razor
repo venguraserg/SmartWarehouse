@@ -106,10 +106,10 @@
                 <tbody>
                     @foreach (var c in section)
                     {
-                        <tr>
+                        <tr class="@(c.OffBookQuantity >= c.Quantity ? "row-offbook" : null)">
                             <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
-                            <td>@c.ItemName</td>
+                            <td>@c.ItemName <OffBookTag Quantity="c.OffBookQuantity" Total="c.Quantity" /></td>
                             <td class="num">
                                 <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
                                 @if (c.Reserved > 0)

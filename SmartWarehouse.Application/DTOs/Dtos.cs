@@ -115,7 +115,9 @@ public record CustodyRowDto(
     decimal Reserved = 0,
     decimal? Value = null,
     bool ValueIncomplete = false,
-    CustodyKind Kind = CustodyKind.Work);
+    CustodyKind Kind = CustodyKind.Work,
+    decimal OffBookQuantity = 0,
+    decimal OffBookValue = 0);
 
 // ---------- Учётные записи ----------
 
@@ -237,7 +239,8 @@ public record DocumentLineDto(
     decimal? UnitPrice = null,
     DateTimeOffset? BatchDate = null,
     string? FromLocationName = null,
-    string? ToLocationName = null);
+    string? ToLocationName = null,
+    bool OffBook = false);
 
 public record DocumentDto(
     long Id,
@@ -296,7 +299,8 @@ public record StockQuery(
     string? Location = null,
     string? Search = null,
     int? CategoryId = null,
-    bool BelowMinimum = false);
+    bool BelowMinimum = false,
+    bool? OffBook = null);
 
 /// <summary>Строка остатков: сколько позиции лежит в конкретном месте.</summary>
 public record StockRowDto(
@@ -314,13 +318,16 @@ public record StockRowDto(
     string WarehouseCode,
     decimal Quantity,
     decimal? Value = null,
-    bool ValueIncomplete = false);
+    bool ValueIncomplete = false,
+    decimal OffBookQuantity = 0,
+    decimal OffBookValue = 0);
 
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
 
 /// <param name="LocationName">Описание места («Подшипники») — по нему место узнают в списках.</param>
-public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false, string? LocationName = null);
+/// <param name="OffBookQuantity">Сколько из количества — вне учёта (б/у, неучтённое; в 1С не числится).</param>
+public record StockBalanceDto(int LocationId, string LocationCode, decimal Quantity, decimal? Value = null, bool ValueIncomplete = false, string? LocationName = null, decimal OffBookQuantity = 0);
 
 /// <summary>Партия позиции и сколько её в выбранном месте (у сотрудника, всего).</summary>
 /// <param name="Reserved">У сотрудника: сколько из этого — в актах на утверждении.</param>
@@ -384,7 +391,8 @@ public record ActLineDto(
     string? ToLocationName = null,
     string? EmployeeName = null,
     string? SourceNumber = null,
-    int? SourceId = null);
+    int? SourceId = null,
+    bool OffBook = false);
 
 /// <summary>Сводный акт кладовщика: какие отчёты включить и реквизиты.</summary>
 /// <param name="ExternalNumber">Номер документа списания в 1С (можно вписать и после проведения).</param>

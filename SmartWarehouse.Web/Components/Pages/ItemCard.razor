@@ -70,6 +70,12 @@
                     {
                         <span class="tag tag-warn">ниже минимума</span>
                     }
+                    @if (TotalOffBook > 0)
+                    {
+                        <div class="line-hint">
+                            по 1С @Ui.Qty(Total - TotalOffBook) · <OffBookTag Quantity="TotalOffBook" Total="TotalOffBook" /> @Ui.Qty(TotalOffBook)
+                        </div>
+                    }
                 </dd>
                 @if (!string.IsNullOrWhiteSpace(item.Description))
                 {
@@ -89,7 +95,7 @@
                     <tbody>
                         @foreach (var b in balances)
                         {
-                            <tr>
+                            <tr class="@(b.OffBookQuantity >= b.Quantity ? "row-offbook" : null)">
                                 <td>
                                     <a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@(b.LocationName ?? b.LocationCode)</a>
                                     @if (b.LocationName is not null)
@@ -97,7 +103,10 @@
                                         <div class="line-hint mono">@b.LocationCode</div>
                                     }
                                 </td>
-                                <td class="num">@Ui.Qty(b.Quantity) @item.UnitCode</td>
+                                <td class="num">
+                                    @Ui.Qty(b.Quantity) @item.UnitCode
+                                    <OffBookTag Quantity="b.OffBookQuantity" Total="b.Quantity" />
+                                </td>
                                 @if (seesPrices)
                                 {
                                     <td class="num">@Ui.Value(b.Value, b.ValueIncomplete)</td>
@@ -123,6 +132,7 @@
                                 <td>
                                     <a href="/employees/@c.EmployeeId">@c.EmployeeName</a>
                                     <span class="tag @Ui.CustodyKindClass(c.Kind)" title="@Ui.CustodyKindTitle(c.Kind)">@Ui.CustodyKindShort(c.Kind)</span>
+                                    <OffBookTag Quantity="c.OffBookQuantity" Total="c.Quantity" />
                                 </td>
                                 <td class="num">@Ui.Qty(c.Quantity) @item.UnitCode</td>
                                 @if (seesPrices)
@@ -153,7 +163,7 @@
                                         @Ui.Day(b.ReceivedAt)@(string.IsNullOrEmpty(b.Note) ? "" : $" · {b.Note}")
                                         @if (b.OffBook)
                                         {
-                                            <span class="tag tag-neutral" title="В 1С не числится: б/у, снятое с оборудования и т.п.">вне учёта</span>
+                                            <OffBookTag Quantity="1" />
                                         }
                                     </td>
                                     <td class="mono">
@@ -249,6 +259,9 @@ else if (error is null)
     private string? success;
 
     private decimal Total => balances.Sum(b => b.Quantity);
+
+    /// <summary>Из остатка на складе — вне учёта (б/у, неучтённое).</summary>
+    private decimal TotalOffBook => balances.Sum(b => b.OffBookQuantity);
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 

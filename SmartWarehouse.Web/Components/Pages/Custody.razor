@@ -16,6 +16,7 @@
     Что числится за сотрудниками до списания или возврата.
     <span class="tag tag-info">в работе</span> — выдано кладовщиком, в 1С остаётся за ним;
     <span class="tag tag-official">по 1С</span> — на МОЛ самого сотрудника.
+    <OffBookTag Quantity="1" /> — б/у и неучтённое, в 1С не числится (списывается только для контроля).
     <AuthorizeView Roles="@AppRoles.Warehouse">
         <NotAuthorized>Показан ваш подотчёт@(context.User.IsInRole(AppRoles.Manager) ? " и подотчёт ваших подчинённых" : "").</NotAuthorized>
     </AuthorizeView>
@@ -29,6 +30,7 @@
         <button type="button" class="@(kind == CustodyKind.Work ? "active" : null)" @onclick="() => kind = CustodyKind.Work">В работе</button>
         <button type="button" class="@(kind == CustodyKind.Official ? "active" : null)" @onclick="() => kind = CustodyKind.Official">По 1С</button>
     </div>
+    <BookFilter Value="book" ValueChanged="v => { book = v; }" />
 </form>
 
 <Alert Error="@error" />
@@ -75,7 +77,7 @@ else
                                 }
                                 @if (ShowValue)
                                 {
-                                    <span class="muted">· на @Ui.Value(group.Any(r => r.Value is not null) ? group.Sum(r => r.Value ?? 0) : null, group.Any(r => r.ValueIncomplete))</span>
+                                    <span class="muted">· на @Ui.Value(group.Any(r => r.Value is not null) ? group.Sum(r => ValueOf(r) ?? 0) : null, book != true && group.Any(r => r.ValueIncomplete))</span>
                                 }
                                 @if (!first.EmployeeIsActive)
                                 {
@@ -101,23 +103,28 @@ else
                     </tr>
                     @foreach (var r in group)
                     {
-                        <tr>
+                        var qty = QtyOf(r);
+                        <tr class="@(book == true || r.OffBookQuantity >= r.Quantity ? "row-offbook" : null)">
                             <td><Thumb ItemId="r.ItemId" ImageVersion="r.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@r.ItemId">@r.Sku</a></td>
                             <td>
                                 @r.ItemName
                                 <span class="tag @Ui.CustodyKindClass(r.Kind)" title="@Ui.CustodyKindTitle(r.Kind)">@Ui.CustodyKindShort(r.Kind)</span>
+                                @if (book != false)
+                                {
+                                    <OffBookTag Quantity="book == true ? qty : r.OffBookQuantity" Total="qty" />
+                                }
                             </td>
                             <td class="num">
-                                @Ui.Qty(r.Quantity) @r.UnitCode
-                                @if (r.Reserved > 0)
+                                @Ui.Qty(qty) @r.UnitCode
+                                @if (r.Reserved > 0 && book is null)
                                 {
                                     <div class="line-hint">из них @Ui.Qty(r.Reserved) — @(r.Kind == CustodyKind.Work ? "в отчётах об использовании" : "в актах на утверждении")</div>
                                 }
                             </td>
                             @if (ShowValue)
                             {
-                                <td class="num">@Ui.Value(r.Value, r.ValueIncomplete)</td>
+                                <td class="num">@Ui.Value(ValueOf(r), book != true && r.ValueIncomplete)</td>
                             }
                             <td class="num"><CustodyAge Since="r.HeldSince" Kind="r.Kind" Unreported="r.Quantity - r.Reserved" /></td>
                         </tr>
@@ -141,7 +148,25 @@ else
     /// <summary>Фильтр по виду: null — все, «в работе» или «по 1С».</summary>
     private CustodyKind? kind;
 
-    private List<CustodyRowDto> Visible => rows?.Where(r => kind is null || r.Kind == kind).ToList() ?? [];
+    /// <summary>Учёт: null — все, false — по 1С, true — вне учёта.</summary>
+    private bool? book;
+
+    private List<CustodyRowDto> Visible => rows?.Where(r => (kind is null || r.Kind == kind) && QtyOf(r) > 0).ToList() ?? [];
+
+    /// <summary>Количество строки с учётом фильтра «Учёт».</summary>
+    private decimal QtyOf(CustodyRowDto r) => book switch
+    {
+        false => r.Quantity - r.OffBookQuantity,
+        true => r.OffBookQuantity,
+        null => r.Quantity
+    };
+
+    private decimal? ValueOf(CustodyRowDto r) => r.Value is not decimal v ? null : book switch
+    {
+        false => v - r.OffBookValue,
+        true => r.OffBookValue,
+        null => v
+    };
     private string? search;
     private string? error;
 

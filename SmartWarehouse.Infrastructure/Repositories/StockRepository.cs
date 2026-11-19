@@ -345,6 +345,9 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         if (filter.CategoryId is int categoryId)
             query = query.Where(b => b.Item.CategoryId == categoryId);
 
+        if (filter.OffBook is bool offBook)
+            query = query.Where(b => b.Batch.OffBook == offBook);
+
         if (filter.BelowMinimum)
             query = query.Where(b => b.Item.Balances.Sum(x => x.Quantity) < b.Item.MinStock);
 

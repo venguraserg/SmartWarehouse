@@ -1,0 +1,15 @@
+@* Переключатель «Учёт: все / по 1С / вне учёта». Значение: null — все, false — по 1С, true — вне учёта. *@
+
+<div class="segmented" role="group" aria-label="Учёт">
+    <button type="button" class="@(Value is null ? "active" : null)" @onclick="() => SetAsync(null)">Все</button>
+    <button type="button" class="@(Value == false ? "active" : null)" @onclick="() => SetAsync(false)" title="Числится в 1С">По 1С</button>
+    <button type="button" class="@(Value == true ? "active" : null)" @onclick="() => SetAsync(true)" title="Б/у, неучтённое — в 1С не числится">Вне учёта</button>
+</div>
+
+@code {
+    [Parameter] public bool? Value { get; set; }
+
+    [Parameter] public EventCallback<bool?> ValueChanged { get; set; }
+
+    private Task SetAsync(bool? value) => ValueChanged.InvokeAsync(value);
+}

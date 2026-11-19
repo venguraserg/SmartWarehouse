@@ -233,6 +233,8 @@ internal class FakeStockRepository : IStockRepository
             query = query.Where(b => b.Item.Name.Contains(s, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(s, StringComparison.OrdinalIgnoreCase));
         if (filter.CategoryId is int c)
             query = query.Where(b => b.Item.CategoryId == c);
+        if (filter.OffBook is bool offBook)
+            query = query.Where(b => (BatchOf(b.BatchId)?.OffBook ?? false) == offBook);
         if (filter.BelowMinimum)
             query = query.Where(b => Balances.Where(x => x.ItemId == b.ItemId).Sum(x => x.Quantity) < b.Item.MinStock);
 
