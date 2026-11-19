@@ -22,14 +22,11 @@
             <input id="f-search" type="search" @bind="search" placeholder="подшипник, 6205…" />
         </div>
         <div class="field">
-            <label for="f-loc">Место (ячейка, полка, стеллаж)</label>
-            <input id="f-loc" type="search" list="locations-list" @bind="location" placeholder="WH1-A-01 или A-01-03" />
-            <datalist id="locations-list">
-                @foreach (var l in allLocations)
-                {
-                    <option value="@l.FullCode">@Ui.LocType(l.Type)@(string.IsNullOrEmpty(l.Name) ? "" : $" · {l.Name}")</option>
-                }
-            </datalist>
+            <label>Место (зона, стеллаж, полка, ящик)</label>
+            <PlacePicker Tree="placeTree" Value="LocationId" ValueChanged="OnLocationPickedAsync" Title="Остатки по месту"
+                         AllowClear="true" ClearText="Все места"
+                         Placeholder="@(string.IsNullOrWhiteSpace(location) ? "Все места" : $"код места: {location}")" />
+            <div class="field-hint">Вместе со всем, что вложено в место.</div>
         </div>
         <div class="field">
             <label for="f-wh">Склад</label>
@@ -240,7 +237,19 @@ else
 
     private List<WarehouseDto> warehouses = [];
     private List<CategoryDto> categories = [];
-    private List<LocationNodeDto> allLocations = [];
+    private PlaceTree placeTree = new();
+
+    /// <summary>Выбранное в фильтре место (если в адресе полный код места).</summary>
+    private int? LocationId => string.IsNullOrWhiteSpace(location) ? null
+        : placeTree.All.FirstOrDefault(n => string.Equals(n.FullCode, location.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+
+    private Task OnLocationPickedAsync(int? id)
+    {
+        location = id is int x && placeTree.ById.TryGetValue(x, out var node) ? node.FullCode : null;
+        if (location is not null)
+            warehouseId = null;
+        return ApplyAsync();
+    }
     private StockSearchResult? result;
     private string? error;
     private bool referencesLoaded;
@@ -265,7 +274,7 @@ else
             {
                 warehouses = await Api.GetWarehousesAsync();
                 categories = await Api.GetCategoriesAsync();
-                allLocations = await Api.GetAllLocationsAsync();
+                placeTree = await Api.GetPlacesAsync();
                 referencesLoaded = true;
             }
 

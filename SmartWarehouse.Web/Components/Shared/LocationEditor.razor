@@ -6,14 +6,11 @@
 
     <div class="field-row">
         <div class="field">
-            <label for="ed-parent">Вложено в</label>
-            <select id="ed-parent" @bind="parentId">
-                <option value="">— верхний уровень склада @Warehouse.Code —</option>
-                @foreach (var (node, depth) in ParentChoices)
-                {
-                    <option value="@node.Id">@(new string(' ', depth * 3))@node.FullCode (@Ui.LocType(node.Type).ToLowerInvariant())</option>
-                }
-            </select>
+            <label>Вложено в</label>
+            <PlacePicker Tree="ParentTree" @bind-Value="parentId" Title="Куда вложить" Exclude="SubtreeIds"
+                         CanSelect="CanBeParent" AllowClear="true" ClearText="Верхний уровень склада"
+                         Placeholder="@($"— верхний уровень склада {Warehouse.Code} —")" />
+            <div class="field-hint">Выбрать можно место выше по уровню, чем «@Ui.LocType(type).ToLowerInvariant()».</div>
         </div>
         <div class="field">
             <label for="ed-type">Тип</label>
@@ -136,9 +133,24 @@
 
     private int SubtreeSize => SubtreeIds.Count;
 
-    /// <summary>Куда можно вложить: не в себя и не во вложенные, только «выше» по типу.</summary>
-    private IEnumerable<(LocationNodeDto Node, int Depth)> ParentChoices =>
-        All.Where(x => !SubtreeIds.Contains(x.Node.Id) && x.Node.Type < type);
+    /// <summary>Дерево мест склада для выбора, куда вложить (не в себя и не во вложенные, только «выше» по типу).</summary>
+    private PlaceTree ParentTree
+    {
+        get
+        {
+            if (parentTree is null || !ReferenceEquals(parentTreeSource, Tree))
+            {
+                parentTree = new PlaceTree().AddGroup(null, Tree);
+                parentTreeSource = Tree;
+            }
+            return parentTree;
+        }
+    }
+
+    private bool CanBeParent(LocationNodeDto node) => node.Type < type;
+
+    private PlaceTree? parentTree;
+    private object? parentTreeSource;
 
     private LocationNodeDto? Parent => All.Select(x => x.Node).FirstOrDefault(n => n.Id == parentId);
 

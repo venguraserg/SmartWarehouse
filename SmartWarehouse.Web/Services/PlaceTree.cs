@@ -18,6 +18,27 @@ public sealed class PlaceTree
     /// <summary>Подпись места: «Склад › Стеллаж у ворот › Подшипники».</summary>
     public Dictionary<int, string> Paths { get; } = [];
 
+    /// <summary>Места одного склада; подписи-пути строятся из описаний (уровень без описания — «стеллаж A»).</summary>
+    public PlaceTree AddGroup(string? warehouse, IReadOnlyList<LocationNodeDto> roots)
+    {
+        Groups.Add(new PlaceGroup(warehouse, roots));
+        Walk(roots, warehouse);
+        return this;
+
+        void Walk(IEnumerable<LocationNodeDto> nodes, string? parentPath)
+        {
+            foreach (var node in nodes)
+            {
+                var label = string.IsNullOrWhiteSpace(node.Name) ? $"{Ui.LocType(node.Type).ToLowerInvariant()} {node.Code}" : node.Name.Trim();
+                var path = parentPath is null ? label : $"{parentPath} › {label}";
+                Paths[node.Id] = path;
+                ById[node.Id] = node;
+                All.Add(node);
+                Walk(node.Children, path);
+            }
+        }
+    }
+
     public string PathOf(int id, string? fallback = null) =>
         Paths.TryGetValue(id, out var path) ? path : fallback ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
