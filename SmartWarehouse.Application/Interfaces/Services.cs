@@ -19,7 +19,8 @@ public interface IStockService
 
     Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, CancellationToken ct = default);
+    /// <param name="onlyEmployeeIds">Только документы этих сотрудников (получатель/сдающий или проводивший); null — все.</param>
+    Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<StockBalanceDto>> GetBalancesAsync(int itemId, CancellationToken ct = default);
 

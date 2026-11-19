@@ -89,7 +89,7 @@ else
         }
     </div>
 
-    <h2>Последние документы</h2>
+    <h2>@recentTitle</h2>
     <DocumentTable Documents="recent.Take(10).ToList()" />
 }
 
@@ -100,10 +100,21 @@ else
     private int toPlace;
     private string? error;
 
+    /// <summary>Документы видны по роли: склад — все, руководитель — свои и подчинённых, остальные — свои.</summary>
+    private string recentTitle = "Последние документы";
+
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            recentTitle = user.IsWarehouseStaff() ? "Последние документы"
+                : user.IsInRole(AppRoles.Manager) ? "Последние документы — ваши и подчинённых"
+                : "Мои последние документы";
+        }
+
         try
         {
             actsToApprove = await Api.GetActsToApproveCountAsync();

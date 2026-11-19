@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartWarehouse.API.Security;
@@ -12,15 +13,30 @@ namespace SmartWarehouse.API.Controllers;
 /// <summary>Складские документы: приход, выдача, возврат, перемещение, корректировка; списание — по актам.</summary>
 [ApiController]
 [Route("api/documents")]
-public class DocumentsController(IStockService stock) : ControllerBase
+public class DocumentsController(IStockService stock, IEmployeeService employees) : ControllerBase
 {
-    /// <summary>Список документов, новые первыми; можно отфильтровать по типу.</summary>
+    /// <summary>
+    /// Список документов, новые первыми; можно отфильтровать по типу.
+    /// Кладовщик и администратор видят все; руководитель — свои и подчинённых; сотрудник и старший смены — свои.
+    /// </summary>
     [HttpGet]
-    public Task<IReadOnlyList<DocumentSummaryDto>> List([FromQuery] MovementType? type, [FromQuery] int take = 100, CancellationToken ct = default) =>
-        stock.ListDocumentsAsync(type, take, ct);
+    public async Task<IReadOnlyList<DocumentSummaryDto>> List([FromQuery] MovementType? type, [FromQuery] int take = 100, CancellationToken ct = default)
+    {
+        var visible = await DocumentVisibility.VisibleEmployeesAsync(User, employees, ct);
+        return await stock.ListDocumentsAsync(type, take, visible, ct);
+    }
 
     [HttpGet("{id:long}")]
-    public Task<DocumentDto> Get(long id, CancellationToken ct) => stock.GetDocumentAsync(id, ct);
+    public async Task<DocumentDto> Get(long id, CancellationToken ct)
+    {
+        var document = await stock.GetDocumentAsync(id, ct);
+        var visible = await DocumentVisibility.VisibleEmployeesAsync(User, employees, ct);
+        if (visible is not null
+            && !(document.ReceivedById is int r && visible.Contains(r))
+            && !(document.PerformedById is int p && visible.Contains(p)))
+            throw new ForbiddenException("Нет доступа к этому документу: он не ваш и не ваших подчинённых.");
+        return document;
+    }
 
     /// <summary>Акт на списание (PDF) — только для документов списания.</summary>
     [HttpGet("{id:long}/act")]
@@ -48,5 +64,22 @@ public class DocumentsController(IStockService stock) : ControllerBase
 
         var document = await stock.PostDocumentAsync(request, ct);
         return CreatedAtAction(nameof(Get), new { id = document.Id }, document);
+    }
+}
+
+/// <summary>Чьи документы видит пользователь.</summary>
+internal static class DocumentVisibility
+{
+    /// <summary>
+    /// Сотрудники, чьи документы видны: null — все (кладовщик, администратор); руководитель — он и подчинённые;
+    /// сотрудник и старший смены — только он сам. Свой документ — где сотрудник получатель/сдающий или проводил его.
+    /// </summary>
+    public static async Task<IReadOnlyCollection<int>?> VisibleEmployeesAsync(ClaimsPrincipal user, IEmployeeService employees, CancellationToken ct)
+    {
+        if (user.IsWarehouseStaff())
+            return null;
+        if (user.EmployeeId() is not int me)
+            return Array.Empty<int>();
+        return user.IsInRole(Roles.Manager) ? await employees.GetTeamAsync(me, ct) : [me];
     }
 }
