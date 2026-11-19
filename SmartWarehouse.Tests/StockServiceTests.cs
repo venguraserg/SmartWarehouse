@@ -308,6 +308,21 @@ public class StockServiceTests
         Assert.Equal(2, receipt.LineCount);
     }
 
+    [Fact]
+    public async Task Список_документов_только_свои_по_получателю_или_проводившему()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA));                    // приход — не сотрудника
+        await Post(MovementType.Issue, Line(2, from: CellA));                     // выдача Worker
+        _repo.Employees.Add(new Employee { Id = 4, LastName = "Смирнов", FirstName = "Павел", Position = "Старший смены" });
+        await Send(Doc(MovementType.Issue, Line(1, from: CellA)) with { PerformedById = 4, ReceivedById = 1 });  // выдал старший смены
+
+        var mine = await _service.ListDocumentsAsync(null, onlyEmployeeIds: [Worker]);
+        Assert.Equal(["ВЫД-000002"], mine.Select(d => d.Number));
+        var performed = await _service.ListDocumentsAsync(null, onlyEmployeeIds: [4]);
+        Assert.Equal(["ВЫД-000003"], performed.Select(d => d.Number));
+        Assert.Equal(3, (await _service.ListDocumentsAsync(null)).Count);
+    }
+
     // ---------- Просмотр остатков ----------
 
     private async Task<List<string>> FindAsync(StockQuery query) =>

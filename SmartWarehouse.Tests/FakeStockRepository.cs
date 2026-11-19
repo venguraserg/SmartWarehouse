@@ -202,9 +202,13 @@ internal class FakeStockRepository : IStockRepository
     public Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default) =>
         Task.FromResult(Documents.FirstOrDefault(x => x.Id == id));
 
-    public Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(MovementType? type, int take, CancellationToken ct = default) =>
+    public Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(
+        MovementType? type, int take, IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<DocumentHeader>>(
             Documents.Where(x => type is null || x.Type == type)
+                .Where(x => onlyEmployeeIds is null
+                    || (x.ReceivedById is int r && onlyEmployeeIds.Contains(r))
+                    || (x.PerformedById is int p && onlyEmployeeIds.Contains(p)))
                 .OrderByDescending(x => x.Id)
                 .Take(take)
                 .Select(x => new DocumentHeader(x, x.Lines.Count))

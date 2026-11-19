@@ -453,9 +453,10 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             line.FromLocation?.Name, line.ToLocation?.Name, line.Batch?.OffBook ?? false));
     }
 
-    public async Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(MovementType? type, int take = 100, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(
+        MovementType? type, int take = 100, IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default)
     {
-        var headers = await repo.ListDocumentsAsync(type, Math.Clamp(take, 1, 500), ct);
+        var headers = await repo.ListDocumentsAsync(type, Math.Clamp(take, 1, 500), onlyEmployeeIds, ct);
         return headers
             .Select(h => new DocumentSummaryDto(
                 h.Document.Id, h.Document.Number, h.Document.Type, h.Document.OccurredAt,

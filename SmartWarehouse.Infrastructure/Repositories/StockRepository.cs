@@ -272,11 +272,18 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
-    public async Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(MovementType? type, int take, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(
+        MovementType? type, int take, IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default)
     {
         var query = db.Documents.AsNoTracking();
         if (type is not null)
             query = query.Where(x => x.Type == type);
+        if (onlyEmployeeIds is not null)
+        {
+            var ids = onlyEmployeeIds.ToList();
+            query = query.Where(x => (x.ReceivedById != null && ids.Contains(x.ReceivedById.Value))
+                || (x.PerformedById != null && ids.Contains(x.PerformedById.Value)));
+        }
 
         var rows = await query
             .OrderByDescending(x => x.OccurredAt)

@@ -119,7 +119,8 @@ public interface IStockRepository
     Task<StockDocument?> GetDocumentAsync(long id, CancellationToken ct = default);
 
     /// <summary>Последние документы, новые первыми.</summary>
-    Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(MovementType? type, int take, CancellationToken ct = default);
+    /// <param name="onlyEmployeeIds">Только документы, где сотрудник из списка — получатель/сдающий или проводивший; null — все.</param>
+    Task<IReadOnlyList<DocumentHeader>> ListDocumentsAsync(MovementType? type, int take, IReadOnlyCollection<int>? onlyEmployeeIds = null, CancellationToken ct = default);
 
     /// <summary>Остатки позиции по местам (с местом), без нулевых.</summary>
     Task<IReadOnlyList<StockBalance>> GetBalancesForItemAsync(int itemId, CancellationToken ct = default);
