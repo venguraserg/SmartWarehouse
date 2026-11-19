@@ -120,6 +120,23 @@ public static class Ui
 
     public static string CustodyKindClass(CustodyKind kind) => kind == CustodyKind.Official ? "tag-official" : "tag-info";
 
+    public static string RequestState(IssueRequestStatus status) => status switch
+    {
+        IssueRequestStatus.Open => "Ждёт выдачи",
+        IssueRequestStatus.Issued => "Выдан",
+        IssueRequestStatus.Cancelled => "Отменён",
+        IssueRequestStatus.Rejected => "Отклонён",
+        _ => status.ToString()
+    };
+
+    public static string RequestStateClass(IssueRequestStatus status) => status switch
+    {
+        IssueRequestStatus.Open => "tag-warn",
+        IssueRequestStatus.Issued => "tag-in",
+        IssueRequestStatus.Rejected => "tag-danger",
+        _ => "tag-neutral"
+    };
+
     public static string ActStateClass(ActStatus status) => status switch
     {
         ActStatus.Draft => "tag-draft",

@@ -23,6 +23,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<WriteOffAct> WriteOffActs => Set<WriteOffAct>();
     public DbSet<WriteOffActLine> WriteOffActLines => Set<WriteOffActLine>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
+    public DbSet<IssueRequest> IssueRequests => Set<IssueRequest>();
+    public DbSet<IssueRequestLine> IssueRequestLines => Set<IssueRequestLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

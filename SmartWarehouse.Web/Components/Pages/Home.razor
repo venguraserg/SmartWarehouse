@@ -5,6 +5,10 @@
 
 <h1>Обзор</h1>
 
+<div class="actions" style="margin-bottom: 1rem">
+    <a class="btn" href="/requests/new">Запросить со склада</a>
+</div>
+
 <form class="quick-search" action="/stock" method="get">
     <input type="search" name="search" placeholder="Найти на складе: наименование или артикул" aria-label="Поиск на складе" />
     <button class="btn btn-primary" type="submit">Найти</button>
@@ -47,6 +51,13 @@ else
             <a class="stat stat-link warn" href="/receiving">
                 <div class="stat-value">@toPlace</div>
                 <div class="stat-label">партий в приёмке ждут размещения</div>
+            </a>
+        }
+        @if (openRequests > 0)
+        {
+            <a class="stat stat-link warn" href="/requests">
+                <div class="stat-value">@openRequests</div>
+                <div class="stat-label">запросов ждут выдачи</div>
             </a>
         }
         @if (actsToApprove > 0)
@@ -98,6 +109,7 @@ else
     private List<DocumentSummaryDto>? recent;
     private int actsToApprove;
     private int toPlace;
+    private int openRequests;
     private string? error;
 
     /// <summary>Документы видны по роли: склад — все, руководитель — свои и подчинённых, остальные — свои.</summary>
@@ -123,6 +135,7 @@ else
             // «Приёмку» видит склад (кладовщик, администратор).
             if (AuthState is not null && (await AuthState).User.IsWarehouseStaff())
                 toPlace = (await Api.GetPendingPlacementAsync()).Count;
+            openRequests = await Api.GetOpenIssueRequestCountAsync();   // 0 для тех, кто не выдаёт
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

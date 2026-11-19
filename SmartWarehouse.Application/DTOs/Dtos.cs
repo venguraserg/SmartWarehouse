@@ -224,7 +224,8 @@ public record CreateDocumentRequest(
     int? ReceivedById = null,
     bool OffBook = false,
     BatchOrigin Origin = BatchOrigin.Manual,
-    CustodyKind? Custody = null);
+    CustodyKind? Custody = null,
+    int? IssueRequestId = null);
 
 public record DocumentLineDto(
     int LineNo,
@@ -555,3 +556,59 @@ public record UpdateEquipmentRequest(int? ParentId, string Code, string Name);
 /// <summary>Итог правки: что изменилось и что из этого следует (например, перепечатать наклейки).</summary>
 /// <param name="ChangedLocationIds">Места, у которых изменился полный код (их QR-наклейки нужно перепечатать).</param>
 public record ReferenceChangeResult(string Message, IReadOnlyList<int>? ChangedLocationIds = null);
+
+// ---------- Запросы на выдачу ----------
+
+/// <param name="Places">Где лежит (для сборки заказа): место и количество — только тем, кто выдаёт.</param>
+public record IssueRequestLineDto(
+    int LineNo,
+    int ItemId,
+    string Sku,
+    string Name,
+    string UnitCode,
+    decimal Quantity,
+    decimal? Issued,
+    decimal OnHand,
+    IReadOnlyList<IssueRequestPlaceDto> Places);
+
+public record IssueRequestPlaceDto(int LocationId, string LocationCode, string? LocationName, decimal Quantity);
+
+/// <param name="Can">Что может текущий пользователь.</param>
+public record IssueRequestDto(
+    int Id,
+    string Number,
+    IssueRequestStatus Status,
+    int EmployeeId,
+    string EmployeeName,
+    string? EmployeePosition,
+    string? Comment,
+    DateTimeOffset CreatedAt,
+    string? CreatedBy,
+    DateTimeOffset? ClosedAt,
+    string? ClosedBy,
+    string? CloseNote,
+    long? DocumentId,
+    string? DocumentNumber,
+    IReadOnlyList<IssueRequestLineDto> Lines,
+    IssueRequestPermissions Can);
+
+public record IssueRequestPermissions(bool Issue, bool Reject, bool Cancel);
+
+public record IssueRequestSummaryDto(
+    int Id,
+    string Number,
+    IssueRequestStatus Status,
+    int EmployeeId,
+    string EmployeeName,
+    DateTimeOffset CreatedAt,
+    int LineCount,
+    string? Comment,
+    long? DocumentId,
+    string? DocumentNumber);
+
+public record IssueRequestLineRequest(int ItemId, decimal Quantity);
+
+/// <param name="EmployeeId">Кому выдать: сотрудник — только себе; кладовщик и старший смены — любому (null — себе).</param>
+public record CreateIssueRequestRequest(int? EmployeeId, string? Comment, IReadOnlyList<IssueRequestLineRequest> Lines);
+
+public record RejectIssueRequestRequest(string? Reason);

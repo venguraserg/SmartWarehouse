@@ -29,6 +29,13 @@
 
                     <div class="nav-group">Учёт</div>
                     <NavLink href="/stock">Остатки</NavLink>
+                    <NavLink href="/requests">
+                        Запросы на выдачу
+                        @if (openRequests > 0)
+                        {
+                            <span class="nav-badge" title="Ждут выдачи">@openRequests</span>
+                        }
+                    </NavLink>
                     <NavLink href="/custody">Подотчёт</NavLink>
                     <NavLink href="/reports">
                         Отчёты об использовании
@@ -133,6 +140,9 @@
     private bool isNativeApp;
     private int actsToApprove;
     private int reportsToConfirm;
+
+    /// <summary>Запросы на выдачу, которые ждут кладовщика или старшего смены.</summary>
+    private int openRequests;
 
     private IJSObjectReference? scannerModule;
     private DotNetObjectReference<MainLayout>? self;
@@ -249,6 +259,18 @@
             catch (Exception ex) when (ex is ApiException or HttpRequestException)
             {
                 actsToApprove = reportsToConfirm = 0; // меню не должно ломаться из-за недоступного API
+            }
+        }
+
+        if (user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin) || user.IsInRole(AppRoles.ShiftLead))
+        {
+            try
+            {
+                openRequests = await Api.GetOpenIssueRequestCountAsync();
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                openRequests = 0;
             }
         }
     }

@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
         services.AddScoped<IReferenceAdminRepository, ReferenceAdminRepository>();
         services.AddScoped<IWriteOffActRepository, WriteOffActRepository>();
+        services.AddScoped<IIssueRequestRepository, IssueRequestRepository>();
         services.AddSingleton<IActPdfRenderer, ActPdfRenderer>();
         services.AddSingleton<ILabelPdfRenderer, LabelPdfRenderer>();
         services.AddScoped<IUserRepository, UserRepository>();

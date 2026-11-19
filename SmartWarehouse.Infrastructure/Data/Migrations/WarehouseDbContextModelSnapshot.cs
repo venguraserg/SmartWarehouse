@@ -243,6 +243,98 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("equipment", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CloseNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClosedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long?>("DocumentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("EmployeeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("issue_requests", (string)null);
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequestLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("RequestId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("RequestId", "LineNo")
+                        .IsUnique();
+
+                    b.ToTable("issue_request_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_issue_request_lines_quantity_positive", "\"Quantity\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Item", b =>
                 {
                     b.Property<int>("Id")
@@ -888,6 +980,43 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequestLine", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.IssueRequest", "Request")
+                        .WithMany("Lines")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Item");
+
+                    b.Navigation("Request");
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Item", b =>
                 {
                     b.HasOne("SmartWarehouse.Domain.Entities.Category", "Category")
@@ -1137,6 +1266,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
                 {
                     b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Item", b =>

@@ -273,6 +273,22 @@ public interface ILocationRepository
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 
+/// <summary>Доступ к запросам на выдачу.</summary>
+public interface IIssueRequestRepository
+{
+    void Add(IssueRequest request);
+
+    /// <summary>Запрос с сотрудником, строками (позиция, единица) и документом выдачи (со строками).</summary>
+    Task<IssueRequest?> GetAsync(int id, CancellationToken ct = default);
+
+    /// <param name="employeeIds">Только запросы этих сотрудников; null — все.</param>
+    Task<IReadOnlyList<IssueRequest>> ListAsync(IReadOnlyCollection<int>? employeeIds, IssueRequestStatus? status, int take, CancellationToken ct = default);
+
+    Task<int> CountOpenAsync(CancellationToken ct = default);
+
+    Task SaveChangesAsync(CancellationToken ct = default);
+}
+
 /// <summary>Доступ к актам на списание.</summary>
 public interface IWriteOffActRepository
 {
