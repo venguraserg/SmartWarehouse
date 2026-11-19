@@ -102,7 +102,8 @@ h3 { font-size: 1rem; font-weight: 600; }
 .nav a.active { background: rgba(255, 255, 255, .11); color: #fff; font-weight: 500; box-shadow: inset 3px 0 0 var(--brand-accent); }
 .nav-group { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #9FC3AC; margin: 1.1rem .7rem .35rem; }
 
-.content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 1440px; }
+/* Контент тянется на всю ширину — до 4K (работа на больших мониторах). Формы ограничены своей шириной. */
+.content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 3840px; }
 
 .nav-user { margin-top: 1.5rem; padding: .85rem .7rem 0; border-top: 1px solid rgba(255, 255, 255, .12); }
 .nav-user-name { color: #fff; font-weight: 600; margin-bottom: .35rem; }
@@ -158,6 +159,10 @@ tr.inactive td { color: var(--text-muted); }
 td > input[type=number] { min-width: 84px; }
 /* Длинное примечание в ячейке: мельче и не шире 320 px, чтобы не выдавливать колонки с вводом */
 .cell-note { font-size: .8125rem; line-height: 1.35; color: var(--text-muted); max-width: 320px; }
+/* Наименования и примечания в таблицах переносятся на следующую строку (в том числе внутри длинных
+   артикулов и номеров), а не раздвигают таблицу за край экрана. */
+td.col-name { min-width: 12rem; overflow-wrap: anywhere; }
+td.cell-note { min-width: 10rem; width: 22%; max-width: none; overflow-wrap: anywhere; }
 .cell-note .tag { margin-bottom: .2rem; }
 
 .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); display: block; }
@@ -292,6 +297,17 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
     display: none; left: 0; padding: .7rem 1.25rem; position: fixed; width: 100%; z-index: 1000;
 }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: .9rem; top: .6rem; }
+
+/* ===== Большие мониторы: на QHD/4K без масштабирования Windows текст чуть крупнее ===== */
+@media (min-width: 2400px) { :root { font-size: 17px; } }
+@media (min-width: 3200px) { :root { font-size: 19px; } }
+
+/* ===== Ноутбук / небольшой монитор (≤ 1600 px): плотнее поля, чтобы таблицы помещались ===== */
+@media (max-width: 1600px) {
+    .content { padding: 1.25rem 1.25rem 3rem; }
+    th, td { padding: .5rem .55rem; }
+    td.col-name { min-width: 10rem; }
+}
 
 /* ===== Планшет / ТСД (≤ 1024 px): меню прячется под кнопку ===== */
 @media (max-width: 1024px) {

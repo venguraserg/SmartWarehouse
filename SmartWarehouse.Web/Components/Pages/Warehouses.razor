@@ -203,7 +203,7 @@
                                         @foreach (var c in content)
                                         {
                                             <tr>
-                                                <td><a href="/items/@c.ItemId">@c.Name</a><br /><span class="muted mono">@c.Sku</span></td>
+                                                <td class="col-name"><a href="/items/@c.ItemId">@c.Name</a><br /><span class="muted mono">@c.Sku</span></td>
                                                 <td class="num">@Ui.Qty(c.Quantity) @c.UnitCode</td>
                                             </tr>
                                         }

@@ -118,7 +118,7 @@
                                 <td><input type="checkbox" checked="@on" @onchange="() => ToggleConvert(key)" aria-label="Перевести @c.Code" /></td>
                                 <td><a href="/employees/@c.EmployeeId">@c.EmployeeName</a></td>
                                 <td class="mono"><a href="/items/@c.ItemId">@c.Code</a></td>
-                                <td>@c.Name</td>
+                                <td class="col-name">@c.Name</td>
                                 <td class="num">@Ui.Qty(c.Qty1C) @c.Unit</td>
                                 <td class="num">@Ui.Qty(c.QtyOfficial)</td>
                                 <td class="num">@Ui.Qty(c.WorkFree)</td>
@@ -196,7 +196,7 @@
                                 <text>@x.Code</text>
                             }
                         </td>
-                        <td>@x.Name</td>
+                        <td class="col-name">@x.Name</td>
                         <td>@x.Place<div class="line-hint">@x.Mol</div></td>
                         <td class="num">@Ui.Qty(x.Qty1C) @x.Unit</td>
                         <td class="num">@Ui.Qty(x.QtyApp)</td>

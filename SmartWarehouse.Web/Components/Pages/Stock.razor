@@ -147,7 +147,7 @@ else
                             <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
                                 <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
                                 <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                                <td><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /></td>
+                                <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /></td>
                                 <td>@row.CategoryName</td>
                                 <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
                                 @if (ShowValue)
@@ -187,7 +187,7 @@ else
                         <tr class="@(totalOffBook >= total ? "row-offbook" : null)">
                             <td><Thumb ItemId="first.ItemId" ImageVersion="first.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@first.ItemId">@first.Sku</a></td>
-                            <td>
+                            <td class="col-name">
                                 <a href="/items/@first.ItemId">@first.ItemName</a>
                                 <OffBookTag Quantity="totalOffBook" Total="total" />
                                 @if (belowMinimum)
