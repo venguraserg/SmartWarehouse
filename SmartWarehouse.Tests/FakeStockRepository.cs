@@ -246,6 +246,13 @@ internal class FakeStockRepository : IStockRepository
             query.OrderBy(b => b.Location.FullCode, StringComparer.Ordinal).ThenBy(b => b.Item.Name).Take(take).ToList());
     }
 
+    public Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default) =>
+        Task.FromResult((
+            Balances.Where(b => b.Quantity > 0).Select(b => b.ItemId).Distinct().Count(),
+            Balances.Where(b => b.Quantity > 0).Select(b => b.LocationId).Distinct().Count(),
+            EmployeeBalances.Where(b => b.Quantity > 0).Select(b => b.EmployeeId).Distinct().Count(),
+            EmployeeBalances.Where(b => b.Quantity > 0).Select(b => (b.EmployeeId, b.ItemId)).Distinct().Count()));
+
     public Task<IReadOnlyList<ItemStock>> GetItemsBelowMinimumAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemStock>>(
             Items.Where(i => i.IsActive)

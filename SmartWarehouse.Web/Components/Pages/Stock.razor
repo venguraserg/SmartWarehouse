@@ -110,7 +110,7 @@ else
     }
     else if (!byItem)
     {
-        <div class="table-wrap">
+        <div class="table-wrap hide-phone">
             <table>
                 <thead>
                     <tr>
@@ -160,7 +160,7 @@ else
     }
     else
     {
-        <div class="table-wrap">
+        <div class="table-wrap hide-phone">
             <table>
                 <thead>
                     <tr>
@@ -211,6 +211,37 @@ else
                     }
                 </tbody>
             </table>
+        </div>
+    }
+
+    @* Телефон и ТСД: карточки по позициям — наименование крупно, количество справа, внизу код и места *@
+    @if (result.Rows.Count > 0)
+    {
+        <div class="cards only-phone">
+            @foreach (var group in result.Rows.GroupBy(r => r.ItemId).OrderBy(g => g.First().ItemName))
+            {
+                var first = group.First();
+                var total = group.Sum(r => r.Quantity);
+                var totalOffBook = group.Sum(r => r.OffBookQuantity);
+                var low = first.MinStock > 0 && total < first.MinStock;
+                <a class="card @(totalOffBook >= total ? "row-offbook" : null)" href="/items/@first.ItemId">
+                    <span class="card-top">
+                        <span class="card-title">@first.ItemName</span>
+                        <span class="card-qty @(low ? "qty-warn" : null)">@Ui.Qty(total) @first.UnitCode</span>
+                    </span>
+                    <span class="card-bottom">
+                        <span class="card-meta"><span class="mono">@first.Sku</span> · @string.Join(", ", group.Select(r => r.LocationCode).Take(3))@(group.Count() > 3 ? $" +{group.Count() - 3}" : "")</span>
+                        @if (totalOffBook > 0)
+                        {
+                            <OffBookTag Quantity="totalOffBook" Total="total" />
+                        }
+                        else if (low)
+                        {
+                            <span class="tag tag-warn">ниже минимума</span>
+                        }
+                    </span>
+                </a>
+            }
         </div>
     }
 }

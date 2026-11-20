@@ -585,6 +585,16 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             .ToList();
     }
 
+    public async Task<StockSummaryDto> GetSummaryAsync(CancellationToken ct = default)
+    {
+        var (items, locations, custodyEmployees, custodyItems) = await repo.CountStockAsync(ct);
+        var low = await repo.GetItemsBelowMinimumAsync(ct);
+        return new StockSummaryDto(items, locations,
+            BelowMinimum: low.Count(x => x.Total > 0),
+            OutOfStock: low.Count(x => x.Total <= 0),
+            custodyEmployees, custodyItems);
+    }
+
     private async Task<Employee?> GetEmployeeAsync(int? id, string field, bool requireActive, CancellationToken ct)
     {
         if (id is not int employeeId)

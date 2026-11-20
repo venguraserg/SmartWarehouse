@@ -299,6 +299,9 @@ public class ApiClient(HttpClient http, IServiceProvider services)
 
     // ---------- Запросы на выдачу ----------
 
+    public Task<StockSummaryDto> GetStockSummaryAsync(CancellationToken ct = default) =>
+        GetAsync<StockSummaryDto>("api/stock/summary", ct);
+
     public Task<List<IssueRequestSummaryDto>> GetIssueRequestsAsync(IssueRequestStatus? status = null, CancellationToken ct = default) =>
         GetAsync<List<IssueRequestSummaryDto>>(status is null ? "api/issue-requests" : $"api/issue-requests?status={status}", ct);
 

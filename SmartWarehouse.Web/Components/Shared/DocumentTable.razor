@@ -1,5 +1,5 @@
 @* Таблица документов (список, обзор). *@
-<div class="table-wrap">
+<div class="table-wrap hide-phone">
     <table>
         <thead>
             <tr>
@@ -30,6 +30,27 @@
     @if (Documents.Count == 0)
     {
         <div class="empty">Документов пока нет.</div>
+    }
+</div>
+
+@* Телефон и ТСД: документы карточками *@
+<div class="cards only-phone">
+    @foreach (var doc in Documents)
+    {
+        <a class="card" href="/documents/@doc.Id">
+            <span class="card-top">
+                <span class="card-title"><span class="mono">@doc.Number</span></span>
+                <span class="tag @Ui.DocTypeClass(doc.Type)">@Ui.DocType(doc.Type)</span>
+            </span>
+            <span class="card-bottom">
+                <span class="card-meta">@Ui.Date(doc.OccurredAt)@(string.IsNullOrEmpty(doc.ReceivedBy) ? "" : $" · {doc.ReceivedBy}")</span>
+                <span class="card-meta">@doc.LineCount стр.</span>
+            </span>
+        </a>
+    }
+    @if (Documents.Count == 0)
+    {
+        <div class="panel empty">Документов пока нет.</div>
     }
 </div>
 

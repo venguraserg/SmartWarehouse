@@ -48,7 +48,7 @@ else if (Visible.Count == 0)
 }
 else
 {
-    <div class="table-wrap">
+    <div class="table-wrap hide-phone">
         <table>
             <thead>
                 <tr>
@@ -132,6 +132,53 @@ else
                 }
             </tbody>
         </table>
+    </div>
+
+    @* Телефон и ТСД: по сотрудникам, позиции — карточками *@
+    <div class="only-phone">
+        @foreach (var group in Visible.GroupBy(r => r.EmployeeId))
+        {
+            var first = group.First();
+            <div class="card-group-head">
+                <a href="/employees/@first.EmployeeId">@first.EmployeeName</a>
+                @if (!string.IsNullOrEmpty(first.Position))
+                {
+                    <span class="muted">· @first.Position</span>
+                }
+            </div>
+            <div class="actions" style="margin-bottom: .5rem">
+                <AuthorizeView Roles="@AppRoles.Warehouse">
+                    <a class="btn btn-sm" href="/documents/new/Return?employee=@first.EmployeeId">Вернуть</a>
+                </AuthorizeView>
+                @if (isWarehouse || first.EmployeeId == myEmployeeId)
+                {
+                    @if (group.Any(r => r.Kind == CustodyKind.Work))
+                    {
+                        <a class="btn btn-sm" href="/reports/new?employee=@first.EmployeeId">Отчёт</a>
+                    }
+                    @if (group.Any(r => r.Kind == CustodyKind.Official))
+                    {
+                        <a class="btn btn-sm" href="/acts/new?employee=@first.EmployeeId">Акт на списание</a>
+                    }
+                }
+            </div>
+            <div class="cards">
+                @foreach (var r in group)
+                {
+                    var qty = QtyOf(r);
+                    <a class="card @(book == true || r.OffBookQuantity >= r.Quantity ? "row-offbook" : null)" href="/items/@r.ItemId">
+                        <span class="card-top">
+                            <span class="card-title">@r.ItemName</span>
+                            <span class="card-qty">@Ui.Qty(qty) @r.UnitCode</span>
+                        </span>
+                        <span class="card-bottom">
+                            <span class="card-meta"><span class="mono">@r.Sku</span> · <CustodyAge Since="r.HeldSince" Kind="r.Kind" Unreported="r.Quantity - r.Reserved" /></span>
+                            <span class="tag @Ui.CustodyKindClass(r.Kind)" title="@Ui.CustodyKindTitle(r.Kind)">@Ui.CustodyKindShort(r.Kind)</span>
+                        </span>
+                    </a>
+                }
+            </div>
+        }
     </div>
 }
 

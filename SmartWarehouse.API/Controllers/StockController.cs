@@ -18,6 +18,10 @@ public class StockController(IStockService stock) : ControllerBase
         stock.SearchStockAsync(query, ct);
 
     /// <summary>Позиции с остатком ниже минимума и сколько нужно пополнить.</summary>
+    /// <summary>Показатели для «Обзора».</summary>
+    [HttpGet("summary")]
+    public Task<StockSummaryDto> Summary(CancellationToken ct) => stock.GetSummaryAsync(ct);
+
     [HttpGet("below-minimum")]
     public Task<IReadOnlyList<LowStockItemDto>> BelowMinimum(CancellationToken ct) =>
         stock.GetBelowMinimumAsync(ct);

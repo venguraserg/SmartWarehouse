@@ -37,6 +37,9 @@ public interface IStockService
 
     /// <summary>Позиции с остатком ниже минимума.</summary>
     Task<IReadOnlyList<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default);
+
+    /// <summary>Показатели склада для «Обзора»: сколько позиций, ниже минимума, нет, в подотчёте.</summary>
+    Task<StockSummaryDto> GetSummaryAsync(CancellationToken ct = default);
 }
 
 public interface ICatalogService

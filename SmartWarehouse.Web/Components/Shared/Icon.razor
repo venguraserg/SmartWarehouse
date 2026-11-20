@@ -1,0 +1,79 @@
+@* Значки интерфейса: линейные, 24×24, цвет — от текста (currentColor). Декоративные — скрыты от экранного диктора. *@
+
+<svg class="icon @Class" width="@Size" height="@Size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    @switch (Name)
+    {
+        case "home":
+            <path d="M4 11l8-7 8 7"></path><path d="M6 10v10h12V10"></path><path d="M10 20v-6h4v6"></path>
+            break;
+        case "box":
+            <path d="M4 8l8-4 8 4v8l-8 4-8-4z"></path><path d="M4 8l8 4 8-4M12 12v8"></path>
+            break;
+        case "scan":
+            <path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"></path><path d="M8 12h8"></path>
+            break;
+        case "inbox":
+            <path d="M4 13l2.5-7h11L20 13v6H4z"></path><path d="M4 13h4.5l1 2h5l1-2H20"></path>
+            break;
+        case "custody":
+            <circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c.8-3.2 3-5 5.5-5s4.7 1.8 5.5 5"></path><path d="M15 6h5M15 10h5M17 14h3"></path>
+            break;
+        case "more":
+            <path d="M4 7h16M4 12h16M4 17h16"></path>
+            break;
+        case "receive":
+            <path d="M12 4v11"></path><path d="M7.5 10.5L12 15l4.5-4.5"></path><path d="M4 16v4h16v-4"></path>
+            break;
+        case "plus":
+            <path d="M12 5v14M5 12h14"></path>
+            break;
+        case "issue":
+            <path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path>
+            break;
+        case "return":
+            <path d="M9 7L4 12l5 5"></path><path d="M4 12h11a5 5 0 0 1 0 10h-2"></path>
+            break;
+        case "transfer":
+            <path d="M4 8h14l-3-3M20 16H6l3 3"></path>
+            break;
+        case "act":
+            <path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v4h4"></path><path d="M10 12h5M10 16h5"></path>
+            break;
+        case "report":
+            <path d="M6 3h12v18H6z"></path><path d="M9 8h6M9 12h6M9 16h3"></path>
+            break;
+        case "adjust":
+            <path d="M5 7h9M18 7h1M5 17h1M10 17h9"></path><circle cx="16" cy="7" r="2"></circle><circle cx="8" cy="17" r="2"></circle>
+            break;
+        case "request":
+            <path d="M6 4h12v16l-3-2-3 2-3-2-3 2z"></path><path d="M9 9h6M9 13h4"></path>
+            break;
+        case "check":
+            <path d="M5 12.5l4.5 4.5L19 7.5"></path>
+            break;
+        case "alert":
+            <path d="M12 4l9 16H3z"></path><path d="M12 10v4M12 17.5v.01"></path>
+            break;
+        case "empty":
+            <circle cx="12" cy="12" r="8"></circle><path d="M6.5 17.5l11-11"></path>
+            break;
+        case "clock":
+            <circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path>
+            break;
+        case "search":
+            <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+            break;
+        default:
+            <circle cx="12" cy="12" r="3"></circle>
+            break;
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+
+    [Parameter] public int Size { get; set; } = 20;
+
+    [Parameter] public string? Class { get; set; }
+}

@@ -351,6 +351,15 @@ public record SetBatchPriceRequest(decimal UnitPrice);
 
 /// <summary>Позиция, остаток которой ниже минимума.</summary>
 /// <param name="ToOrder">Сколько нужно пополнить, чтобы дойти до максимума (или до минимума, если максимум не задан).</param>
+/// <summary>Показатели склада для «Обзора».</summary>
+/// <param name="ItemsInStock">Позиций, которые есть на складе (по всем местам).</param>
+/// <param name="LocationsUsed">Мест, где что-то лежит.</param>
+/// <param name="BelowMinimum">Есть, но меньше минимального остатка.</param>
+/// <param name="OutOfStock">Задан минимум, а на складе нет совсем.</param>
+/// <param name="CustodyEmployees">Сотрудников, за которыми что-то числится.</param>
+/// <param name="CustodyItems">Позиций в подотчёте (сотрудник × позиция).</param>
+public record StockSummaryDto(int ItemsInStock, int LocationsUsed, int BelowMinimum, int OutOfStock, int CustodyEmployees, int CustodyItems);
+
 public record LowStockItemDto(
     int ItemId,
     string Sku,

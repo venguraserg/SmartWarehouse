@@ -137,6 +137,9 @@ public interface IStockRepository
     /// <summary>Активные позиции (с единицей), у которых суммарный остаток ниже минимума.</summary>
     Task<IReadOnlyList<ItemStock>> GetItemsBelowMinimumAsync(CancellationToken ct = default);
 
+    /// <summary>Позиций и мест с остатком; сотрудников и позиций в подотчёте.</summary>
+    Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default);
+
     /// <summary>Сохраняет все изменения одной транзакцией.</summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }

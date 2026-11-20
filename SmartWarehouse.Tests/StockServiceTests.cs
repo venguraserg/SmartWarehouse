@@ -326,6 +326,18 @@ public class StockServiceTests
         Assert.Equal(3, (await _service.ListDocumentsAsync(null)).Count);
     }
 
+    [Fact]
+    public async Task Показатели_обзора_считают_позиции_места_и_подотчёт()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA));
+        await Post(MovementType.Receipt, Line(2, to: CellB));
+        await Post(MovementType.Issue, Line(1, from: CellA));
+
+        var s = await _service.GetSummaryAsync();
+
+        Assert.Equal((1, 2, 1, 1), (s.ItemsInStock, s.LocationsUsed, s.CustodyEmployees, s.CustodyItems));
+    }
+
     // ---------- Просмотр остатков ----------
 
     private async Task<List<string>> FindAsync(StockQuery query) =>
