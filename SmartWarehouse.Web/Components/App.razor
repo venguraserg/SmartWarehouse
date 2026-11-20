@@ -23,6 +23,20 @@
 </head>
 
 <body>
+    @if (PageRenderMode is not null)
+    {
+        @* Пока интерактивная часть не подключилась — «Загрузка…», а не белый экран; не подключилась за 15 с — причина. *@
+        <div id="sw-boot" class="sw-boot">
+            <div id="sw-boot-loading" class="sw-boot-loading">Загрузка…</div>
+            <div id="sw-boot-problem" class="sw-boot-problem" hidden>
+                <h2>Приложение не запустилось</h2>
+                <p id="sw-boot-hint">Проверьте связь с сервером и обновите страницу. Если не помогает — пришлите администратору текст ниже (снимок экрана).</p>
+                <button type="button" class="btn btn-primary" onclick="location.reload()">Обновить</button>
+                <pre id="sw-boot-details"></pre>
+            </div>
+        </div>
+        <script src="js/boot.js"></script>
+    }
     <Routes @rendermode="PageRenderMode" />
     <script src="js/latin-input.js"></script>
     <script src="js/android-app.js"></script>

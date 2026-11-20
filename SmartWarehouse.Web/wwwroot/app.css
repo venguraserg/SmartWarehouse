@@ -434,3 +434,12 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
 }
 .scan-fab:active { transform: scale(.95); }
 .content.with-fab { padding-bottom: 92px; } /* кнопка камеры не закрывает кнопки внизу страницы */
+
+/* ===== Экран запуска (до подключения интерактивной части): см. js/boot.js ===== */
+.sw-boot { padding: 2rem 1rem; max-width: 720px; margin: 0 auto; }
+.sw-boot-loading { color: var(--text-muted); font-size: 1rem; padding-top: 20vh; text-align: center; }
+.sw-boot-problem h2 { margin-top: 0; }
+.sw-boot-problem pre {
+    margin-top: 1rem; padding: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem;
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius);
+}
