@@ -378,5 +378,16 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         return rows.Select(x => new ItemStock(x.Item, x.Total)).ToList();
     }
 
+    public async Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default)
+    {
+        var stock = db.Balances.AsNoTracking().Where(b => b.Quantity > 0);
+        var custody = db.EmployeeBalances.AsNoTracking().Where(b => b.Quantity > 0);
+        return (
+            await stock.Select(b => b.ItemId).Distinct().CountAsync(ct),
+            await stock.Select(b => b.LocationId).Distinct().CountAsync(ct),
+            await custody.Select(b => b.EmployeeId).Distinct().CountAsync(ct),
+            await custody.Select(b => new { b.EmployeeId, b.ItemId }).Distinct().CountAsync(ct));
+    }
+
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

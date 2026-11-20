@@ -25,7 +25,7 @@
         <nav class="nav" @onclick="() => menuOpen = false">
             <AuthorizeView>
                 <Authorized>
-                    <NavLink href="/scan" class="nav-scan">📷 Сканировать</NavLink>
+                    <NavLink href="/scan" class="nav-scan"><Icon Name="scan" Size="18" /> Сканировать</NavLink>
                     <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
 
                     <div class="nav-group">Учёт</div>
@@ -113,13 +113,51 @@
         @Body
     </main>
     </div>
+
+    @* Телефон и ТСД: нижняя панель — главные разделы под большой палец, «Ещё» открывает всё меню *@
+    <AuthorizeView>
+        <nav class="bottom-nav" aria-label="Основные разделы" @onclick="() => menuOpen = false">
+            <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" Size="22" /><span>Обзор</span></NavLink>
+            <NavLink href="/stock"><Icon Name="box" Size="22" /><span>Остатки</span></NavLink>
+            @if (isNativeApp)
+            {
+                <button type="button" class="bn-scan" onclick="swApp.scan()" aria-label="Сканировать камерой"><Icon Name="scan" Size="26" /></button>
+            }
+            else
+            {
+                <NavLink href="/scan" class="bn-scan" aria-label="Сканировать"><Icon Name="scan" Size="26" /></NavLink>
+            }
+            @if (isIssuer)
+            {
+                <NavLink href="/requests">
+                    <Icon Name="inbox" Size="22" /><span>Запросы</span>
+                    @if (openRequests > 0)
+                    {
+                        <span class="bn-badge">@openRequests</span>
+                    }
+                </NavLink>
+            }
+            else
+            {
+                <NavLink href="/custody"><Icon Name="custody" Size="22" /><span>Подотчёт</span></NavLink>
+            }
+            <button type="button" class="@(menuOpen ? "active" : null)" @onclick:stopPropagation="true" @onclick="() => menuOpen = !menuOpen"
+                    aria-expanded="@(menuOpen ? "true" : "false")">
+                <Icon Name="more" Size="22" /><span>Ещё</span>
+                @if (actsToApprove + reportsToConfirm > 0)
+                {
+                    <span class="bn-badge">@(actsToApprove + reportsToConfirm)</span>
+                }
+            </button>
+        </nav>
+    </AuthorizeView>
 </div>
 
 @* В приложении для Android — кнопка камеры на каждой странице: код идёт туда же, куда код ручного сканера. *@
 @if (isNativeApp)
 {
     <AuthorizeView>
-        <button type="button" class="scan-fab" title="Сканировать камерой" aria-label="Сканировать камерой" onclick="swApp.scan()">📷</button>
+        <button type="button" class="scan-fab" title="Сканировать камерой" aria-label="Сканировать камерой" onclick="swApp.scan()"><Icon Name="scan" Size="28" /></button>
     </AuthorizeView>
 }
 
@@ -140,6 +178,9 @@
 
     /// <summary>Сайт открыт в приложении «Склад» для Android (там есть сканирование камерой и сканер ТСД).</summary>
     private bool isNativeApp;
+
+    /// <summary>Выдаёт со склада (кладовщик, администратор, старший смены) — в нижней панели «Запросы», а не «Подотчёт».</summary>
+    private bool isIssuer;
     private int actsToApprove;
     private int reportsToConfirm;
 
@@ -240,6 +281,7 @@
         var user = (await AuthState).User;
         if (user.Identity?.IsAuthenticated != true)
             return;
+        isIssuer = user.IsWarehouseStaff() || user.IsInRole(AppRoles.ShiftLead);
         if (user.MustChangePasswordOf())
         {
             Nav.NavigateTo("/account/password", forceLoad: true);
