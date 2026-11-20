@@ -726,6 +726,10 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("Roles")
                         .HasColumnType("integer");
 
+                    b.Property<string>("UiTheme")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EmployeeId")
