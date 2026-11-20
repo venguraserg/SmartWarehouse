@@ -37,6 +37,27 @@
     --accent-weak: var(--brand-light);
     --muted: var(--text-muted);
 
+    /* Шапка и боковое меню («хром») — переопределяются оформлением (html[data-theme]) */
+    --chrome-bg: var(--brand-dark);
+    --chrome-border: rgba(255, 255, 255, .08);
+    --chrome-text: rgba(255, 255, 255, .82);
+    --chrome-text-strong: #fff;
+    --chrome-muted: #9FC3AC;
+    --chrome-hover: rgba(255, 255, 255, .07);
+    --chrome-active-bg: rgba(255, 255, 255, .11);
+    --chrome-active-text: #fff;
+    --chrome-line: rgba(255, 255, 255, .12);
+    --chrome-divider: rgba(255, 255, 255, .35);
+    --chrome-toggle-border: rgba(255, 255, 255, .3);
+    --chrome-shadow: none;
+
+    /* Обычная (не основная) кнопка */
+    --btn-bg: var(--surface);
+    --btn-border: var(--border-strong);
+    --btn-text: var(--text);
+    --btn-hover: #F1F4F6;
+    --btn-active: #E6EAEE;
+
     --radius: 6px;          /* кнопки, поля */
     --radius-card: 10px;    /* карточки, панели */
     --focus-ring: 0 0 0 3px rgba(125, 189, 0, .45);
@@ -70,25 +91,28 @@ h3 { font-size: 1rem; font-weight: 600; }
     position: sticky; top: 0; z-index: 800;
     display: flex; align-items: center; gap: .75rem;
     height: 56px; padding: 0 1rem 0 1.25rem;
-    background: var(--brand-dark); color: #fff;
-    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    background: var(--chrome-bg); color: var(--chrome-text-strong);
+    border-bottom: 1px solid var(--chrome-border);
 }
 .topbar .spacer { flex: 1; }
 
-.brand { display: flex; align-items: center; gap: .75rem; color: #fff; }
-.brand:hover { color: #fff; text-decoration: none; }
+.brand { display: flex; align-items: center; gap: .75rem; color: var(--chrome-text-strong); }
+.brand:hover { color: var(--chrome-text-strong); text-decoration: none; }
 .brand-logo { height: 36px; width: auto; display: block; }
 .brand-mark { display: none; height: 30px; width: auto; }
-.brand-divider { width: 1px; height: 28px; background: rgba(255, 255, 255, .35); }
+.brand-divider { width: 1px; height: 28px; background: var(--chrome-divider); }
+/* Логотип: для тёмной шапки — по умолчанию; для светлой — в светлых оформлениях */
+.brand-logo-onlight { display: none; }
 .brand-text { font-weight: 600; font-size: 1.125rem; white-space: nowrap; }
 
-.topbar-user { display: flex; align-items: center; gap: .5rem; color: rgba(255, 255, 255, .85); font-size: .875rem; }
+.topbar-user { display: flex; align-items: center; gap: .5rem; color: var(--chrome-text); font-size: .875rem; }
 
 .app-body { flex: 1; display: flex; min-height: 0; }
 
 .sidebar {
     width: 232px; flex-shrink: 0;
-    background: var(--brand-dark); color: rgba(255, 255, 255, .82);
+    background: var(--chrome-bg); color: var(--chrome-text);
+    border-right: 1px solid var(--chrome-border);
     padding: .75rem .625rem 1.5rem;
     position: sticky; top: 56px; align-self: flex-start;
     height: calc(100vh - 56px); overflow-y: auto;
@@ -97,21 +121,21 @@ h3 { font-size: 1rem; font-weight: 600; }
 .menu-toggle { display: none; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
-.nav a { display: flex; align-items: center; gap: .4rem; min-height: 36px; color: rgba(255, 255, 255, .82); padding: .4rem .7rem; border-radius: var(--radius); font-size: .9375rem; }
-.nav a:hover { background: rgba(255, 255, 255, .07); color: #fff; text-decoration: none; }
-.nav a.active { background: rgba(255, 255, 255, .11); color: #fff; font-weight: 500; box-shadow: inset 3px 0 0 var(--brand-accent); }
-.nav-group { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #9FC3AC; margin: 1.1rem .7rem .35rem; }
+.nav a { display: flex; align-items: center; gap: .4rem; min-height: 36px; color: var(--chrome-text); padding: .4rem .7rem; border-radius: var(--radius); font-size: .9375rem; }
+.nav a:hover { background: var(--chrome-hover); color: var(--chrome-text-strong); text-decoration: none; }
+.nav a.active { background: var(--chrome-active-bg); color: var(--chrome-active-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--brand-accent); }
+.nav-group { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--chrome-muted); margin: 1.1rem .7rem .35rem; }
 
 /* Контент тянется на всю ширину — до 4K (работа на больших мониторах). Формы ограничены своей шириной. */
 .content { flex: 1; min-width: 0; padding: 1.5rem 2rem 3rem; max-width: 3840px; }
 
-.nav-user { margin-top: 1.5rem; padding: .85rem .7rem 0; border-top: 1px solid rgba(255, 255, 255, .12); }
-.nav-user-name { color: #fff; font-weight: 600; margin-bottom: .35rem; }
+.nav-user { margin-top: 1.5rem; padding: .85rem .7rem 0; border-top: 1px solid var(--chrome-line); }
+.nav-user-name { color: var(--chrome-text-strong); font-weight: 600; margin-bottom: .35rem; }
 .nav-user-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; font-size: .875rem; }
-.nav-user-actions a { padding: 0; min-height: 0; color: rgba(255, 255, 255, .82); }
+.nav-user-actions a { padding: 0; min-height: 0; color: var(--chrome-text); }
 .nav-user-actions form { margin: 0; }
-.link-button { background: none; border: none; padding: 0; font: inherit; color: rgba(255, 255, 255, .82); cursor: pointer; }
-.link-button:hover { color: #fff; text-decoration: underline; }
+.link-button { background: none; border: none; padding: 0; font: inherit; color: var(--chrome-text); cursor: pointer; }
+.link-button:hover { color: var(--chrome-text-strong); text-decoration: underline; }
 
 /* ===== Вход: фирменный градиент, логотип для светлого фона ===== */
 .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; background: var(--brand-gradient); }
@@ -201,11 +225,11 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
     min-height: 40px; padding: .45rem 1rem; font: inherit; font-size: .9375rem; font-weight: 500; line-height: 1.2;
-    border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); cursor: pointer;
+    border: 1px solid var(--btn-border); border-radius: var(--radius); background: var(--btn-bg); color: var(--btn-text); cursor: pointer;
     transition: background-color .12s, border-color .12s;
 }
-.btn:hover { background: #F1F4F6; border-color: #AEB7C2; color: var(--text); text-decoration: none; }
-.btn:active { background: #E6EAEE; }
+.btn:hover { background: var(--btn-hover); border-color: var(--border-strong); color: var(--btn-text); text-decoration: none; }
+.btn:active { background: var(--btn-active); }
 .btn:disabled, .btn:disabled:hover { background: #F1F3F6; border-color: var(--border); color: var(--disabled); cursor: default; }
 .btn-primary { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
 .btn-primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
@@ -356,11 +380,11 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
 @media (max-width: 1024px) {
     .menu-toggle {
         display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
-        background: none; border: 1px solid rgba(255, 255, 255, .3); color: #fff; border-radius: var(--radius);
+        background: none; border: 1px solid var(--chrome-toggle-border); color: var(--chrome-text-strong); border-radius: var(--radius);
         font-size: 1.25rem; cursor: pointer;
     }
     .app-body { flex-direction: column; }
-    .sidebar { display: none; position: sticky; top: 56px; z-index: 790; width: auto; align-self: stretch; height: auto; max-height: calc(100vh - 56px); padding: .5rem .75rem 1rem; box-shadow: 0 8px 20px rgba(0, 0, 0, .25); }
+    .sidebar { display: none; position: sticky; top: 56px; z-index: 790; width: auto; align-self: stretch; height: auto; max-height: calc(100vh - 56px); padding: .5rem .75rem 1rem; box-shadow: 0 8px 20px rgba(0, 0, 0, .25); border-right: none; }
     .sidebar.open { display: block; }
     .nav a { min-height: 44px; }
     .content { padding: 1.25rem; max-width: none; }
@@ -443,3 +467,87 @@ tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font
     margin-top: 1rem; padding: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem;
     background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius);
 }
+
+/* =====================================================================================================
+   Оформления (выбор пользователя: «Оформление» в меню, запоминается за учётной записью).
+   Каркас общий; меняются цвета фона, меню, текста, рамок и кнопок. Палитры — с макетов «5 вариантов».
+   ===================================================================================================== */
+
+/* 1. Сливочный — светлый, тёплый: фон с оттенком Cornsilk, текст Seal Brown, действия Pakistan Green */
+html[data-theme="cream"] {
+    --bg: #FBF8F1; --surface-alt: #FAF5EA; --border: #E9E0CF; --border-strong: #D8CAB1;
+    --text: #2A1D14; --text-muted: #6A5D52;
+    --brand-primary: #004820; --brand-hover: #0B5B30; --brand-dark: #003317; --brand-light: #F1E9D8;
+    --chrome-bg: #F6EFDF; --chrome-border: #EADFC8; --chrome-text: #401F0D; --chrome-text-strong: #401F0D;
+    --chrome-muted: #6E5B4B; --chrome-hover: rgba(64, 31, 13, .06); --chrome-active-bg: #FFFFFF; --chrome-active-text: #004820;
+    --chrome-line: #EADFC8; --chrome-divider: #D8CAB1; --chrome-toggle-border: #D8CAB1;
+    --btn-bg: #F1E9D8; --btn-border: transparent; --btn-text: #401F0D; --btn-hover: #EADFC8; --btn-active: #E2D4BA;
+}
+
+/* 2. Хвойный — меню Pakistan Green, рабочая область нейтрально-светлая (ближе всего к фирменному стилю) */
+html[data-theme="pine"] {
+    --bg: #F3F5F2; --surface-alt: #F6F8F6; --border: #DDE3DE; --border-strong: #C5CEC7;
+    --text: #17221B; --text-muted: #56635A;
+    --brand-primary: #004820; --brand-hover: #0B5B30; --brand-dark: #003317; --brand-light: #E5ECE7;
+    --chrome-bg: #004820; --chrome-border: transparent; --chrome-text: #E8F0EA; --chrome-text-strong: #FFFFFF;
+    --chrome-muted: #A9C2B2; --chrome-hover: rgba(255, 255, 255, .07); --chrome-active-bg: #0B5B30; --chrome-active-text: #FFFFFF;
+    --btn-bg: #E5ECE7; --btn-border: transparent; --btn-text: #004820; --btn-hover: #D9E3DC; --btn-active: #CCD9D0;
+}
+
+/* 3. Шоколадный — меню Seal Brown, тёплый светлый фон, действия зелёные («молочная» тема) */
+html[data-theme="choco"] {
+    --bg: #F8F5F0; --surface-alt: #FAF6F0; --border: #E7DED3; --border-strong: #D3C6B6;
+    --text: #2A1D14; --text-muted: #665A50;
+    --brand-primary: #004820; --brand-hover: #0B5B30; --brand-dark: #003317; --brand-light: #EFE7DC;
+    --chrome-bg: #401F0D; --chrome-border: transparent; --chrome-text: #F5EADA; --chrome-text-strong: #FFF0C8;
+    --chrome-muted: #C9B29C; --chrome-hover: rgba(255, 240, 200, .07); --chrome-active-bg: #56311D; --chrome-active-text: #FFF0C8;
+    --chrome-line: rgba(255, 240, 200, .14); --chrome-divider: rgba(255, 240, 200, .35); --chrome-toggle-border: rgba(255, 240, 200, .3);
+    --btn-bg: #EFE7DC; --btn-border: transparent; --btn-text: #401F0D; --btn-hover: #E6DBCC; --btn-active: #DCCFBD;
+}
+
+/* 4. Графитовый — почти нейтральная гамма, графитовое меню, приглушённый зелёный (спокойный для долгой работы) */
+html[data-theme="graphite"] {
+    --bg: #F2F3F2; --surface-alt: #F7F8F7; --border: #DCE0DE; --border-strong: #C4CAC7;
+    --text: #1B1F1D; --text-muted: #59615D;
+    --brand-primary: #2E5B43; --brand-hover: #264D38; --brand-dark: #1D3D2B; --brand-light: #E6E9E7;
+    --chrome-bg: #1F2523; --chrome-border: transparent; --chrome-text: #E4E8E6; --chrome-text-strong: #FFFFFF;
+    --chrome-muted: #A3ACA8; --chrome-hover: rgba(255, 255, 255, .06); --chrome-active-bg: #2E3733; --chrome-active-text: #FFFFFF;
+    --btn-bg: #E6E9E7; --btn-border: transparent; --btn-text: #1B1F1D; --btn-hover: #DCE0DE; --btn-active: #D0D5D2;
+}
+
+/* 5. Шалфей — полностью светлый: белое меню, шалфейные оттенки фирменного зелёного (самый «воздушный») */
+html[data-theme="sage"] {
+    --bg: #F4F6F1; --surface-alt: #F7F9F5; --border: #DFE5DB; --border-strong: #C8D1C3;
+    --text: #1E2A22; --text-muted: #5A665D;
+    --brand-primary: #3F6B4B; --brand-hover: #355B3F; --brand-dark: #1F4A2E; --brand-light: #EAF0E6;
+    --chrome-bg: #FFFFFF; --chrome-border: #DFE5DB; --chrome-text: #22342A; --chrome-text-strong: #1F4A2E;
+    --chrome-muted: #5F6E64; --chrome-hover: rgba(31, 74, 46, .05); --chrome-active-bg: #EAF0E6; --chrome-active-text: #1F4A2E;
+    --chrome-line: #DFE5DB; --chrome-divider: #C8D1C3; --chrome-toggle-border: #C8D1C3;
+    --btn-bg: #EAF0E6; --btn-border: transparent; --btn-text: #1F4A2E; --btn-hover: #DFE8D9; --btn-active: #D3DFCC;
+}
+
+/* Светлая шапка — логотип для светлого фона (на телефоне вместо логотипа — знак) */
+@media (min-width: 601px) {
+    html[data-theme="cream"] .brand-logo-ondark, html[data-theme="sage"] .brand-logo-ondark { display: none; }
+    html[data-theme="cream"] .brand-logo-onlight, html[data-theme="sage"] .brand-logo-onlight { display: block; }
+}
+
+/* ===== Страница «Оформление» ===== */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.theme-card {
+    display: flex; flex-direction: column; gap: .6rem; padding: .75rem; text-align: left; font: inherit; color: var(--text);
+    background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius-card); cursor: pointer;
+}
+.theme-card:hover { border-color: var(--border-strong); }
+.theme-card.selected { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--brand-light); }
+.theme-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.theme-title { display: flex; align-items: center; gap: .5rem; font-weight: 600; }
+.theme-desc { font-size: .8125rem; color: var(--text-muted); line-height: 1.35; }
+/* Мини-макет: меню слева, рабочая область с кнопкой и строками */
+.theme-preview { display: grid; grid-template-columns: 30% 1fr; height: 120px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(0, 0, 0, .08); }
+.theme-preview .tp-side { padding: 10px 8px; display: flex; flex-direction: column; gap: 6px; }
+.theme-preview .tp-side i { display: block; height: 7px; border-radius: 3px; opacity: .55; }
+.theme-preview .tp-side i.on { opacity: 1; height: 12px; border-radius: 4px; }
+.theme-preview .tp-main { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+.theme-preview .tp-btn { width: 46%; height: 14px; border-radius: 4px; }
+.theme-preview .tp-row { height: 12px; border-radius: 3px; border: 1px solid; }

@@ -254,6 +254,7 @@ internal class UserAccountConfiguration : IEntityTypeConfiguration<UserAccount>
         b.Property(x => x.Login).HasMaxLength(32).IsRequired();
         b.HasIndex(x => x.Login).IsUnique();
         b.Property(x => x.PasswordHash).HasMaxLength(256).IsRequired();
+        b.Property(x => x.UiTheme).HasMaxLength(32);
         b.Property(x => x.Roles).HasConversion<int>();
         b.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         // У сотрудника — не больше одной учётной записи.

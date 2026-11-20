@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="@Theme">
 
 <head>
     <meta charset="utf-8" />
@@ -38,6 +38,7 @@
         <script src="js/boot.js"></script>
     }
     <Routes @rendermode="PageRenderMode" />
+    <script src="js/theme.js"></script>
     <script src="js/latin-input.js"></script>
     <script src="js/android-app.js"></script>
     <script src="_framework/blazor.web.js"></script>
@@ -47,6 +48,12 @@
 
 @code {
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Оформление пользователя — из cookie (ставится при входе из учётной записи и при выборе в «Оформлении»),
+    /// чтобы страница сразу рисовалась в нужных цветах, без мигания.
+    /// </summary>
+    private string Theme => UiThemes.Normalize(HttpContext.Request.Cookies[UiThemes.CookieName]);
 
     // Обычные страницы — интерактивные (на сервере, без предварительной отрисовки: данные грузятся один раз).
     // Страницы входа и смены пароля — статические: им нужно записать cookie в ответ.

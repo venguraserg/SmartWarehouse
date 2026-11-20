@@ -130,7 +130,11 @@ public record CurrentUserDto(
     string DisplayName,
     int? EmployeeId,
     UserRole Roles,
-    bool MustChangePassword);
+    bool MustChangePassword,
+    string? UiTheme = null);
+
+/// <summary>Выбор оформления интерфейса (запоминается за учётной записью).</summary>
+public record SetUiThemeRequest(string? Theme);
 
 /// <summary>Ответ на вход: токен для запросов к API и сведения о пользователе.</summary>
 public record LoginResponse(string Token, DateTimeOffset ExpiresAt, CurrentUserDto User);

@@ -66,6 +66,21 @@ public partial class AccountService(IUserRepository repo, IPasswordHasher hasher
         await repo.SaveChangesAsync(ct);
     }
 
+    /// <summary>Варианты оформления интерфейса (ключи — как в app.css: html[data-theme=…]).</summary>
+    public static readonly IReadOnlyList<string> UiThemes = ["cream", "pine", "choco", "graphite", "sage"];
+
+    public async Task<CurrentUserDto> SetUiThemeAsync(int userId, string? theme, CancellationToken ct = default)
+    {
+        var user = await repo.GetAsync(userId, ct)
+            ?? throw new NotFoundException("Учётная запись не найдена.");
+        var value = string.IsNullOrWhiteSpace(theme) ? null : theme.Trim().ToLowerInvariant();
+        if (value is not null && !UiThemes.Contains(value))
+            throw new DomainException($"Нет такого оформления: {theme}.");
+        user.UiTheme = value;
+        await repo.SaveChangesAsync(ct);
+        return ToCurrent(user);
+    }
+
     public async Task<bool> EnsureInitialAdminAsync(string password, CancellationToken ct = default)
     {
         if (await repo.AnyAsync(ct))
@@ -185,7 +200,7 @@ public partial class AccountService(IUserRepository repo, IPasswordHasher hasher
     private static string DisplayName(UserAccount u) => u.Employee?.ShortName ?? u.Login;
 
     private static CurrentUserDto ToCurrent(UserAccount u) =>
-        new(u.Id, u.Login, DisplayName(u), u.EmployeeId, u.Roles, u.MustChangePassword);
+        new(u.Id, u.Login, DisplayName(u), u.EmployeeId, u.Roles, u.MustChangePassword, u.UiTheme);
 
     private static UserDto ToDto(UserAccount u) =>
         new(u.Id, u.Login, u.EmployeeId, u.Employee?.ShortName, u.Roles, u.IsActive, u.MustChangePassword, u.LastLoginAt);
