@@ -23,6 +23,11 @@ public class AuthController(IAuthService auth, TokenService tokens) : Controller
     public Task<CurrentUserDto> Me(CancellationToken ct) => auth.GetCurrentAsync(User.UserId(), ct);
 
     /// <summary>Сменить свой пароль.</summary>
+    /// <summary>Оформление интерфейса: запоминается за пользователем и действует на любом устройстве.</summary>
+    [HttpPut("theme")]
+    public Task<CurrentUserDto> SetTheme(SetUiThemeRequest request, CancellationToken ct) =>
+        auth.SetUiThemeAsync(User.UserId(), request.Theme, ct);
+
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
     {

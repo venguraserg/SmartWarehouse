@@ -78,6 +78,9 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default) =>
         SendAsync<LoginResponse>(HttpMethod.Post, "api/auth/login", request, ct);
 
+    public Task<CurrentUserDto> SetUiThemeAsync(string? theme, CancellationToken ct = default) =>
+        SendAsync<CurrentUserDto>(HttpMethod.Put, "api/auth/theme", new SetUiThemeRequest(theme), ct);
+
     public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default)
     {
         using var response = await SendRawAsync(HttpMethod.Post, "api/auth/change-password", ct, JsonContent.Create(request, options: Json));

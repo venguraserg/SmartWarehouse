@@ -49,6 +49,9 @@ public interface IAuthService
 
     Task ChangePasswordAsync(int userId, ChangePasswordRequest request, CancellationToken ct = default);
 
+    /// <summary>Оформление интерфейса пользователя (null — по умолчанию). Неизвестное — DomainException.</summary>
+    Task<CurrentUserDto> SetUiThemeAsync(int userId, string? theme, CancellationToken ct = default);
+
     /// <summary>
     /// Первый запуск: если учётных записей нет, создаёт администратора «admin»
     /// с указанным паролем (при первом входе его нужно сменить). Возвращает true, если создал.

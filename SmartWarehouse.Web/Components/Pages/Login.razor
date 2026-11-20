@@ -4,6 +4,7 @@
 @layout EmptyLayout
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Http
 @inject ApiClient Api
 @inject NavigationManager Nav
 
@@ -64,6 +65,10 @@
             CookieAuthenticationDefaults.AuthenticationScheme,
             AuthClaims.CreatePrincipal(login),
             new AuthenticationProperties { ExpiresUtc = login.ExpiresAt, IsPersistent = false });
+
+        // Оформление этого пользователя (за компьютером мог работать другой) — сразу, с первой страницы.
+        HttpContext.Response.Cookies.Append(UiThemes.CookieName, UiThemes.Normalize(login.User.UiTheme),
+            new CookieOptions { Path = "/", MaxAge = TimeSpan.FromDays(365), SameSite = SameSiteMode.Lax, IsEssential = true });
 
         // Временный пароль — сначала сменить его. Иначе — туда, куда шёл (только внутри сайта).
         var target = login.User.MustChangePassword

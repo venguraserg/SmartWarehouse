@@ -1,0 +1,91 @@
+@page "/appearance"
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Оформление — Склад ОЭТО</PageTitle>
+
+<h1>Оформление</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Выберите, как будет выглядеть программа. Выбор запоминается за вашей учётной записью — он сохранится
+    при следующем входе, в том числе с другого компьютера или телефона. Другим пользователям он не мешает.
+</p>
+
+<Alert Error="@error" Success="@success" />
+
+<div class="theme-grid" role="radiogroup" aria-label="Оформление">
+    @foreach (var t in UiThemes.All)
+    {
+        var on = t.Key == current;
+        <button type="button" class="theme-card @(on ? "selected" : null)" role="radio" aria-checked="@(on ? "true" : "false")"
+                disabled="@saving" @onclick="() => ChooseAsync(t.Key)">
+            <span class="theme-preview" aria-hidden="true" style="background: @t.Bg">
+                <span class="tp-side" style="background: @t.Side; border-right: 1px solid @t.Border">
+                    <i class="on" style="background: @t.SideActive; box-shadow: inset 3px 0 0 #7DBD00"></i>
+                    <i style="background: @TextOn(t.Side)"></i>
+                    <i style="background: @TextOn(t.Side)"></i>
+                    <i style="background: @TextOn(t.Side)"></i>
+                </span>
+                <span class="tp-main">
+                    <span class="tp-btn" style="background: @t.Primary"></span>
+                    <span class="tp-row" style="background: @t.Surface; border-color: @t.Border"></span>
+                    <span class="tp-row" style="background: @t.Surface; border-color: @t.Border"></span>
+                    <span class="tp-row" style="background: @t.Surface; border-color: @t.Border"></span>
+                </span>
+            </span>
+            <span class="theme-title">
+                @t.Name
+                @if (on)
+                {
+                    <span class="tag tag-ok">выбрано</span>
+                }
+            </span>
+            <span class="theme-desc">@t.Description</span>
+        </button>
+    }
+</div>
+
+@code {
+    private string current = UiThemes.Default;
+    private bool saving;
+    private string? error;
+    private string? success;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        var key = await JS.InvokeAsync<string?>("swTheme.get");
+        current = UiThemes.Normalize(key);
+        StateHasChanged();
+    }
+
+    /// <summary>Тёмное меню — светлые полоски пунктов, светлое — тёмные.</summary>
+    private static string TextOn(string background) =>
+        background is "#FFFFFF" or "#F6EFDF" ? "#6E6E6E" : "#E8F0EA";
+
+    private async Task ChooseAsync(string key)
+    {
+        if (key == current)
+            return;
+        saving = true;
+        error = success = null;
+        var previous = current;
+        current = key;
+        try
+        {
+            await JS.InvokeVoidAsync("swTheme.set", key);   // сразу, без перезагрузки
+            await Api.SetUiThemeAsync(key);
+            success = $"Оформление «{UiThemes.All.First(t => t.Key == key).Name}» сохранено.";
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            current = previous;
+            await JS.InvokeVoidAsync("swTheme.set", previous);
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

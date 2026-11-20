@@ -30,5 +30,8 @@ public class UserAccount
 
     public DateTimeOffset? LastLoginAt { get; set; }
 
+    /// <summary>Оформление интерфейса, выбранное пользователем (cream, pine, choco, graphite, sage); null — по умолчанию.</summary>
+    public string? UiTheme { get; set; }
+
     public bool Has(UserRole role) => (Roles & role) == role;
 }

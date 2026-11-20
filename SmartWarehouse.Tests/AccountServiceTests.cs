@@ -64,6 +64,20 @@ public class AccountServiceTests
         Assert.Equal(Now, _repo.Users[0].LastLoginAt);
     }
 
+    [Fact]
+    public async Task Оформление_запоминается_за_пользователем_и_приходит_при_входе()
+    {
+        await CreateAsync();
+        var id = _repo.Users[0].Id;
+
+        var set = await _service.SetUiThemeAsync(id, " Graphite ");
+        Assert.Equal("graphite", set.UiTheme);
+        Assert.Equal("graphite", (await _service.LoginAsync(new LoginRequest("petrov", "temp123"))).UiTheme);
+
+        await Assert.ThrowsAsync<DomainException>(() => _service.SetUiThemeAsync(id, "rainbow"));
+        Assert.Null((await _service.SetUiThemeAsync(id, null)).UiTheme);   // сброс — по умолчанию
+    }
+
     [Theory]
     [InlineData("petrov", "wrong")]
     [InlineData("nobody", "temp123")]

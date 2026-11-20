@@ -9,7 +9,8 @@
     @* Шапка по брифу ТМК: логотип для тёмного фона | «Склад ОЭТО»; на телефоне — только знак *@
     <header class="topbar">
         <a class="brand" href="/" aria-label="Склад ОЭТО — на главную">
-            <img class="brand-logo" src="img/tmk_logo_dark.svg" alt="Туровский молочный комбинат" width="120" height="36" />
+            <img class="brand-logo brand-logo-ondark" src="img/tmk_logo_dark.svg" alt="Туровский молочный комбинат" width="120" height="36" />
+            <img class="brand-logo brand-logo-onlight" src="img/tmk_logo_light.svg" alt="Туровский молочный комбинат" width="120" height="36" />
             <img class="brand-mark" src="img/tmk_mark_accent.svg" alt="ТМК" width="26" height="30" />
             <span class="brand-divider" aria-hidden="true"></span>
             <span class="brand-text">Склад ОЭТО</span>
@@ -91,6 +92,7 @@
                     <div class="nav-user">
                         <div class="nav-user-name">@context.User.DisplayNameOf()</div>
                         <div class="nav-user-actions">
+                            <a href="/appearance">Оформление</a>
                             <a href="/account/password">Сменить пароль</a>
                             @if (isNativeApp)
                             {
