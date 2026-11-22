@@ -1,0 +1,41 @@
+@* Плашка черновика запроса: «В запросе 3 позиции — Оформить». Видна везде, кроме самой страницы запроса. *@
+@implements IDisposable
+@inject RequestCart Cart
+@inject NavigationManager Nav
+
+@if (Cart.Count > 0 && !OnRequestPage)
+{
+    <div class="cart-bar" role="status">
+        <Icon Name="cart" Size="20" />
+        <span>В запросе <strong>@Cart.Count</strong> @Ui.Plural(Cart.Count, "позиция", "позиции", "позиций")</span>
+        <a class="btn btn-primary btn-sm" href="/requests/new">Оформить</a>
+        <button type="button" class="btn btn-sm cart-bar-clear" title="Очистить черновик" aria-label="Очистить черновик запроса"
+                @onclick="() => Cart.ClearAsync()"><Icon Name="close" Size="16" /></button>
+    </div>
+}
+
+@code {
+    private bool OnRequestPage => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("requests/new", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Cart.Changed += OnChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await Cart.LoadAsync();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => OnChanged();
+
+    public void Dispose()
+    {
+        Cart.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

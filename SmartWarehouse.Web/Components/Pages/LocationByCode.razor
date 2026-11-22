@@ -13,7 +13,7 @@
         <h1 class="mono">@location.FullCode</h1>
         <span class="tag tag-neutral">@Ui.LocType(location.Type)</span>
         <span class="spacer"></span>
-        <a class="btn" href="/scan">📷 Ещё</a>
+        <a class="btn" href="/scan"><Icon Name="scan" Size="18" /> Ещё</a>
     </div>
     @if (!string.IsNullOrEmpty(location.Name))
     {
@@ -58,7 +58,7 @@ else if (error is null)
 }
 else
 {
-    <div class="actions"><a class="btn" href="/scan">📷 Сканировать снова</a></div>
+    <div class="actions"><a class="btn" href="/scan"><Icon Name="scan" Size="18" /> Сканировать снова</a></div>
 }
 
 @code {

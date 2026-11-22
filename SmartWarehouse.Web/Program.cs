@@ -23,6 +23,7 @@ builder.Services.AddHttpClient<ApiClient>(client =>
 });
 
 builder.Services.AddScoped<BrowserStore>();
+builder.Services.AddScoped<RequestCart>();
 builder.Services.AddScoped<ScannerHub>();
 
 // Подсветка давнего подотчёта (Custody:AgeWarningDays, по умолчанию 30 дней).

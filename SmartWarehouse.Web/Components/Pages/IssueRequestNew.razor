@@ -2,12 +2,14 @@
 @using System.Globalization
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject RequestCart Draft
 
 <PageTitle>Новый запрос на выдачу — Склад ОЭТО</PageTitle>
 
 <h1>Новый запрос на выдачу</h1>
 <p class="muted" style="margin-top: -.5rem">
     Найдите нужное в остатках склада и добавьте в запрос с количеством. Кладовщик соберёт заказ и выдаст.
+    Добавлять можно и прямо из «Остатков», «Номенклатуры» и карточки позиции — кнопкой «В запрос».
 </p>
 
 <Alert Error="@error" />
@@ -82,7 +84,11 @@ else
                     </div>
                 }
 
-                @if (cart.Count == 0)
+                @if (restoring)
+                {
+                    <p class="loading">Загрузка черновика…</p>
+                }
+                else if (cart.Count == 0)
                 {
                     <div class="empty" style="padding: 1rem 0">Пока пусто — добавьте позиции из остатков.</div>
                 }
@@ -102,11 +108,11 @@ else
                                         </td>
                                         <td class="num">
                                             <input type="number" min="0" step="@(c.Fractional ? "any" : "1")" value="@c.Quantity.ToString(CultureInfo.InvariantCulture)"
-                                                   @onchange="e => SetQty(c, e.Value)" aria-label="Количество" class="@(lineError is not null ? "invalid" : null)" />
+                                                   @onchange="e => SetQtyAsync(c, e.Value)" aria-label="Количество" class="@(lineError is not null ? "invalid" : null)" />
                                             <FieldError Message="@lineError" />
                                         </td>
                                         <td class="row-actions">
-                                            <button class="btn btn-sm" type="button" @onclick="() => cart.Remove(c)" aria-label="Убрать">✕</button>
+                                            <button class="btn btn-sm" type="button" @onclick="() => RemoveAsync(c)" aria-label="Убрать"><Icon Name="close" Size="16" /></button>
                                         </td>
                                     </tr>
                                 }
@@ -122,6 +128,11 @@ else
                 <div class="actions">
                     <button class="btn btn-primary" type="submit" disabled="@(saving || cart.Count == 0 || cart.Any(c => LineError(c) is not null))">Отправить кладовщику</button>
                     <a class="btn" href="/requests">Отмена</a>
+                    @if (cart.Count > 0)
+                    {
+                        <span class="spacer"></span>
+                        <button class="btn btn-link" type="button" @onclick="ClearAsync">Очистить</button>
+                    }
                 </div>
             </form>
         </section>
@@ -145,6 +156,7 @@ else
     private sealed record Found(int ItemId, string Sku, string Name, string UnitCode, decimal Total, decimal OffBook);
 
     private bool loaded;
+    private bool restoring = true;
     private bool saving;
     private bool canIssue;
     private string? error;
@@ -205,23 +217,81 @@ else
         }
     }
 
-    private void Add(Found f)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        await Draft.LoadAsync();
+        await RestoreAsync();
+        restoring = false;
+        StateHasChanged();
+    }
+
+    /// <summary>Черновик из «Остатков» и «Номенклатуры»: подтянуть наименования и сколько на складе.</summary>
+    private async Task RestoreAsync()
+    {
+        foreach (var line in Draft.Lines.ToList())
+        {
+            if (cart.Any(c => c.ItemId == line.ItemId))
+                continue;
+            try
+            {
+                var item = await Api.GetItemAsync(line.ItemId);
+                var onHand = (await Api.GetBalancesAsync(line.ItemId)).Sum(b => b.Quantity);
+                cart.Add(new CartLine
+                {
+                    ItemId = item.Id, Sku = item.Sku, Name = item.Name, UnitCode = item.UnitCode, OnHand = onHand,
+                    Fractional = fractionalByUnit.GetValueOrDefault(item.UnitCode),
+                    Quantity = line.Quantity
+                });
+            }
+            catch (ApiException)
+            {
+                await Draft.RemoveAsync(line.ItemId);   // позицию удалили — из черновика тоже
+            }
+            catch (HttpRequestException ex)
+            {
+                error = ex.Message;
+                return;
+            }
+        }
+    }
+
+    private async Task Add(Found f)
     {
         if (cart.Any(c => c.ItemId == f.ItemId))
             return;
-        cart.Add(new CartLine
+        var line = new CartLine
         {
             ItemId = f.ItemId, Sku = f.Sku, Name = f.Name, UnitCode = f.UnitCode, OnHand = f.Total,
             Fractional = fractionalByUnit.GetValueOrDefault(f.UnitCode),
             Quantity = Math.Min(1, f.Total)
-        });
+        };
+        cart.Add(line);
+        await Draft.AddAsync(line.ItemId, line.Quantity);
     }
 
-    private static void SetQty(CartLine line, object? value)
+    private async Task SetQtyAsync(CartLine line, object? value)
     {
         var text = value?.ToString()?.Replace(',', '.');
         if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var q))
+        {
             line.Quantity = q;
+            if (q > 0)
+                await Draft.SetQuantityAsync(line.ItemId, q);
+        }
+    }
+
+    private async Task RemoveAsync(CartLine line)
+    {
+        cart.Remove(line);
+        await Draft.RemoveAsync(line.ItemId);
+    }
+
+    private async Task ClearAsync()
+    {
+        cart.Clear();
+        await Draft.ClearAsync();
     }
 
     private static string? LineError(CartLine c) =>
@@ -241,6 +311,7 @@ else
             var created = await Api.CreateIssueRequestAsync(new CreateIssueRequestRequest(
                 canIssue ? employeeId : null, comment,
                 cart.Select(c => new IssueRequestLineRequest(c.ItemId, c.Quantity)).ToList()));
+            await Draft.ClearAsync();
             Nav.NavigateTo($"/requests/{created.Id}");
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

@@ -66,6 +66,15 @@ public static class Ui
     /// <summary>Количество без лишних нулей: 12, 4,5, 0,125.</summary>
     public static string Qty(decimal value) => value.ToString("#,0.###", Ru);
 
+    /// <summary>Число и форма слова: 1 позиция, 3 позиции, 5 позиций.</summary>
+    public static string Plural(int n, string one, string few, string many)
+    {
+        var n100 = n % 100;
+        var n10 = n % 10;
+        if (n100 is >= 11 and <= 14) return many;
+        return n10 switch { 1 => one, >= 2 and <= 4 => few, _ => many };
+    }
+
     /// <summary>Сумма: 1 234,50.</summary>
     public static string Money(decimal value) => value.ToString("#,0.00", Ru);
 

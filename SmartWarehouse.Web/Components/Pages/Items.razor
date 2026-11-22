@@ -6,7 +6,7 @@
 <div class="page-head">
     <h1>Номенклатура</h1>
     <span class="spacer"></span>
-<AuthorizeView Roles="@AppRoles.Warehouse"><a class="btn btn-primary" href="/items/new">+ Новая позиция</a></AuthorizeView>
+<AuthorizeView Roles="@AppRoles.Warehouse"><a class="btn btn-primary" href="/items/new"><Icon Name="plus" Size="18" /> Новая позиция</a></AuthorizeView>
 </div>
 
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
@@ -46,6 +46,7 @@ else
                     <th>Ед.</th>
                     <th class="num">Мин.</th>
                     <th class="num">Макс.</th>
+                    <th class="col-request"></th>
                 </tr>
             </thead>
             <tbody>
@@ -74,6 +75,12 @@ else
                         <td>@item.UnitCode</td>
                         <td class="num">@Ui.Qty(item.MinStock)</td>
                         <td class="num">@(item.MaxStock is { } max ? Ui.Qty(max) : "")</td>
+                        <td class="col-request">
+                            @if (item.IsActive)
+                            {
+                                <RequestAddButton ItemId="item.Id" />
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>

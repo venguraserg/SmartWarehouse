@@ -109,7 +109,7 @@ else
                             <td><input type="text" @bind="m.Position" maxlength="150" aria-label="Должность" /></td>
                             <td><input type="text" @bind="m.Name" maxlength="150" aria-label="ФИО" /></td>
                             <td class="row-actions">
-                                <button class="btn btn-sm" type="button" title="Убрать" @onclick="() => act.Members.Remove(m)">✕</button>
+                                <button class="btn btn-sm" type="button" title="Убрать" @onclick="() => act.Members.Remove(m)" aria-label="Убрать"><Icon Name="close" Size="16" /></button>
                             </td>
                         </tr>
                     }
@@ -120,7 +120,7 @@ else
                 <div class="empty">Никого — только пустые строки для подписи.</div>
             }
         </div>
-        <button class="btn btn-sm" type="button" disabled="@(act.Members.Count >= MaxMembers)" @onclick="() => act.Members.Add(new MemberModel())">+ Член комиссии</button>
+        <button class="btn btn-sm" type="button" disabled="@(act.Members.Count >= MaxMembers)" @onclick="() => act.Members.Add(new MemberModel())"><Icon Name="plus" Size="16" /> Член комиссии</button>
 
         <div class="field" style="margin-top: .75rem; max-width: 260px">
             <label for="blank">Пустых строк для членов комиссии</label>
