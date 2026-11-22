@@ -26,7 +26,7 @@
             <span class="spacer"></span>
             <button type="button" class="btn btn-sm" @onclick="ExpandAll">Раскрыть всё</button>
             <button type="button" class="btn btn-sm" @onclick="() => expanded.Clear()">Свернуть</button>
-            <button type="button" class="btn btn-sm" @onclick="Close" aria-label="Закрыть">✕</button>
+            <button type="button" class="btn btn-sm" @onclick="Close" aria-label="Закрыть"><Icon Name="close" Size="18" /></button>
         </div>
         <input type="search" class="place-picker-search" placeholder="@SearchPlaceholder" @ref="searchRef"
                @bind="filter" @bind:event="oninput" @bind:after="OnFilterChanged" aria-label="Поиск" />

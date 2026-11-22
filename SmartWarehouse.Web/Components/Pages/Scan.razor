@@ -26,11 +26,11 @@
         @if (isNativeApp)
         {
             @* В приложении для Android камера — своя (работает и по http). *@
-            <button class="btn btn-primary btn-big" type="button" onclick="swApp.scan()">📷 Сканировать камерой</button>
+            <button class="btn btn-primary btn-big" type="button" onclick="swApp.scan()"><Icon Name="camera" Size="22" /> Сканировать камерой</button>
         }
         else if (!insecure)
         {
-            <button class="btn btn-primary btn-big" type="button" @onclick="StartCameraAsync" disabled="@busy">📷 Сканировать камерой</button>
+            <button class="btn btn-primary btn-big" type="button" @onclick="StartCameraAsync" disabled="@busy"><Icon Name="camera" Size="22" /> Сканировать камерой</button>
         }
     }
 

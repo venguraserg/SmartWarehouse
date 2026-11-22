@@ -643,3 +643,46 @@ html[data-theme="sage"] {
     .kpi-value { font-size: 1.4rem; }
     .qa { min-height: 56px; padding: .55rem .7rem; font-size: .9375rem; }
 }
+
+/* ===== Значки в меню и на кнопках — один набор (Icon), цвет от текста ===== */
+.nav a .icon { opacity: .8; }
+.nav a.active .icon, .nav a:hover .icon { opacity: 1; }
+.link-button, .back-link { display: inline-flex; align-items: center; gap: .4rem; }
+.warn-text .icon, .scan-hint .icon, .field-hint .icon { vertical-align: -.25em; }
+.dismiss .icon { vertical-align: middle; }
+
+/* ===== Черновик запроса на выдачу: «В запрос» в списках и плашка «Оформить» ===== */
+th.col-request, td.col-request { width: 1%; white-space: nowrap; text-align: right; }
+.btn-in-request { color: var(--ok-text); border-color: var(--ok-text); background: var(--ok-weak); }
+.btn-in-request:hover { color: var(--ok-text); background: var(--ok-weak); }
+.btn-page { min-height: 40px; padding: .45rem 1rem; font-size: .9375rem; }
+.cart-bar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 1.25rem; z-index: 940;
+    display: flex; align-items: center; gap: .6rem; padding: .45rem .5rem .45rem .9rem;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 999px;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .18); white-space: nowrap; max-width: calc(100vw - 2rem);
+}
+.cart-bar > .icon { color: var(--brand-primary); }
+.cart-bar .btn { border-radius: 999px; }
+.cart-bar-clear { padding: .3rem .5rem; }
+/* Карточка-ссылка с кнопкой внутри: ссылка растянута на всю карточку, кнопка — поверх неё */
+.card-linked { position: relative; }
+.card-linked .card-link { color: inherit; }
+.card-linked .card-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.card-linked .card-link:hover { text-decoration: none; }
+.card-action { position: relative; z-index: 1; margin-left: auto; }
+
+/* ===== Дерево оборудования ===== */
+.tree-name { overflow-wrap: anywhere; }
+.tree-node.found { background: var(--warn-weak); }
+.tree-node.found.selected { background: var(--brand-light); }
+.breadcrumbs { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; font-size: .875rem; }
+.link-plain { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.link-plain:hover { text-decoration: underline; }
+button.chip { cursor: pointer; font: inherit; font-size: .8125rem; }
+button.chip:hover { border-color: var(--border-strong); }
+
+@media (max-width: 760px) {
+    .cart-bar { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    .card-action { min-height: 40px; }
+}

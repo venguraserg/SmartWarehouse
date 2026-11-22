@@ -17,7 +17,7 @@
         </a>
         <span class="spacer"></span>
         <button class="menu-toggle" type="button" @onclick="() => menuOpen = !menuOpen"
-                aria-label="Меню" aria-expanded="@(menuOpen ? "true" : "false")">@(menuOpen ? "✕" : "☰")</button>
+                aria-label="Меню" aria-expanded="@(menuOpen ? "true" : "false")"><Icon Name="@(menuOpen ? "close" : "more")" Size="22" /></button>
     </header>
 
     <div class="app-body">
@@ -26,81 +26,82 @@
             <AuthorizeView>
                 <Authorized>
                     <NavLink href="/scan" class="nav-scan"><Icon Name="scan" Size="18" /> Сканировать</NavLink>
-                    <NavLink href="/" Match="NavLinkMatch.All">Обзор</NavLink>
+                    <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" Size="18" /> Обзор</NavLink>
 
                     <div class="nav-group">Учёт</div>
-                    <NavLink href="/stock">Остатки</NavLink>
+                    <NavLink href="/stock"><Icon Name="box" Size="18" /> Остатки</NavLink>
                     <NavLink href="/requests">
-                        Запросы на выдачу
+                        <Icon Name="inbox" Size="18" /> Запросы на выдачу
                         @if (openRequests > 0)
                         {
                             <span class="nav-badge" title="Ждут выдачи">@openRequests</span>
                         }
                     </NavLink>
-                    <NavLink href="/custody">Подотчёт</NavLink>
+                    <NavLink href="/custody"><Icon Name="custody" Size="18" /> Подотчёт</NavLink>
                     <NavLink href="/reports">
-                        Отчёты об использовании
+                        <Icon Name="report" Size="18" /> Отчёты об использовании
                         @if (reportsToConfirm > 0)
                         {
                             <span class="nav-badge" title="Ждут подтверждения кладовщиком">@reportsToConfirm</span>
                         }
                     </NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="summary">
-                        <NavLink href="/summary-acts">Сводные акты</NavLink>
+                        <NavLink href="/summary-acts"><Icon Name="summary" Size="18" /> Сводные акты</NavLink>
                     </AuthorizeView>
                     <NavLink href="/acts">
-                        Акты на списание
+                        <Icon Name="act" Size="18" /> Акты на списание
                         @if (actsToApprove > 0)
                         {
                             <span class="nav-badge" title="Ждут вашего утверждения">@actsToApprove</span>
                         }
                     </NavLink>
-                    <NavLink href="/documents">Документы</NavLink>
+                    <NavLink href="/documents"><Icon Name="docs" Size="18" /> Документы</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/receiving">⇩ Приёмка по накладной</NavLink>
-                        <NavLink href="/documents/new/Receipt">+ Приход вручную</NavLink>
+                        <NavLink href="/receiving"><Icon Name="receive" Size="18" /> Приёмка по накладной</NavLink>
+                        <NavLink href="/documents/new/Receipt"><Icon Name="plus" Size="18" /> Приход вручную</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@AppRoles.Issuing" Context="issuing">
-                        <NavLink href="/documents/new/Issue">− Выдача сотруднику</NavLink>
-                        <NavLink href="/documents/new/Return">↩ Возврат</NavLink>
+                        <NavLink href="/documents/new/Issue"><Icon Name="issue" Size="18" /> Выдача сотруднику</NavLink>
+                        <NavLink href="/documents/new/Return"><Icon Name="return" Size="18" /> Возврат</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/documents/new/Transfer">⇄ Перемещение</NavLink>
+                        <NavLink href="/documents/new/Transfer"><Icon Name="transfer" Size="18" /> Перемещение</NavLink>
                     </AuthorizeView>
 
                     <div class="nav-group">Данные</div>
-                    <NavLink href="/items">Номенклатура</NavLink>
+                    <NavLink href="/items"><Icon Name="tag" Size="18" /> Номенклатура</NavLink>
+                    <NavLink href="/equipment"><Icon Name="equipment" Size="18" /> Оборудование</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/warehouses">Склады и места</NavLink>
+                        <NavLink href="/warehouses"><Icon Name="shelves" Size="18" /> Склады и места</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@($"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")" Context="staff">
-                        <NavLink href="/employees">Сотрудники</NavLink>
+                        <NavLink href="/employees"><Icon Name="users" Size="18" /> Сотрудники</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/references">Справочники</NavLink>
-                        <NavLink href="/labels">Наклейки QR</NavLink>
-                        <NavLink href="/reconcile">Сверка с 1С</NavLink>
+                        <NavLink href="/references"><Icon Name="book" Size="18" /> Справочники</NavLink>
+                        <NavLink href="/labels"><Icon Name="qr" Size="18" /> Наклейки QR</NavLink>
+                        <NavLink href="/reconcile"><Icon Name="sync" Size="18" /> Сверка с 1С</NavLink>
                     </AuthorizeView>
 
                     <AuthorizeView Roles="@AppRoles.Admin" Context="admin">
                         <div class="nav-group">Администрирование</div>
-                        <NavLink href="/admin/users">Пользователи</NavLink>
-                        <NavLink href="/admin/import">Импорт остатков</NavLink>
-                        <NavLink href="/admin/settings">Настройки</NavLink>
+                        <NavLink href="/admin/users"><Icon Name="user" Size="18" /> Пользователи</NavLink>
+                        <NavLink href="/admin/import"><Icon Name="upload" Size="18" /> Импорт остатков</NavLink>
+                        <NavLink href="/admin/settings"><Icon Name="settings" Size="18" /> Настройки</NavLink>
                     </AuthorizeView>
 
                     <div class="nav-user">
                         <div class="nav-user-name">@context.User.DisplayNameOf()</div>
                         <div class="nav-user-actions">
-                            <a href="/appearance">Оформление</a>
-                            <a href="/account/password">Сменить пароль</a>
+                            <a href="/appearance"><Icon Name="palette" Size="16" /> Оформление</a>
+                            <a href="/account/password"><Icon Name="key" Size="16" /> Сменить пароль</a>
                             @if (isNativeApp)
                             {
-                                <button type="button" class="link-button" onclick="swApp.openSettings()">Настройки приложения</button>
+                                <button type="button" class="link-button" onclick="swApp.openSettings()"><Icon Name="phone" Size="16" /> Настройки приложения</button>
                             }
                             <form action="/account/logout" method="post">
                                 <AntiforgeryToken />
-                                <button type="submit" class="link-button">Выйти</button>
+                                <button type="submit" class="link-button"><Icon Name="logout" Size="16" /> Выйти</button>
                             </form>
                         </div>
                     </div>
@@ -113,6 +114,10 @@
         @Body
     </main>
     </div>
+
+    <AuthorizeView>
+        <RequestCartBar />
+    </AuthorizeView>
 
     @* Телефон и ТСД: нижняя панель — главные разделы под большой палец, «Ещё» открывает всё меню *@
     <AuthorizeView>
@@ -168,7 +173,7 @@
 
 <div id="blazor-error-ui" data-nosnippet>
     Произошла ошибка. <a href="." class="reload">Обновить страницу</a>
-    <span class="dismiss">✕</span>
+    <span class="dismiss" aria-label="Закрыть"><Icon Name="close" Size="16" /></span>
 </div>
 
 @code {

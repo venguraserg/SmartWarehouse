@@ -75,6 +75,10 @@ public static class AuthClaims
     public static bool SeesPrices(this ClaimsPrincipal user) =>
         user.IsInRole(AppRoles.Manager) || user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin);
 
+    /// <summary>Может запросить со склада: сотрудник (на себя) или тот, кто выдаёт (со слов сотрудника).</summary>
+    public static bool CanRequestIssue(this ClaimsPrincipal user) =>
+        user.EmployeeIdOf() is not null || user.IsWarehouseStaff() || user.IsInRole(AppRoles.ShiftLead);
+
     public static bool IsWarehouseStaff(this ClaimsPrincipal user) =>
         user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin);
 }

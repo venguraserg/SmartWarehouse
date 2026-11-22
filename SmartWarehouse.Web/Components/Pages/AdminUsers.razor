@@ -7,7 +7,7 @@
 <div class="page-head">
     <h1>Пользователи</h1>
     <span class="spacer"></span>
-    <button class="btn btn-primary" type="button" @onclick="StartCreate">+ Пользователь</button>
+    <button class="btn btn-primary" type="button" @onclick="StartCreate"><Icon Name="plus" Size="18" /> Пользователь</button>
 </div>
 
 <Alert Error="@error" Success="@success" />
@@ -71,7 +71,7 @@
                 <div class="input-with-btn">
                     <input id="u-pass" type="text" @bind="form.Password" @bind:event="oninput" maxlength="64" autocomplete="off"
                            class="@(PasswordError is not null ? "invalid" : null)" />
-                    <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => form.Password = GeneratePassword()">↻</button>
+                    <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => form.Password = GeneratePassword()" aria-label="Придумать пароль"><Icon Name="refresh" Size="16" /></button>
                 </div>
                 <FieldError Message="@PasswordError" />
                 <div class="field-hint">Передайте его пользователю — при первом входе он сменит пароль на свой.</div>
@@ -99,7 +99,7 @@
             <label for="reset-pass">Новый временный пароль</label>
             <div class="input-with-btn">
                 <input id="reset-pass" type="text" @bind="resetPassword" @bind:event="oninput" maxlength="64" autocomplete="off" />
-                <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => resetPassword = GeneratePassword()">↻</button>
+                <button class="btn btn-sm" type="button" title="Придумать" @onclick="() => resetPassword = GeneratePassword()" aria-label="Придумать пароль"><Icon Name="refresh" Size="16" /></button>
             </div>
             <div class="field-hint">При входе пользователь должен будет сменить его на свой.</div>
         </div>

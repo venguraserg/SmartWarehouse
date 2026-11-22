@@ -66,7 +66,7 @@
                     </div>
                     @if (!string.Equals(warehouseForm.Code, warehouse.Code, StringComparison.OrdinalIgnoreCase))
                     {
-                        <p class="warn-text">⚠ Изменятся коды всех мест склада — их QR-наклейки нужно будет перепечатать.</p>
+                        <p class="warn-text"><Icon Name="alert" Size="16" /> Изменятся коды всех мест склада — их QR-наклейки нужно будет перепечатать.</p>
                     }
                     <div class="actions">
                         <button class="btn btn-primary" type="button" disabled="@(busy || string.IsNullOrEmpty(warehouseForm.Code) || string.IsNullOrWhiteSpace(warehouseForm.Name))" @onclick="SaveWarehouseAsync">Сохранить</button>
@@ -116,8 +116,8 @@
                         <form class="tree-find" @onsubmit="FindAsync" @onsubmit:preventDefault>
                             <input type="search" @bind="findText" placeholder="Найти место: 2-A5-1 или описание" aria-label="Найти место" />
                             <button class="btn btn-sm" type="submit" disabled="@string.IsNullOrWhiteSpace(findText)">Найти</button>
-                            <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всё">+ всё</button>
-                            <button class="btn btn-sm" type="button" @onclick="() => expanded.Clear()" title="Свернуть всё">− всё</button>
+                            <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всё"><Icon Name="expand" Size="16" /> всё</button>
+                            <button class="btn btn-sm" type="button" @onclick="() => expanded.Clear()" title="Свернуть всё"><Icon Name="collapse" Size="16" /> всё</button>
                         </form>
                         <ul class="tree">
                             @foreach (var node in tree)

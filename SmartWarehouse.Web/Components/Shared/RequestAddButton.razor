@@ -1,0 +1,56 @@
+@* «В запрос»: добавить позицию в черновик запроса на выдачу прямо из списка. Повторно — «В запросе» (снять). *@
+@implements IDisposable
+@inject RequestCart Cart
+
+@if (canRequest)
+{
+    @if (Cart.Contains(ItemId))
+    {
+        <button type="button" class="btn btn-sm btn-in-request @Class" title="Уже в запросе — нажмите, чтобы убрать"
+                @onclick="() => Cart.RemoveAsync(ItemId)" @onclick:stopPropagation="true" @onclick:preventDefault="true">
+            <Icon Name="check" Size="16" />@if (!Compact) { <span>В запросе</span> }
+        </button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-sm @Class" title="Добавить в запрос на выдачу" aria-label="В запрос на выдачу"
+                disabled="@(!ready)"
+                @onclick="() => Cart.AddAsync(ItemId)" @onclick:stopPropagation="true" @onclick:preventDefault="true">
+            <Icon Name="cart" Size="16" />@if (!Compact) { <span>В запрос</span> }
+        </button>
+    }
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter, EditorRequired] public int ItemId { get; set; }
+
+    /// <summary>Только значок — для узких строк.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    private bool canRequest;
+    private bool ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        canRequest = AuthState is not null && (await AuthState).User.CanRequestIssue();
+        Cart.Changed += OnChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && canRequest)
+        {
+            await Cart.LoadAsync();
+            ready = true;
+            StateHasChanged();
+        }
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Cart.Changed -= OnChanged;
+}

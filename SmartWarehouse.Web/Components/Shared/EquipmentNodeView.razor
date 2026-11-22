@@ -1,0 +1,49 @@
+@* Узел дерева оборудования (рекурсивный) — как дерево мест хранения: вложенное сворачивается «+/−». *@
+<li>
+    <div class="tree-row">
+        @if (Node.Children.Count > 0)
+        {
+            <button type="button" class="tree-toggle" @onclick="() => OnToggle.InvokeAsync(Node.Id)"
+                    title="@(IsOpen ? "Свернуть" : "Развернуть")" aria-expanded="@(IsOpen ? "true" : "false")"
+                    aria-label="@(IsOpen ? "Свернуть" : "Развернуть") @Node.Item.Code">@(IsOpen ? "−" : "+")</button>
+        }
+        else
+        {
+            <span class="tree-toggle-space"></span>
+        }
+        <button type="button" class="tree-node @(Node.Id == SelectedId ? "selected" : null) @(Highlight?.Contains(Node.Id) == true ? "found" : null)"
+                @onclick="() => OnSelect.InvokeAsync(Node)">
+            <span class="mono">@Node.Item.Code</span>
+            <span class="tree-name">@Node.Item.Name</span>
+            @if (Node.Children.Count > 0 && !IsOpen)
+            {
+                <span class="tree-count" title="Входит узлов">@Node.Children.Count</span>
+            }
+        </button>
+    </div>
+    @if (Node.Children.Count > 0 && IsOpen)
+    {
+        <ul>
+            @foreach (var child in Node.Children)
+            {
+                <EquipmentNodeView Node="child" SelectedId="SelectedId" OnSelect="OnSelect" Expanded="Expanded" OnToggle="OnToggle" Highlight="Highlight" />
+            }
+        </ul>
+    }
+</li>
+
+@code {
+    [Parameter, EditorRequired] public EquipmentNode Node { get; set; } = null!;
+    [Parameter] public int? SelectedId { get; set; }
+    [Parameter] public EventCallback<EquipmentNode> OnSelect { get; set; }
+
+    /// <summary>Развёрнутые узлы (Id) — общее состояние страницы.</summary>
+    [Parameter, EditorRequired] public ISet<int> Expanded { get; set; } = null!;
+
+    [Parameter] public EventCallback<int> OnToggle { get; set; }
+
+    /// <summary>Найденные поиском — подсвечиваются.</summary>
+    [Parameter] public IReadOnlySet<int>? Highlight { get; set; }
+
+    private bool IsOpen => Expanded.Contains(Node.Id);
+}

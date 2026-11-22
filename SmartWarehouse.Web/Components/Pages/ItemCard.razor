@@ -14,6 +14,10 @@
             <span class="tag tag-neutral">неактивна</span>
         }
         <span class="spacer"></span>
+        @if (item.IsActive && balances.Sum(b => b.Quantity) > 0)
+        {
+            <RequestAddButton ItemId="item.Id" Class="btn-page" />
+        }
         <AuthorizeView Roles="@AppRoles.Warehouse">
             <a class="btn" href="/labels.pdf?kind=Item&ids=@item.Id&layout=3x8" target="_blank" rel="noopener" title="Наклейка с QR-кодом позиции">Наклейка QR</a>
             <a class="btn" href="/items/@item.Id/edit">Изменить</a>

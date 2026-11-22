@@ -9,7 +9,7 @@
 <div class="page-head">
     <h1>@PageName</h1>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="@(IsSummary ? "/summary-acts/new" : IsReport ? "/reports/new" : "/acts/new")">@(IsSummary ? "+ Сводный акт" : IsReport ? "+ Новый отчёт" : "+ Новый акт")</a>
+    <a class="btn btn-primary" href="@(IsSummary ? "/summary-acts/new" : IsReport ? "/reports/new" : "/acts/new")"><Icon Name="plus" Size="18" /> @(IsSummary ? "Сводный акт" : IsReport ? "Новый отчёт" : "Новый акт")</a>
 </div>
 <p class="muted" style="margin-top: -.5rem">
     @if (IsSummary)

@@ -126,7 +126,7 @@ else
         </div>
 
         <h2>Что израсходовано</h2>
-        <p class="scan-hint">📷 Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству).</p>
+        <p class="scan-hint"><Icon Name="scan" Size="16" /> Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству).</p>
 
         @if (employeeId is null)
         {
@@ -216,7 +216,7 @@ else
                                     <input type="date" @bind="line.UsedOn" />
                                 </td>
                                 <td>
-                                    <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)">✕</button>
+                                    <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)" aria-label="Удалить строку"><Icon Name="close" Size="18" /></button>
                                 </td>
                             </tr>
                         }
@@ -225,7 +225,7 @@ else
             </div>
 
             <div class="actions" style="margin-top: .75rem">
-                <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+                <button class="btn" type="button" @onclick="AddLine"><Icon Name="plus" Size="18" /> Строка</button>
                 @if (custody.Count > 0)
                 {
                     <button class="btn" type="button" @onclick="FillAll">Заполнить всем свободным</button>

@@ -24,7 +24,7 @@
                     <div class="input-with-btn">
                         <input id="sku" type="text" @bind="form.Sku" @bind:event="oninput" maxlength="64" data-latin="upper"
                                class="@(SkuError is not null ? "invalid" : null)" autocomplete="off" spellcheck="false" />
-                        <button class="btn btn-sm" type="button" title="Подставить следующий свободный номер" @onclick="SuggestSkuAsync">↻</button>
+                        <button class="btn btn-sm" type="button" title="Подставить следующий свободный номер" @onclick="SuggestSkuAsync" aria-label="Следующий свободный номер"><Icon Name="refresh" Size="16" /></button>
                     </div>
                     <FieldError Message="@SkuError" />
                     <div class="field-hint">

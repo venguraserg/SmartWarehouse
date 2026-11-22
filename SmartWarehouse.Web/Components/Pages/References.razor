@@ -134,83 +134,10 @@
 
 <section class="panel ref-section">
     <h2 style="margin-top: 0">Оборудование</h2>
-    <p class="muted">Участки, установки и узлы — на них оформляется выдача запчастей.</p>
-    <form class="inline-form" @onsubmit="AddEquipmentAsync" @onsubmit:preventDefault>
-        <div class="field">
-            <label>Входит в</label>
-            <EquipmentPicker All="equipment" @bind-Value="equipmentParentId" @bind-Value:after="SuggestEquipmentCode" Title="Входит в"
-                             Placeholder="— верхний уровень (участок) —" ClearText="Верхний уровень (участок)" />
-        </div>
-        <div class="field" style="max-width: 160px">
-            <label for="eq-code">Код <span class="req">*</span></label>
-            <input id="eq-code" type="text" @bind="equipmentCode" @bind:event="oninput" maxlength="64"
-                   class="@(EquipmentCodeError is not null ? "invalid" : null)" />
-        </div>
-        <div class="field">
-            <label for="eq-name">Наименование <span class="req">*</span></label>
-            <input id="eq-name" type="text" @bind="equipmentName" @bind:event="oninput" maxlength="256" placeholder="Насос центробежный" />
-        </div>
-        <button class="btn btn-primary" type="submit" disabled="@(!EquipmentFormValid || busy)">Добавить</button>
-    </form>
-    <FieldError Message="@EquipmentCodeError" />
-
-    <div class="table-wrap" style="margin-top: 1rem">
-        <table>
-            <thead><tr><th>Код</th><th>Наименование</th><th></th></tr></thead>
-            <tbody>
-                @foreach (var e in equipmentTree)
-                {
-                    if (IsEditing("equipment", e.Item.Id))
-                    {
-                        <tr>
-                            <td colspan="3">
-                                <div class="inline-form">
-                                    <div class="field">
-                                        <label>Входит в</label>
-                                        <EquipmentPicker All="equipment" @bind-Value="editParentId" Title="Перенести в" Exclude="OnlyId(e.Item.Id)"
-                                                         Placeholder="— верхний уровень —" ClearText="Верхний уровень" />
-                                    </div>
-                                    <div class="field" style="max-width: 160px">
-                                        <label>Код</label>
-                                        <input type="text" @bind="editCode" maxlength="64" />
-                                    </div>
-                                    <div class="field">
-                                        <label>Наименование</label>
-                                        <input type="text" @bind="editName" maxlength="256" />
-                                    </div>
-                                    <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editCode) || string.IsNullOrWhiteSpace(editName))"
-                                            @onclick="() => SaveAsync(() => Api.UpdateEquipmentAsync(e.Item.Id, new UpdateEquipmentRequest(editParentId, editCode!, editName!)))">Сохранить</button>
-                                    <button class="btn btn-sm" type="button" @onclick="CancelEdit">Отмена</button>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        <tr>
-                            <td class="mono" style="@Indent(e.Depth)">@e.Item.Code</td>
-                            <td class="col-name">@e.Item.Name</td>
-                            <td class="row-actions">
-                                @if (isAdmin)
-                                {
-                                    <RowAdminActions Confirming="@IsConfirming("equipment", e.Item.Id)" Busy="busy"
-                                                     DeleteHint="Только если не указано в документах и актах и в него ничего не входит."
-                                                     OnEdit='() => StartEdit("equipment", e.Item.Id, e.Item.Name, e.Item.Code, parentId: e.Item.ParentId)'
-                                                     OnAskDelete='() => AskDelete("equipment", e.Item.Id)'
-                                                     OnCancelDelete="CancelEdit"
-                                                     OnDelete='() => DeleteAsync("equipment", e.Item.Id)' />
-                                }
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-        @if (equipmentTree.Count == 0)
-        {
-            <div class="empty">Оборудование не заведено.</div>
-        }
-    </div>
+    <p class="muted" style="margin-bottom: 0">
+        Участки, установки и узлы теперь ведутся деревом, как места хранения:
+        <a href="/equipment"><Icon Name="equipment" Size="16" /> открыть «Оборудование»</a>.
+    </p>
 </section>
 
 @code {
@@ -226,13 +153,12 @@
     private string? editName;
     private string? editCode;
     private bool editFractional;
-    private int? editParentId;
 
     private bool IsEditing(string kind, int id) => editKind == kind && editId == id && !confirming;
 
     private bool IsConfirming(string kind, int id) => editKind == kind && editId == id && confirming;
 
-    private void StartEdit(string kind, int id, string name, string? code = null, bool fractional = false, int? parentId = null)
+    private void StartEdit(string kind, int id, string name, string? code = null, bool fractional = false)
     {
         error = success = null;
         editKind = kind;
@@ -241,7 +167,6 @@
         editName = name;
         editCode = code;
         editFractional = fractional;
-        editParentId = parentId;
     }
 
     private void AskDelete(string kind, int id)
@@ -257,9 +182,6 @@
         editKind = null;
         confirming = false;
     }
-
-    /// <summary>Перенести оборудование нельзя в себя и в свои узлы — дерево выбора скрывает их.</summary>
-    private static HashSet<int> OnlyId(int id) => [id];
 
     private Task SaveAsync(Func<Task<ReferenceChangeResult>> save) => RunAsync(async () =>
     {
@@ -281,17 +203,12 @@
 
     private List<CategoryDto> categories = [];
     private List<UnitDto> units = [];
-    private List<EquipmentDto> equipment = [];
-    private List<(EquipmentDto Item, int Depth)> equipmentTree = [];
 
     private string? categoryName;
     private string? categoryPrefix;
     private string? unitCode;
     private string? unitName;
     private bool unitFractional;
-    private int? equipmentParentId;
-    private string? equipmentCode;
-    private string? equipmentName;
 
     private bool busy;
     private string? error;
@@ -314,13 +231,6 @@
     private bool UnitFormValid =>
         UnitCodeError is null && !string.IsNullOrWhiteSpace(unitCode) && !string.IsNullOrWhiteSpace(unitName);
 
-    private string? EquipmentCodeError =>
-        string.IsNullOrWhiteSpace(equipmentCode) ? "Укажите код оборудования."
-        : equipment.Any(e => string.Equals(e.Code, equipmentCode.Trim(), StringComparison.OrdinalIgnoreCase)) ? $"Код {equipmentCode.Trim()} уже занят."
-        : null;
-
-    private bool EquipmentFormValid => EquipmentCodeError is null && !string.IsNullOrWhiteSpace(equipmentName);
-
     // ---------- Загрузка ----------
 
     protected override async Task OnInitializedAsync()
@@ -330,30 +240,17 @@
         await LoadAsync();
     }
 
-    private static string Indent(int depth) =>
-        FormattableString.Invariant($"padding-left: {0.75 + depth * 1.25}rem");
-
     private async Task LoadAsync()
     {
         try
         {
             categories = await Api.GetCategoriesAsync();
             units = await Api.GetUnitsAsync();
-            equipment = await Api.GetEquipmentAsync();
-            equipmentTree = EquipmentTree.Flatten(equipment);
-            SuggestEquipmentCode();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
         }
-    }
-
-    /// <summary>Предзаполнение кода оборудования: «код родителя-01» или «УЧ-01» на верхнем уровне.</summary>
-    private void SuggestEquipmentCode()
-    {
-        var parentCode = equipment.FirstOrDefault(e => e.Id == equipmentParentId)?.Code;
-        equipmentCode = Codes.NextEquipmentCode(parentCode, equipment.Select(e => e.Code));
     }
 
     // ---------- Сохранение ----------
@@ -374,14 +271,6 @@
         success = $"Единица «{code}» добавлена.";
         unitCode = unitName = null;
         unitFractional = false;
-    });
-
-    private Task AddEquipmentAsync() => RunAsync(async () =>
-    {
-        var code = equipmentCode!.Trim();
-        await Api.CreateEquipmentAsync(new CreateEquipmentRequest(equipmentParentId, code, equipmentName!.Trim()));
-        success = $"Оборудование «{code}» добавлено.";
-        equipmentName = null;
     });
 
     private async Task RunAsync(Func<Task> action)

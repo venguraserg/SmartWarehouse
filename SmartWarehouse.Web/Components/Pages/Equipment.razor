@@ -1,0 +1,360 @@
+@page "/equipment"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<PageTitle>Оборудование — Склад ОЭТО</PageTitle>
+
+<h1>Оборудование</h1>
+<p class="muted" style="margin-top: -.5rem">Участки, установки и узлы — на них оформляются выдача и списание запчастей.</p>
+
+<Alert Error="@error" Success="@success" />
+
+@if (!loaded)
+{
+    if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="grid-2">
+        <div class="panel">
+            <div class="toolbar" style="margin-bottom: .5rem">
+                <h2 style="margin: 0">Дерево</h2>
+                <span class="muted">@all.Count @Ui.Plural(all.Count, "узел", "узла", "узлов")</span>
+                <span class="spacer"></span>
+                <button class="btn btn-sm" type="button" @onclick="() => Select(null)" disabled="@(selected is null)">Верхний уровень</button>
+            </div>
+            @if (roots.Count == 0)
+            {
+                <p class="muted">Оборудование не заведено.@(canAdd ? " Добавьте участок справа." : "")</p>
+            }
+            else
+            {
+                <form class="tree-find" @onsubmit="Find" @onsubmit:preventDefault>
+                    <input type="search" @bind="findText" @bind:event="oninput" placeholder="Найти: код или название" aria-label="Найти оборудование" />
+                    <button class="btn btn-sm" type="submit" disabled="@string.IsNullOrWhiteSpace(findText)">Найти</button>
+                    <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всё"><Icon Name="expand" Size="16" /> всё</button>
+                    <button class="btn btn-sm" type="button" @onclick="CollapseAll" title="Свернуть всё"><Icon Name="collapse" Size="16" /> всё</button>
+                </form>
+                @if (found is not null)
+                {
+                    <p class="muted" style="margin: 0 0 .5rem">
+                        @(found.Count == 0 ? "Ничего не найдено." : $"Найдено: {found.Count} — подсвечены в дереве.")
+                        <button class="btn btn-link btn-sm" type="button" @onclick="ClearFind">сбросить</button>
+                    </p>
+                }
+                <ul class="tree">
+                    @foreach (var node in roots)
+                    {
+                        <EquipmentNodeView Node="node" SelectedId="selected?.Id" OnSelect="Select" Expanded="expanded" OnToggle="Toggle" Highlight="found" />
+                    }
+                </ul>
+            }
+        </div>
+
+        <div>
+            @if (selected is not null)
+            {
+                <div class="panel">
+                    <nav class="breadcrumbs" aria-label="Где находится">
+                        @foreach (var step in selected.Path().SkipLast(1))
+                        {
+                            <button type="button" class="link-plain" @onclick="() => Select(step)">@step.Item.Name</button>
+                            <span class="muted">›</span>
+                        }
+                    </nav>
+                    <h2 style="margin: .2rem 0 0">@selected.Item.Name</h2>
+                    <p class="muted" style="margin-top: .2rem">
+                        <span class="mono">@selected.Item.Code</span>
+                        @if (selected.Children.Count > 0)
+                        {
+                            <span> · входит @selected.Children.Count @Ui.Plural(selected.Children.Count, "узел", "узла", "узлов")@(DescendantCount > selected.Children.Count ? $", всего вложенных {DescendantCount}" : "")</span>
+                        }
+                    </p>
+
+                    @if (selected.Children.Count > 0)
+                    {
+                        <div class="chips" style="margin-bottom: .5rem">
+                            @foreach (var child in selected.Children)
+                            {
+                                <button type="button" class="chip" @onclick="() => Select(child)"><span class="mono">@child.Item.Code</span> @child.Item.Name</button>
+                            }
+                        </div>
+                    }
+
+                    @if (isAdmin)
+                    {
+                        @if (editing)
+                        {
+                            <div class="admin-panel" style="margin-top: 1rem">
+                                <h3 style="margin-top: 0">Изменить <span class="tag tag-warn">администратор</span></h3>
+                                <div class="field">
+                                    <label>Входит в</label>
+                                    <EquipmentPicker All="all" @bind-Value="editParentId" Title="Перенести в" Exclude="OnlySelected"
+                                                     Placeholder="— верхний уровень (участок) —" ClearText="Верхний уровень" />
+                                </div>
+                                <div class="field-row">
+                                    <div class="field" style="max-width: 180px">
+                                        <label for="ed-code">Код</label>
+                                        <input id="ed-code" type="text" @bind="editCode" maxlength="64" />
+                                    </div>
+                                    <div class="field">
+                                        <label for="ed-name">Наименование</label>
+                                        <input id="ed-name" type="text" @bind="editName" maxlength="256" />
+                                    </div>
+                                </div>
+                                <div class="actions">
+                                    <button class="btn btn-primary" type="button" disabled="@(busy || string.IsNullOrWhiteSpace(editCode) || string.IsNullOrWhiteSpace(editName))" @onclick="SaveAsync">Сохранить</button>
+                                    <button class="btn" type="button" @onclick="() => editing = false">Отмена</button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="actions">
+                                <button class="btn btn-sm" type="button" @onclick="StartEdit"><Icon Name="settings" Size="16" /> Изменить</button>
+                                @if (confirmDelete)
+                                {
+                                    <span class="muted" style="font-size: .85rem">Только если не указано в документах и актах и в него ничего не входит.</span>
+                                    <button class="btn btn-danger btn-sm" type="button" disabled="@busy" @onclick="DeleteAsync">Да, удалить</button>
+                                    <button class="btn btn-sm" type="button" @onclick="() => confirmDelete = false">Нет</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-danger btn-sm" type="button" disabled="@(selected.Children.Count > 0)"
+                                            title="@(selected.Children.Count > 0 ? "Сначала удалите или перенесите вложенное" : "Удалить")"
+                                            @onclick="() => confirmDelete = true"><Icon Name="trash" Size="16" /> Удалить</button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            @if (canAdd)
+            {
+                <form class="panel" @onsubmit="AddAsync" @onsubmit:preventDefault>
+                    <h2 style="margin-top: 0">@(selected is null ? "Добавить участок" : $"Добавить внутрь «{selected.Item.Name}»")</h2>
+                    <div class="field-row">
+                        <div class="field" style="max-width: 180px">
+                            <label for="eq-code">Код <span class="req">*</span></label>
+                            <input id="eq-code" type="text" @bind="newCode" @bind:event="oninput" maxlength="64"
+                                   class="@(NewCodeError is not null ? "invalid" : null)" />
+                        </div>
+                        <div class="field">
+                            <label for="eq-name">Наименование <span class="req">*</span></label>
+                            <input id="eq-name" type="text" @bind="newName" @bind:event="oninput" maxlength="256"
+                                   placeholder="@(selected is null ? "Цех розлива" : "Насос центробежный")" />
+                        </div>
+                    </div>
+                    <FieldError Message="@NewCodeError" />
+                    <button class="btn btn-primary" type="submit" disabled="@(NewCodeError is not null || string.IsNullOrWhiteSpace(newName) || busy)">
+                        <Icon Name="plus" Size="18" /> Добавить
+                    </button>
+                    <div class="field-hint">Код подставлен следующий свободный: участок УЧ-01, внутри — «код участка-01».</div>
+                </form>
+            }
+            else if (selected is null)
+            {
+                <div class="panel muted">Выберите оборудование в дереве слева.</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool loaded;
+    private bool busy;
+    private bool canAdd;
+    private bool isAdmin;
+    private string? error;
+    private string? success;
+
+    private List<EquipmentDto> all = [];
+    private List<EquipmentNode> roots = [];
+    private Dictionary<int, EquipmentNode> byId = [];
+    private readonly HashSet<int> expanded = [];
+    private EquipmentNode? selected;
+
+    private string? findText;
+    private HashSet<int>? found;
+
+    private string? newCode;
+    private string? newName;
+
+    private bool editing;
+    private bool confirmDelete;
+    private int? editParentId;
+    private string? editCode;
+    private string? editName;
+
+    private int DescendantCount => selected?.Descendants().Count() ?? 0;
+
+    private IReadOnlySet<int> OnlySelected => selected is null ? new HashSet<int>() : new HashSet<int> { selected.Id };
+
+    private string? NewCodeError =>
+        string.IsNullOrWhiteSpace(newCode) ? "Укажите код."
+        : all.Any(e => string.Equals(e.Code, newCode.Trim(), StringComparison.OrdinalIgnoreCase)) ? $"Код {newCode.Trim()} уже занят."
+        : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            canAdd = user.IsWarehouseStaff();
+            isAdmin = user.IsInRole(AppRoles.Admin);
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync(int? selectId = null)
+    {
+        try
+        {
+            all = await Api.GetEquipmentAsync();
+            roots = EquipmentTree.Build(all);
+            byId = roots.SelectMany(r => r.Descendants().Prepend(r)).ToDictionary(n => n.Id);
+            selected = selectId is int id && byId.TryGetValue(id, out var node) ? node : null;
+            if (selected is not null)
+                Reveal(selected);
+            found = null;
+            SuggestCode();
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void Select(EquipmentNode? node)
+    {
+        selected = node;
+        editing = confirmDelete = false;
+        success = null;
+        if (node is not null)
+        {
+            Reveal(node);
+            if (node.Children.Count > 0)
+                expanded.Add(node.Id);
+        }
+        SuggestCode();
+    }
+
+    /// <summary>Раскрыть путь до узла, чтобы он был виден в дереве.</summary>
+    private void Reveal(EquipmentNode node)
+    {
+        for (var p = node.Parent; p is not null; p = p.Parent)
+            expanded.Add(p.Id);
+    }
+
+    private void Toggle(int id)
+    {
+        if (!expanded.Remove(id))
+            expanded.Add(id);
+    }
+
+    private void ExpandAll()
+    {
+        foreach (var n in byId.Values.Where(n => n.Children.Count > 0))
+            expanded.Add(n.Id);
+    }
+
+    private void CollapseAll() => expanded.Clear();
+
+    private void Find()
+    {
+        var text = findText?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            found = null;
+            return;
+        }
+        var matches = byId.Values
+            .Where(n => n.Item.Code.Contains(text, StringComparison.OrdinalIgnoreCase)
+                        || n.Item.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n.Item.Code, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        found = matches.Select(n => n.Id).ToHashSet();
+        foreach (var n in matches)
+            Reveal(n);
+        if (matches.Count == 1)
+            Select(matches[0]);
+    }
+
+    private void ClearFind()
+    {
+        findText = null;
+        found = null;
+    }
+
+    private void SuggestCode()
+    {
+        newCode = Codes.NextEquipmentCode(selected?.Item.Code, all.Select(e => e.Code));
+        newName = null;
+    }
+
+    private void StartEdit()
+    {
+        if (selected is null)
+            return;
+        editing = true;
+        confirmDelete = false;
+        editParentId = selected.Item.ParentId;
+        editCode = selected.Item.Code;
+        editName = selected.Item.Name;
+    }
+
+    private Task AddAsync() => RunAsync(async () =>
+    {
+        var code = newCode!.Trim();
+        var created = await Api.CreateEquipmentAsync(new CreateEquipmentRequest(selected?.Id, code, newName!.Trim()));
+        success = $"Добавлено: {code} — {created.Name}.";
+        if (selected is not null)
+            expanded.Add(selected.Id);
+        return selected?.Id;
+    });
+
+    private Task SaveAsync() => RunAsync(async () =>
+    {
+        var id = selected!.Id;
+        success = (await Api.UpdateEquipmentAsync(id, new UpdateEquipmentRequest(editParentId, editCode!.Trim(), editName!.Trim()))).Message;
+        editing = false;
+        return id;
+    });
+
+    private Task DeleteAsync() => RunAsync(async () =>
+    {
+        var parentId = selected!.Parent?.Id;
+        success = (await Api.DeleteReferenceAsync("equipment", selected.Id)).Message;
+        confirmDelete = false;
+        return parentId;
+    });
+
+    private async Task RunAsync(Func<Task<int?>> action)
+    {
+        error = null;
+        busy = true;
+        try
+        {
+            var selectId = await action();
+            var message = success;
+            await LoadAsync(selectId);
+            success = message;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+            success = null;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

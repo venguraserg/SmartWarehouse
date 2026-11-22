@@ -174,7 +174,7 @@ else
 
         <h2>Строки</h2>
         <p class="scan-hint">
-            📷 Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству),
+            <Icon Name="scan" Size="16" /> Ручной сканер: штрих-код или QR позиции — новая строка (повторно — +1 к количеству),
             QR ячейки — @ScanLocationHint.
         </p>
         @if (scanInfo is not null)
@@ -219,7 +219,7 @@ else
                         <label for="ni-sku">Артикул <span class="req">*</span></label>
                         <div class="input-with-btn">
                             <input id="ni-sku" type="text" @bind="newItem.Sku" @bind:event="oninput" maxlength="64" data-latin="upper" autocomplete="off" spellcheck="false" />
-                            <button class="btn btn-sm" type="button" title="Следующий свободный номер" @onclick="() => SuggestNewSkuAsync(force: true)">↻</button>
+                            <button class="btn btn-sm" type="button" title="Следующий свободный номер" @onclick="() => SuggestNewSkuAsync(force: true)" aria-label="Следующий свободный номер"><Icon Name="refresh" Size="16" /></button>
                         </div>
                     </div>
                     <div class="field">
@@ -307,7 +307,7 @@ else
                                     {
                                         @* Нет в номенклатуре — завести прямо здесь, приход не теряется. *@
                                         <button class="btn btn-sm" type="button" title="Новая позиция номенклатуры — завести прямо здесь"
-                                                @onclick="() => StartNewItemAsync(line, line.ItemText, null)">+ Новая</button>
+                                                @onclick="() => StartNewItemAsync(line, line.ItemText, null)"><Icon Name="plus" Size="16" /> Новая</button>
                                     }
                                 </div>
                                 @if (line.Item is not null)
@@ -321,7 +321,7 @@ else
                                         @if (CanCreateItems)
                                         {
                                             <span>или </span>
-                                            <button class="btn btn-sm" type="button" @onclick="() => StartNewItemAsync(line, line.ItemText, null)">+ создать новую</button>
+                                            <button class="btn btn-sm" type="button" @onclick="() => StartNewItemAsync(line, line.ItemText, null)"><Icon Name="plus" Size="16" /> создать новую</button>
                                         }
                                     </div>
                                 }
@@ -414,7 +414,7 @@ else
                                 }
                             </td>
                             <td>
-                                <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)">✕</button>
+                                <button class="btn btn-link" type="button" title="Удалить строку" @onclick="() => RemoveLine(line)" disabled="@(lines.Count == 1)" aria-label="Удалить строку"><Icon Name="close" Size="18" /></button>
                             </td>
                         </tr>
                     }
@@ -423,11 +423,11 @@ else
         </div>
 
         <div class="actions" style="margin-top: .75rem">
-            <button class="btn" type="button" @onclick="AddLine">+ Строка</button>
+            <button class="btn" type="button" @onclick="AddLine"><Icon Name="plus" Size="18" /> Строка</button>
             @if (CanCreateItems)
             {
                 <button class="btn" type="button" title="Позиции нет в номенклатуре — завести и сразу добавить в приход"
-                        @onclick="() => StartNewItemAsync(null, null, null)">+ Новая позиция</button>
+                        @onclick="() => StartNewItemAsync(null, null, null)"><Icon Name="plus" Size="18" /> Новая позиция</button>
             }
             @if (FromEmployee && custody.Count > 0)
             {
@@ -1274,7 +1274,7 @@ else
 
     private Task SuggestNewSkuAsync() => SuggestNewSkuAsync(force: false);
 
-    /// <summary>Свободный артикул по категории; введённый вручную не перезаписывается (кроме кнопки ↻).</summary>
+    /// <summary>Свободный артикул по категории; введённый вручную не перезаписывается (кроме кнопки «следующий номер»).</summary>
     private async Task SuggestNewSkuAsync(bool force)
     {
         if (newItem is null || (!force && !string.IsNullOrWhiteSpace(newItem.Sku) && newItem.Sku != newItemSuggestedSku))

@@ -123,6 +123,7 @@ else
                         {
                             <th class="num">Стоимость</th>
                         }
+                        <th class="col-request"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -130,7 +131,7 @@ else
                     {
                         var first = group.First();
                         <tr class="group-row">
-                            <td colspan="@(ShowValue ? 6 : 5)">
+                            <td colspan="@(ShowValue ? 7 : 6)">
                                 <a class="mono" href="@StockUrl(location: first.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(first.LocationCode)">@first.LocationCode</a>
                                 @if (!string.IsNullOrEmpty(first.LocationName))
                                 {
@@ -151,6 +152,7 @@ else
                                 {
                                     <td class="num">@Ui.Value(row.Value, row.ValueIncomplete)</td>
                                 }
+                                <td class="col-request"><RequestAddButton ItemId="row.ItemId" Compact="true" /></td>
                             </tr>
                         }
                     }
@@ -173,6 +175,7 @@ else
                             <th class="num">Стоимость</th>
                         }
                         <th>Где лежит</th>
+                        <th class="col-request"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -207,6 +210,7 @@ else
                                     }
                                 </div>
                             </td>
+                            <td class="col-request"><RequestAddButton ItemId="first.ItemId" /></td>
                         </tr>
                     }
                 </tbody>
@@ -224,9 +228,9 @@ else
                 var total = group.Sum(r => r.Quantity);
                 var totalOffBook = group.Sum(r => r.OffBookQuantity);
                 var low = first.MinStock > 0 && total < first.MinStock;
-                <a class="card @(totalOffBook >= total ? "row-offbook" : null)" href="/items/@first.ItemId">
+                <div class="card card-linked @(totalOffBook >= total ? "row-offbook" : null)">
                     <span class="card-top">
-                        <span class="card-title">@first.ItemName</span>
+                        <a class="card-title card-link" href="/items/@first.ItemId">@first.ItemName</a>
                         <span class="card-qty @(low ? "qty-warn" : null)">@Ui.Qty(total) @first.UnitCode</span>
                     </span>
                     <span class="card-bottom">
@@ -239,8 +243,9 @@ else
                         {
                             <span class="tag tag-warn">ниже минимума</span>
                         }
+                        <RequestAddButton ItemId="first.ItemId" Class="card-action" />
                     </span>
-                </a>
+                </div>
             }
         </div>
     }
@@ -364,13 +369,7 @@ else
         ["book"] = offBook switch { false => "1c", true => "off", null => null }
     });
 
-    private static string Plural(int n, string one, string few, string many)
-    {
-        var n100 = n % 100;
-        var n10 = n % 10;
-        if (n100 is >= 11 and <= 14) return many;
-        return n10 switch { 1 => one, >= 2 and <= 4 => few, _ => many };
-    }
+    private static string Plural(int n, string one, string few, string many) => Ui.Plural(n, one, few, many);
 
     // ---------- Выгрузка для Excel (CSV с разделителем «;», открывается двойным щелчком) ----------
 
