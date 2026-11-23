@@ -582,8 +582,9 @@ html[data-theme="sage"] {
 .qa-main:hover { background: var(--brand-hover); color: #fff; }
 
 /* ===== Карточки вместо таблиц на телефоне и ТСД ===== */
-.only-phone { display: none; }
 .cards { display: flex; flex-direction: column; gap: .5rem; }
+/* Только для телефона: на широком экране скрыто. Правило ниже .cards и сильнее его — иначе карточки видны везде. */
+.only-phone, .cards.only-phone { display: none; }
 .card {
     display: flex; flex-direction: column; gap: .5rem; padding: .8rem .9rem; color: var(--text);
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
