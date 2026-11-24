@@ -145,11 +145,6 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsMol")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(64)

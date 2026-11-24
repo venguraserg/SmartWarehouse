@@ -51,11 +51,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             throw new DomainException("Количество должно быть больше нуля.");
 
         var performer = await GetEmployeeAsync(performerId, "Кто проводит", requireActive: false, ct);
-        foreach (var molId in lines.Select(l => l.MolId).OfType<int>().Distinct())
-        {
-            _ = await GetEmployeeAsync(molId, "МОЛ", requireActive: false, ct);
-            await repo.MarkMolAsync(molId, ct);
-        }
+        var storekeepers = await repo.ListStorekeeperIdsAsync(ct);
+        foreach (var molId in lines.Select(l => l.MolId).Distinct())
+            await EnsureMolAsync(molId, storekeepers, ct);
 
         var now = clock.GetUtcNow();
         var locations = await repo.GetLocationsAsync(lines.Select(l => l.LocationId).Distinct(), ct);
@@ -65,7 +63,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             OccurredAt = now,
             PerformedById = performer?.Id,
             PerformedBy = performer?.ShortName ?? Clean(performedBy),
-            Comment = Clean(request.Comment) ?? "Смена МОЛ по сверке с 1С"
+            Comment = Clean(request.Comment) ?? "Смена МОЛ по сверке с 1С",
+            ExternalNumber = Clean(request.ExternalNumber)
         };
         var lineNo = 0;
 
@@ -229,11 +228,6 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (!locations.ContainsKey(locationId))
                     throw new NotFoundException($"Строка {n}: место хранения {locationId} не найдено.");
             }
-
-            // «Место не указано»: где лежит — неизвестно, выдавать нельзя, пока не найдут и не разместят на полку.
-            if (request.Type == MovementType.Issue && line.FromLocationId is int issueFrom && SpecialPlaces.IsUnknown(locations[issueFrom].FullCode))
-                throw new DomainException($"Строка {n} («{item.Name}»): место не указано — сначала найдите и разместите на полку " +
-                                          "(перемещение из «Место не указано»), потом выдавайте.");
         }
 
         // ---------- 4. Распределение по партиям и расчёт новых остатков (без изменения данных) ----------
@@ -301,13 +295,22 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         if (request.Type == MovementType.Issue && issueKind == CustodyKind.Official)
             throw new DomainException("Подотчёт по 1С больше не оформляется: выдача — только «в работу». За кем числится в 1С — пометка МОЛ партии.");
 
-        // МОЛ новых партий (ввод остатков других МОЛ); по умолчанию — основной МОЛ склада.
-        if (request.MolId is int newMolId)
+        // МОЛ новых учётных партий — кладовщик: указанный; иначе тот, кто проводит (если он кладовщик);
+        // иначе — единственный кладовщик. Пока кладовщиков с учётной записью нет — МОЛ не ставится.
+        if (request.MolId is not null && request.Type is not (MovementType.Receipt or MovementType.Adjustment))
+            throw new DomainException("МОЛ указывается только при поступлении.");
+        int? batchMolId = null;
+        if (!request.OffBook && request.Type is (MovementType.Receipt or MovementType.Adjustment)
+            && lines.Any(l => l.ToLocationId is not null && l.FromLocationId is null && l.BatchId is null))
         {
-            if (request.Type is not (MovementType.Receipt or MovementType.Adjustment))
-                throw new DomainException("МОЛ указывается только при поступлении.");
-            _ = await GetEmployeeAsync(newMolId, "МОЛ", requireActive: false, ct);
-            await repo.MarkMolAsync(newMolId, ct);
+            var storekeepers = await repo.ListStorekeeperIdsAsync(ct);
+            batchMolId = request.MolId
+                         ?? (performer is not null && storekeepers.Contains(performer.Id) ? performer.Id
+                             : storekeepers.Count == 1 ? storekeepers[0] : null);
+            if (batchMolId is int molId)
+                await EnsureMolAsync(molId, storekeepers, ct);
+            else if (storekeepers.Count > 1)
+                throw new DomainException("Укажите МОЛ — за каким кладовщиком числится поступление.");
         }
 
         var parts = new List<(DocumentLineRequest Line, int BatchKey, decimal Quantity, CustodyKind? Kind)>();
@@ -394,7 +397,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 newBatches[key] = new Batch
                 {
                     ItemId = line.ItemId, UnitPrice = price, ReceivedAt = line.BatchDate ?? now, Note = note,
-                    OffBook = request.OffBook, Origin = request.Origin, MolId = request.OffBook ? null : request.MolId
+                    OffBook = request.OffBook, Origin = request.Origin, MolId = batchMolId
                 };
                 taken.Add((key, line.Quantity));
             }
@@ -657,8 +660,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                     incomplete,
                     offBook.Sum(x => x.Quantity),
                     offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)),
-                    MolsOf(g.Select(x => x.Batch)),
-                    SpecialPlaces.IsUnknown(b.Location.FullCode));
+                    MolsOf(g.Select(x => x.Batch)));
             })
             .ToList();
 
@@ -691,7 +693,15 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             custodyEmployees, custodyItems);
     }
 
-    /// <summary>Пометки МОЛ партий (кроме основного): «Иванов И. П.»; null — всё за основным МОЛ.</summary>
+    /// <summary>МОЛ — только кладовщик склада (сотрудник с учётной записью и ролью «Кладовщик»).</summary>
+    private async Task EnsureMolAsync(int employeeId, IReadOnlyList<int> storekeepers, CancellationToken ct)
+    {
+        var employee = await GetEmployeeAsync(employeeId, "МОЛ", requireActive: false, ct);
+        if (!storekeepers.Contains(employeeId))
+            throw new DomainException($"МОЛ склада — только кладовщик: у {employee!.ShortName} нет учётной записи с ролью «Кладовщик».");
+    }
+
+    /// <summary>МОЛ партий: «Дорофей С. М.»; null — не указан.</summary>
     internal static IReadOnlyList<string>? MolsOf(IEnumerable<Batch?> batches)
     {
         var names = batches.Select(b => b?.Mol?.ShortName).OfType<string>().Distinct().OrderBy(n => n).ToList();

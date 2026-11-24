@@ -94,7 +94,7 @@ internal class FakeStockRepository : IStockRepository
             .Select(b =>
             {
                 b.Batch ??= BatchOf(b.BatchId)!;
-                b.Location ??= Locations.First(l => l.Id == b.LocationId);
+                b.Location ??= Locations.FirstOrDefault(l => l.Id == b.LocationId)!;
                 return b;
             })
             .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId)
@@ -104,24 +104,11 @@ internal class FakeStockRepository : IStockRepository
         Task.FromResult(Balances.Where(b => b.BatchId == batchId).Sum(b => b.Quantity)
                         + EmployeeBalances.Where(b => b.BatchId == batchId).Sum(b => b.Quantity));
 
-    public Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<EmployeeBalance>>(EmployeeBalances
-            .Where(b => b.Kind == CustodyKind.Official && b.Quantity > 0)
-            .Select(b =>
-            {
-                b.Employee ??= Employees.First(e => e.Id == b.EmployeeId);
-                b.Item ??= Items.First(i => i.Id == b.ItemId);
-                b.Batch ??= BatchOf(b.BatchId)!;
-                return b;
-            })
-            .ToList());
+    /// <summary>Кладовщики-МОЛ (сотрудники с учётной записью и ролью «Кладовщик»).</summary>
+    public List<int> Storekeepers { get; } = [];
 
-    public Task MarkMolAsync(int employeeId, CancellationToken ct = default)
-    {
-        if (Employees.FirstOrDefault(e => e.Id == employeeId) is { } employee)
-            employee.IsMol = true;
-        return Task.CompletedTask;
-    }
+    public Task<IReadOnlyList<int>> ListStorekeeperIdsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<int>>(Storekeepers.ToList());
 
     private Batch? BatchOf(int id) => Batches.FirstOrDefault(b => b.Id == id);
 
@@ -130,7 +117,7 @@ internal class FakeStockRepository : IStockRepository
     public List<ReceiptDiscrepancy> Discrepancies { get; } = [];
 
     public Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default) =>
-        Task.FromResult(Documents.Any(d => d.Type == MovementType.Receipt && d.ExternalNumber == externalNumber));
+        Task.FromResult(Documents.Any(d => d.Type is MovementType.Receipt or MovementType.MolChange && d.ExternalNumber == externalNumber));
 
     public Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<StockBalance>>(Balances
@@ -273,6 +260,8 @@ internal class FakeStockRepository : IStockRepository
         // Как EF: сначала новые партии получают номера, затем ссылки на них.
         foreach (var batch in _pendingBatches)
         {
+            // Номера — после уже заведённых в тесте партий.
+            _nextBatchId = Math.Max(_nextBatchId, Batches.Select(b => b.Id).DefaultIfEmpty(0).Max() + 1);
             batch.Id = _nextBatchId++;
             Batches.Add(batch);
         }

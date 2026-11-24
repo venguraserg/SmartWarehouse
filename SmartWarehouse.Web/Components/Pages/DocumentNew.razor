@@ -102,6 +102,19 @@ else
                             }
                         </div>
                     </div>
+                    @if (!offBook && mols.Count > 1)
+                    {
+                        <div class="field">
+                            <label for="mol">МОЛ (за кем числится в 1С)</label>
+                            <select id="mol" @bind="molId">
+                                <option value="">— кто проводит, если он кладовщик —</option>
+                                @foreach (var m in mols)
+                                {
+                                    <option value="@m.EmployeeId">@m.Name</option>
+                                }
+                            </select>
+                        </div>
+                    }
                 }
                 <div class="field">
                     <label for="ext">@ExternalLabel@(RequiresNumber ? " *" : "")</label>
@@ -562,6 +575,10 @@ else
 
     private bool offBook => bookKind == "off";
 
+    /// <summary>Кладовщики-МОЛ: выбор, за кем числится учётный приход (когда кладовщиков несколько).</summary>
+    private List<MolDto> mols = [];
+    private int? molId;
+
     /// <summary>Приход вне учёта: цена необязательна.</summary>
     private bool PriceOptional => type == MovementType.Receipt && offBook;
 
@@ -701,6 +718,7 @@ else
                 units = await Api.GetUnitsAsync();
                 fractionalByUnit = units.ToDictionary(u => u.Code, u => u.IsFractional, StringComparer.OrdinalIgnoreCase);
                 allEmployees = await Api.GetEmployeesAsync(includeInactive: true);
+                mols = await Api.GetMolsAsync();
                 activeEmployees = allEmployees.Where(e => e.IsActive).ToList();
                 custodyHolders = (await Api.GetCustodyAsync()).Select(r => r.EmployeeId).ToHashSet();
 
@@ -1002,7 +1020,8 @@ else
             PerformedById: performedById,
             ReceivedById: UsesAccountable ? accountableId : null,
             OffBook: PriceOptional,
-            IssueRequestId: type == MovementType.Issue ? issueRequest?.Id : null);
+            IssueRequestId: type == MovementType.Issue ? issueRequest?.Id : null,
+            MolId: type == MovementType.Receipt && !offBook ? molId : null);
 
         saving = true;
         try

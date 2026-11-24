@@ -328,8 +328,9 @@ public class WriteOffActServiceTests
     [Fact]
     public async Task Сводный_акт_делится_по_МОЛ_партий()
     {
-        await GiveAsync(Fitter, Bearing, 2);              // основной МОЛ
-        await GiveAsync(Fitter, Belt, 3, mol: Boss);      // числится за МОЛ Сидоровым
+        await GiveAsync(Fitter, Bearing, 2);              // МОЛ не указан (кладовщиков ещё не было)
+        _stock.Storekeepers.AddRange([Keeper, Boss]);
+        await GiveAsync(Fitter, Belt, 3, mol: Boss);      // числится за кладовщиком Сидоровым
         var report = await _service.CreateAsync(Request(Fitter, Line(1), Line(2, item: Belt)), AsKeeper);
         report = await _service.SubmitAsync(report.Id, AsKeeper);
 

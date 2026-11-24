@@ -220,6 +220,12 @@ internal class FakeUserRepository : IUserRepository
     public Task<int> CountActiveAdminsAsync(int? exceptUserId, CancellationToken ct = default) =>
         Task.FromResult(Users.Count(u => u.IsActive && u.Has(UserRole.Admin) && u.Id != exceptUserId));
 
+    /// <summary>Сколько партий числится за сотрудником как за МОЛ.</summary>
+    public Dictionary<int, int> MolStock { get; } = [];
+
+    public Task<int> CountMolStockAsync(int employeeId, CancellationToken ct = default) =>
+        Task.FromResult(MolStock.GetValueOrDefault(employeeId));
+
     public Task<Employee?> GetEmployeeAsync(int employeeId, CancellationToken ct = default) =>
         Task.FromResult(Employees.FirstOrDefault(e => e.Id == employeeId));
 

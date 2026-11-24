@@ -113,17 +113,16 @@ public class ActService(
         };
         var date = act.DecidedAt is { } decided && act.Status == ActStatus.Approved ? decided : act.SubmittedAt ?? act.UpdatedAt;
 
-        // Сводный акт: отдельный акт на каждого МОЛ (в 1С каждый списывает своё). Основной МОЛ — первым.
+        // Сводный акт: отдельный акт на каждого МОЛ-кладовщика (в 1С каждый списывает своё).
         var groups = act.Kind == ActKind.Summary
             ? ordered.GroupBy(l => l.MolId).OrderBy(g => g.Key is null ? 0 : 1).ThenBy(g => g.First().Mol).ToList()
             : ordered.GroupBy(_ => (int?)null).ToList();
-        var main = act.Kind == ActKind.Summary ? (await settings.GetMainMolAsync(ct)).EmployeeId : null;
 
         var pages = new List<WriteOffActData>();
         for (var n = 0; n < groups.Count; n++)
         {
             var group = groups[n];
-            var molId = group.Key ?? main ?? act.EmployeeId;
+            var molId = group.Key ?? act.EmployeeId;   // МОЛ не указан — кладовщик, составивший акт
             var mol = await employees.GetAsync(molId, ct);
             pages.Add(new WriteOffActData(
                 groups.Count > 1 ? $"{act.Number}/{n + 1}" : act.Number,

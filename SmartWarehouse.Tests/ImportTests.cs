@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
@@ -31,22 +31,17 @@ public class ImportTests
         Assert.Null(OpeningImportService.ParseAddress(address));
 
     [Fact]
-    public void План_мест_товар_на_полке_с_ячейками_и_типы()
+    public void Уровни_адреса_этаж_стеллаж_полка_ячейка()
     {
-        var plan = OpeningImportService.PlanLocations([["2B", "3"], ["2B", "3", "1"], ["C5", "2"], ["2A", "1", "1", "3"]]);
-
-        // «2B.3» имеет вложенное «2B.3.1» — товар «2B.3» кладётся в «2B.3.0».
-        Assert.Equal(["2B", "3", "0"], plan.Targets["2B.3"]);
-        Assert.Equal(["2B", "3", "1"], plan.Targets["2B.3.1"]);
-        Assert.Contains("2B.3.0", plan.Loose);
-
-        Assert.Equal(LocationType.Cell, plan.Types["2B.3.1"]);
-        Assert.Equal(LocationType.Shelf, plan.Types["2B.3"]);
-        Assert.Equal(LocationType.Rack, plan.Types["2B"]);
-        Assert.Equal(LocationType.Cell, plan.Types["C5.2"]);
-        Assert.Equal(LocationType.Shelf, plan.Types["C5"]);
-        Assert.Equal(LocationType.Zone, plan.Types["2A"]);
-        Assert.Equal(LocationType.Cell, plan.Types["2A.1.1.3"]);
+        Assert.Equal([LocationType.Zone, LocationType.Rack, LocationType.Shelf, LocationType.Cell],
+            Enumerable.Range(1, 4).Select(OpeningImportService.TypeOf));
+        Assert.Equal(["1-й этаж", "2-й этаж", "У ворот", "Стеллаж A1", "Полка 0", "Ячейка 2"],
+        [
+            OpeningImportService.PlaceName(LocationType.Zone, "1"), OpeningImportService.PlaceName(LocationType.Zone, "2"),
+            OpeningImportService.PlaceName(LocationType.Zone, "V"), OpeningImportService.PlaceName(LocationType.Rack, "A1"),
+            OpeningImportService.PlaceName(LocationType.Shelf, "0"), OpeningImportService.PlaceName(LocationType.Cell, "2")
+        ]);
+        Assert.Equal(["2", "B1", "2"], OpeningImportService.ParseAddress("2.b1.2")!);   // на полке, ящиков нет
     }
 
     // ---------- МОЛ ↔ сотрудник ----------
@@ -166,9 +161,12 @@ public class ImportTests
         var locationRepo = new FakeLocationRepository();
         locationRepo.Warehouses.Add(new Warehouse { Id = 1, Code = "WH1", Name = "Склад" });
         var employeeRepo = new FakeEmployeeRepository();
+        employeeRepo.Employees.Add(new Employee { Id = 5, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна" });
+        employeeRepo.Employees.Add(new Employee { Id = 6, LastName = "Иванов", FirstName = "Игорь", MiddleName = "Геннадьевич" });
         var service = new OpeningImportService(
             new CatalogService(catalogRepo, new FixedTimeProvider(Now)), new LocationService(locationRepo),
-            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)), new StubMolService());
+            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)),
+            new StubMolService(new MolDto(5, "Дорофей С. М.")));   // кладовщик — только Дорофей
 
         OpeningRow Row(int line, string code, decimal qty, decimal value, string? address, bool custody = false, string unit = "шт", string? mol = null,
                        bool offBook = false) =>
@@ -176,28 +174,29 @@ public class ImportTests
 
         var file = new OpeningFile(
         [
-            Row(2, "60603", 2, 100, "C3.1.4"),
-            Row(3, "60604", 1, 10, "C3.1"),             // у C3.1 есть ячейка C3.1.4 — товар в C3.1.0
-            Row(4, "60605", 1.5m, 15, "C3.1.4"),        // дробное в штуках
-            Row(5, "60606", 3, 30, "шкаф свар"),         // адрес не по схеме — в «Сортировку»
-            Row(6, "76242", 7, 13916, null, custody: true, mol: "Рудаков М.А."),
-            Row(7, "60607", 10, 5, "C3.2", unit: "м"),   // новая единица (дробная)
-            Row(8, "NU-00001", 1, 0, "C3.2", offBook: true), // вне учёта, без стоимости
+            Row(2, "60603", 2, 100, "1.C3.1.4", mol: "Дорофей С.М."),
+            Row(3, "60604", 1, 10, "1.C3.1"),             // на полке C3.1 (в ней есть и ячейка) — МОЛ единственный кладовщик
+            Row(4, "60605", 1.5m, 15, "1.C3.1.4"),        // дробное в штуках
+            Row(5, "60606", 3, 30, "шкаф свар"),           // адрес не по схеме — в «Сортировку»
+            Row(6, "76242", 7, 13916, null, custody: true, mol: "Рудаков М.А."),   // другой МОЛ — не переносится
+            Row(7, "60607", 10, 5, "V.34.0", unit: "м"),  // зона «У ворот», новая единица (дробная)
+            Row(8, "NU-00001", 1, 0, "2.B1.2", offBook: true), // вне учёта, без стоимости, на полке
+            Row(9, "60608", 1, 1, "1.C3.2", mol: "Иванов И.Г."),  // МОЛ не кладовщик — пропуск
         ], []);
 
         var result = await service.ImportAsync(file, 1, apply: false, new ImportActor(null, "Админ"));
 
         Assert.False(result.Applied);
-        Assert.Equal(6, result.RowsImported);
-        Assert.Equal((5, 1, 1, 1), (result.WarehouseBatches, result.CustodyBatches, result.SortingBatches, result.OffBookBatches));
-        Assert.Equal(6, result.ItemsNew);
+        Assert.Equal(5, result.RowsImported);
+        Assert.Equal((5, 0, 1, 1), (result.WarehouseBatches, result.CustodyBatches, result.SortingBatches, result.OffBookBatches));
+        Assert.Equal(5, result.ItemsNew);
         Assert.Equal(1, result.UnitsNew);
-        Assert.Equal(1, result.EmployeesNew);
-        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + «Место не указано» UNK (МОЛ Рудаков без адреса) + «Сортировка» SORT
-        Assert.Equal(7, result.LocationsNew);
-        Assert.Equal([4], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
+        Assert.Equal(0, result.EmployeesNew);
+        // 1, 1.C3, 1.C3.1, 1.C3.1.4, V, V.34, V.34.0, 2, 2.B1, 2.B1.2 + «Сортировка» SORT
+        Assert.Equal(11, result.LocationsNew);
+        Assert.Equal([4, 6, 9], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
         Assert.Contains(result.Issues, i => i.Line == 5 && !i.Skipped && i.Message.Contains("Сортировк"));
-        Assert.Contains(result.Notes, n => n.Contains("C3.1.0"));
+        Assert.Contains(result.Issues, i => i.Line == 9 && i.Message.Contains("не кладовщик"));
         Assert.Empty(catalogRepo.Items); // проверка ничего не создаёт
     }
 
@@ -221,6 +220,7 @@ public class ImportTests
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
+        employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
         var service = new ReconcileService(stock, new EmployeeService(employees));
 
         SaldoBatch B(string mol, string code, decimal qty, decimal value) => new("10.6", "Отдел", mol, code, "Позиция " + code, "шт", "ТТН", null, qty, value);
@@ -237,8 +237,8 @@ public class ImportTests
         Assert.Equal("Дорофей С.М.", result.WarehouseMol);
         ReconcileStatus StatusOf(string code) => result.Rows.Single(r => r.Code == code).Status;
         Assert.Equal(ReconcileStatus.Match, StatusOf("76242"));
-        Assert.Equal(ReconcileStatus.OnlyIn1C, StatusOf("60081")); // МОЛ не найден
-        Assert.Contains(result.Notes, n => n.Contains("Иванов И.Г."));
+        Assert.DoesNotContain(result.Rows, r => r.Code == "60081"); // МОЛ не кладовщик — не сверяется
+        Assert.Contains(result.Notes, n => n.Contains("Иванов И.Г.") && n.Contains("не кладовщик"));
     }
 
     [Fact]
@@ -254,6 +254,7 @@ public class ImportTests
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
+        employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
         var service = new ReconcileService(stock, new EmployeeService(employees));
 
         SaldoBatch B(string mol, string code, decimal qty, decimal value) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, value);
@@ -275,7 +276,7 @@ public class ImportTests
         stock.Items.Add(new Item { Id = 1, Sku = "23148", Name = "Ремень", UnitId = 1, Unit = unit });
         stock.Locations.AddRange([
             new StorageLocation { Id = 1, WarehouseId = 1, Code = "01", FullCode = "СК1-01" },
-            new StorageLocation { Id = 40, WarehouseId = 1, Code = "UNK", FullCode = "СК1-UNK" }]);
+            new StorageLocation { Id = 40, WarehouseId = 1, Code = "02", FullCode = "СК1-02" }]);
         stock.Batches.Add(new Batch { Id = 1, ItemId = 1, UnitPrice = 10, ReceivedAt = Now });
         stock.Batches.Add(new Batch { Id = 2, ItemId = 1, UnitPrice = null, OffBook = true });
         stock.Balances.AddRange([
@@ -285,6 +286,7 @@ public class ImportTests
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
+        employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
         var service = new ReconcileService(stock, new EmployeeService(employees));
 
         SaldoBatch B(string mol, string code, decimal qty) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, qty * 10);
@@ -293,10 +295,10 @@ public class ImportTests
              new SaldoSheet("рудаков.xlsx", "17.11.2026", [B("Рудаков М.А.", "0000023148", 6)])],
             "Дорофей С.М.");
 
-        // В приложении всё (9) за основным МОЛ; в 1С за Рудаковым 6 → сменить МОЛ у 6: 5 из «Место не указано» и 1 из ячейки.
+        // В приложении всё (9) без пометки — за Дорофей; в 1С за Рудаковым 6 → сменить МОЛ у 6: 4 из первой ячейки и 2 из второй.
         var c = Assert.Single(result.MolChanges!);
-        Assert.Equal((1, (int?)null, (int?)7, 6m), (c.ItemId, c.FromMolId, c.ToMolId, c.Suggested));
-        Assert.Equal([(40, 5m, true), (1, 1m, false)], c.Sources.Select(x => (x.LocationId, x.Proposed, x.Unknown)));
+        Assert.Equal((1, 9, 7, 6m), (c.ItemId, c.FromMolId, c.ToMolId, c.Suggested));
+        Assert.Equal([(1, 4m), (40, 2m)], c.Sources.Select(x => (x.LocationId, x.Proposed)));
         Assert.Equal(ReconcileStatus.OnlyIn1C, result.Rows.Single(r => r.Mol == "Рудаков М.А.").Status);
     }
 
@@ -313,7 +315,9 @@ public class ImportTests
             new StockBalance { ItemId = 1, LocationId = 1, BatchId = 1, Quantity = 12 },
             new StockBalance { ItemId = 2, LocationId = 1, BatchId = 2, Quantity = 3 },
             new StockBalance { ItemId = 3, LocationId = 1, BatchId = 3, Quantity = 1 }]);
-        var service = new ReconcileService(stock, new EmployeeService(new FakeEmployeeRepository()));
+        var employees = new FakeEmployeeRepository();
+        employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
+        var service = new ReconcileService(stock, new EmployeeService(employees));
 
         SaldoBatch B(string code, decimal qty, decimal value) => new("10.6", "Отдел", "Дорофей С.М.", code, "Позиция " + code, "шт", "ТТН", null, qty, value);
         var result = await service.ReconcileAsync([new SaldoSheet("склад.xlsx", "31.10.2026",
@@ -329,13 +333,8 @@ public class ImportTests
     }
 }
 
-/// <summary>Для проверки импорта без загрузки: «Место не указано» не создаётся.</summary>
-internal class StubMolService : IMolService
+/// <summary>Кладовщики-МОЛ для проверки импорта.</summary>
+internal class StubMolService(params MolDto[] storekeepers) : IMolService
 {
-    public Task<IReadOnlyList<MolDto>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MolDto>>([]);
-
-    public Task<int> EnsureUnknownPlaceAsync(int warehouseId, CancellationToken ct = default) => Task.FromResult(0);
-
-    public Task<(int Employees, IReadOnlyList<string> Problems)> MoveOfficialCustodyAsync(CancellationToken ct = default) =>
-        Task.FromResult<(int, IReadOnlyList<string>)>((0, []));
+    public Task<IReadOnlyList<MolDto>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MolDto>>(storekeepers);
 }

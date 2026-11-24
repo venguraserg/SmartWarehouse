@@ -401,12 +401,6 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<DocumentRefDto> ChangeMolAsync(ChangeMolRequest request, CancellationToken ct = default) =>
         SendAsync<DocumentRefDto>(HttpMethod.Post, "api/import/reconcile/change-mol", request, ct);
 
-    public Task<MainMolDto> GetMainMolAsync(CancellationToken ct = default) =>
-        GetAsync<MainMolDto>("api/settings/main-mol", ct);
-
-    public Task<MainMolDto> SaveMainMolAsync(int? employeeId, CancellationToken ct = default) =>
-        SendAsync<MainMolDto>(HttpMethod.Put, "api/settings/main-mol", new MainMolDto(employeeId), ct);
-
     public Task<List<MolDto>> GetMolsAsync(CancellationToken ct = default) =>
         GetAsync<List<MolDto>>("api/settings/mols", ct);
 

@@ -34,6 +34,9 @@ public interface IUserRepository
 
     Task<Employee?> GetEmployeeAsync(int employeeId, CancellationToken ct = default);
 
+    /// <summary>Сколько партий с остатком числится за сотрудником как за МОЛ (на складе и «в работе»).</summary>
+    Task<int> CountMolStockAsync(int employeeId, CancellationToken ct = default);
+
     void Add(UserAccount user);
 
     Task SaveChangesAsync(CancellationToken ct = default);

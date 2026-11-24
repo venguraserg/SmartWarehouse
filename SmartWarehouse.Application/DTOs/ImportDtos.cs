@@ -101,27 +101,25 @@ public record ReconcileResultDto(
     IReadOnlyList<ReconcileMolChangeDto>? MolChanges = null);
 
 /// <summary>
-/// Предложение «принять МОЛ из 1С»: в 1С за МОЛ <paramref name="ToMol"/> позиции больше, чем помечено в приложении,
+/// Предложение «принять МОЛ из 1С»: в 1С за кладовщиком <paramref name="ToMol"/> позиции больше, чем помечено в приложении,
 /// а за <paramref name="FromMol"/> — меньше. Сменить пометку у <paramref name="Suggested"/> из мест <paramref name="Sources"/>
-/// (сначала «Место не указано», затем ячейки — кладовщик может поправить).
+/// (старые партии первыми — кладовщик может поправить).
 /// </summary>
-/// <param name="FromMolId">null — основной МОЛ.</param>
-/// <param name="ToMolId">null — основной МОЛ.</param>
 public record ReconcileMolChangeDto(
     int ItemId,
     string Code,
     string Name,
     string Unit,
-    int? FromMolId,
+    int FromMolId,
     string FromMol,
-    int? ToMolId,
+    int ToMolId,
     string ToMol,
     decimal Suggested,
     IReadOnlyList<MolSourceDto> Sources);
 
 /// <summary>Откуда можно сменить МОЛ: партия в месте хранения и сколько предлагается.</summary>
 public record MolSourceDto(int LocationId, string LocationCode, string? LocationName, int BatchId, DateTimeOffset ReceivedAt,
-    decimal Available, bool Unknown, decimal Proposed);
+    decimal Available, decimal Proposed);
 
 public record ReconcileMolDto(string Mol, string? Place, int? EmployeeId, int Batches, decimal Value);
 
@@ -134,7 +132,12 @@ public record InvoiceLine(int Line, string Code, string Name, string Unit, decim
 
 /// <summary>Накладная на внутреннее перемещение материалов, прочитанная из Excel.</summary>
 /// <param name="Account">Корреспондирующий счёт из шапки (10.9), если указан.</param>
-public record InvoiceFile(string? Number, DateOnly? Date, string? Account, IReadOnlyList<InvoiceLine> Lines, IReadOnlyList<ImportIssue> Issues);
+/// <param name="Recipient">«Кому» (а если нет — «Получил»): МОЛ-получатель, «Дорофей С.М.».</param>
+/// <param name="Sender">«Отпустил»: кто отдал (кладовщик центрального склада, специалист или наш кладовщик).</param>
+/// <param name="FromStore">«Со склада».</param>
+/// <param name="ToStore">«На склад».</param>
+public record InvoiceFile(string? Number, DateOnly? Date, string? Account, IReadOnlyList<InvoiceLine> Lines, IReadOnlyList<ImportIssue> Issues,
+    string? Recipient = null, string? Sender = null, string? FromStore = null, string? ToStore = null);
 
 /// <summary>Что будет (или было) принято по позиции накладной: одна партия на код и цену.</summary>
 /// <param name="Warning">Например, «уже есть учётная партия, введённая вручную» — возможное задвоение.</param>
@@ -153,12 +156,14 @@ public record InvoiceImportResult(
     string? ReceptionCode,
     IReadOnlyList<InvoiceBatchDto> Batches,
     IReadOnlyList<ImportIssue> Issues,
-    IReadOnlyList<long> DocumentIds);
+    IReadOnlyList<long> DocumentIds,
+    string? Recipient = null,
+    string? Sender = null,
+    bool MolChange = false);
 
 /// <summary>Партия в «Приёмке», ожидающая размещения по ячейкам.</summary>
 /// <param name="Sorting">В «Сортировке»: загружена из 1С без адреса.</param>
-/// <param name="Unknown">В «Место не указано»: числится за МОЛ, где лежит — неизвестно (найти и разместить).</param>
-/// <param name="Mol">За кем числится, если не основной МОЛ.</param>
+/// <param name="Mol">МОЛ партии (кладовщик).</param>
 public record PendingPlacementDto(
     int LocationId,
     string LocationCode,
@@ -174,7 +179,6 @@ public record PendingPlacementDto(
     decimal? UnitPrice,
     bool HasDiscrepancy,
     bool Sorting = false,
-    bool Unknown = false,
     string? Mol = null);
 
 /// <summary>Расхождение приёмки: по накладной и фактически.</summary>

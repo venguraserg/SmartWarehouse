@@ -1,4 +1,4 @@
-using SmartWarehouse.Application.DTOs;
+﻿using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Domain.Enums;
@@ -100,6 +100,106 @@ public class ReceivingTests
         Assert.Equal([20, 21], result.Issues.Select(i => i.Line));
         Assert.Equal(125m + 28m + 3392m, result.Value);
         Assert.Single(_catalog.Items); // проверка ничего не создаёт
+    }
+
+    // ---------- Кому и от кого: МОЛ — кладовщик ----------
+
+    [Fact]
+    public void В_накладной_читаются_кому_отпустил_и_склады()
+    {
+        using var book = new ClosedXML.Excel.XLWorkbook();
+        var sheet = book.AddWorksheet("TDSheet");
+        void Put(string cell, object value)
+        {
+            if (value is string text)
+                sheet.Cell(cell).Value = text;
+            else
+                sheet.Cell(cell).Value = Convert.ToDouble(value);
+        }
+        Put("A3", "НАКЛАДНАЯ НА ВНУТРЕННЕЕ ПЕРЕМЕЩЕНИЕ МАТЕРИАЛОВ");
+        Put("B5", "Номер документа"); Put("D5", "Дата составле- ния"); Put("B7", "in-0832094"); Put("D7", "17.11.2026");
+        Put("A11", "Со склада"); Put("C11", "Центральный склад"); Put("M11", "На склад"); Put("Q11", "Отдел эксплуатации");
+        Put("A13", "Кому"); Put("C13", "Иванов И.П."); Put("M13", "Через кого"); Put("Q13", "Сидоров О.");
+        Put("A15", "№ п/п"); Put("B15", "Материальные ценности"); Put("J15", "Единица измер."); Put("M15", "Цена, руб. коп.");
+        Put("S15", "Количество"); Put("Z15", "Сумма, руб. коп."); Put("G16", "Номенклатур- ный номер");
+        Put("A17", 1); Put("B17", "Аргон газообразный"); Put("G17", "0000013024"); Put("J17", "м3"); Put("M17", 4.77); Put("S17", 50.4); Put("Z17", 240.41);
+        Put("A18", "Итого:");
+        Put("A20", "Отпустил ___________________"); Put("F20", "Гость О.И."); Put("M20", "Получил ___________________"); Put("X20", "Иванов И.П.");
+        using var stream = new MemoryStream();
+        book.SaveAs(stream);
+        stream.Position = 0;
+
+        var invoice = new ExcelImportReader().ReadInvoice(stream, "n.xlsx");
+
+        Assert.Equal(("in-0832094", "Иванов И.П.", "Гость О.И.", "Центральный склад", "Отдел эксплуатации"),
+            (invoice.Number, invoice.Recipient, invoice.Sender, invoice.FromStore, invoice.ToStore));
+        Assert.Equal(50.4m, Assert.Single(invoice.Lines).Quantity);
+    }
+
+    /// <summary>Кладовщики Иванов (1) и Петров (2); у Иванова на складе 10 подшипников. Гость — кладовщик центрального склада.</summary>
+    private ReceivingService WithStorekeepers()
+    {
+        var people = new[]
+        {
+            new Employee { Id = 1, LastName = "Иванов", FirstName = "Иван", MiddleName = "Петрович" },
+            new Employee { Id = 2, LastName = "Петров", FirstName = "Сергей", MiddleName = "Васильевич" },
+            new Employee { Id = 3, LastName = "Сидоров", FirstName = "Олег" }
+        };
+        _stock.Employees.AddRange(people);
+        _stock.Storekeepers.AddRange([1, 2]);
+        var employees = new FakeEmployeeRepository();
+        employees.Employees.AddRange(people);
+        var item = new Item { Id = 7, Sku = "917", Name = "Подшипник 6205", UnitId = 1, Unit = _catalog.Units[0] };
+        _catalog.Items.Add(item);
+        _stock.Items.Add(item);
+        _stock.Locations.Add(new StorageLocation { Id = 10, WarehouseId = 1, Code = "1", FullCode = "WH1-1" });
+        _stock.Batches.Add(new Batch { Id = 1, ItemId = 7, UnitPrice = 12.5m, MolId = 1, ReceivedAt = Now });
+        _stock.Balances.Add(new StockBalance { ItemId = 7, LocationId = 10, BatchId = 1, Quantity = 10 });
+        var clock = new FixedTimeProvider(Now);
+        return new ReceivingService(new CatalogService(_catalog, clock), new LocationService(_locations),
+            new StockService(_stock, clock), _stock, clock, new EmployeeService(employees),
+            new StubMolService(new MolDto(1, "Иванов И. П."), new MolDto(2, "Петров С. В.")));
+    }
+
+    private static InvoiceFile From(string? sender, string? recipient, decimal qty) =>
+        new("in-1", new DateOnly(2026, 11, 24), "10.6", [new InvoiceLine(18, "0000000917", "Подшипник 6205", "шт", 12.5m, qty, qty * 12.5m)], [],
+            recipient, sender);
+
+    [Fact]
+    public async Task Приход_только_на_кладовщика_партии_за_ним()
+    {
+        var service = WithStorekeepers();
+
+        var check = await service.ImportInvoiceAsync(From("Гость О.И.", "Петров С.В.", 3), 1, apply: false, new ImportActor(null, null));
+        Assert.Equal(("Петров С. В.", "Гость О.И.", false), (check.Recipient, check.Sender, check.MolChange));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            service.ImportInvoiceAsync(From("Гость О.И.", "Сидоров О.", 3), 1, apply: false, new ImportActor(null, null)));
+        Assert.Contains("не кладовщик", ex.Message);
+    }
+
+    [Fact]
+    public async Task Накладная_между_кладовщиками_меняет_МОЛ_без_движения_товара()
+    {
+        var service = WithStorekeepers();
+
+        var check = await service.ImportInvoiceAsync(From("Иванов И.П.", "Петров С.В.", 4), 1, apply: false, new ImportActor(null, null));
+        Assert.True(check.MolChange);
+        Assert.Empty(check.Issues);
+
+        var done = await service.ImportInvoiceAsync(From("Иванов И.П.", "Петров С.В.", 4), 1, apply: true, new ImportActor(1, null));
+        Assert.True(done.Applied);
+        Assert.Equal(10, _stock.Balances.Where(b => b.LocationId == 10).Sum(b => b.Quantity));          // на месте
+        Assert.Equal([(1, 6m), (2, 4m)], _stock.Balances.OrderBy(b => b.BatchId)
+            .Select(b => (_stock.Batches.Single(x => x.Id == b.BatchId).MolId!.Value, b.Quantity)));
+        var doc = _stock.Documents.Single(d => d.Type == MovementType.MolChange);
+        Assert.Equal("Накладная № in-1 от 24.11.2026", doc.ExternalNumber);
+
+        // Повторно — нельзя; больше, чем есть у отправителя, — не проводится.
+        await Assert.ThrowsAsync<DomainException>(() => service.ImportInvoiceAsync(From("Иванов И.П.", "Петров С.В.", 4), 1, apply: true, new ImportActor(1, null)));
+        var tooMuch = From("Иванов И.П.", "Петров С.В.", 7) with { Number = "in-2" };
+        Assert.Single((await service.ImportInvoiceAsync(tooMuch, 1, apply: false, new ImportActor(null, null))).Issues);
+        await Assert.ThrowsAsync<DomainException>(() => service.ImportInvoiceAsync(tooMuch, 1, apply: true, new ImportActor(1, null)));
     }
 
     [Fact]

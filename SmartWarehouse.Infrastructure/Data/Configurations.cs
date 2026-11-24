@@ -228,7 +228,6 @@ internal class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         b.Property(x => x.Phone).HasMaxLength(32);
         b.HasIndex(x => new { x.LastName, x.FirstName });
         b.HasOne(x => x.Manager).WithMany().HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.Restrict);
-        b.Property(x => x.IsMol).HasDefaultValue(false);
     }
 }
 

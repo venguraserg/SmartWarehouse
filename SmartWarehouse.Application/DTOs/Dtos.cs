@@ -64,8 +64,7 @@ public record SaveEmployeeRequest(
     string? Department,
     string? Phone,
     bool IsActive = true,
-    int? ManagerId = null,
-    bool IsMol = false);
+    int? ManagerId = null);
 
 public record EmployeeDto(
     int Id,
@@ -80,8 +79,7 @@ public record EmployeeDto(
     string FullName,
     string ShortName,
     int? ManagerId,
-    string? ManagerName,
-    bool IsMol = false);
+    string? ManagerName);
 
 /// <summary>
 /// Движение по подотчёту сотрудника: выдача (количество со знаком «+»),
@@ -332,8 +330,7 @@ public record StockRowDto(
     bool ValueIncomplete = false,
     decimal OffBookQuantity = 0,
     decimal OffBookValue = 0,
-    IReadOnlyList<string>? Mols = null,
-    bool PlaceUnknown = false);
+    IReadOnlyList<string>? Mols = null);
 
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
@@ -638,14 +635,12 @@ public record RejectIssueRequestRequest(string? Reason);
 
 // ---------- МОЛ ----------
 
-/// <summary>Основной МОЛ склада (кладовщик): партии без пометки МОЛ числятся за ним.</summary>
-public record MainMolDto(int? EmployeeId, string? Name = null);
+/// <summary>Сменить МОЛ части партии в месте хранения: на другого кладовщика (накладная на перемещение, сверка с 1С).</summary>
+public record MolChangeLine(int LocationId, int BatchId, decimal Quantity, int MolId);
 
-/// <summary>Сменить МОЛ части партии в месте хранения (по сверке с 1С). <paramref name="MolId"/> null — основной МОЛ.</summary>
-public record MolChangeLine(int LocationId, int BatchId, decimal Quantity, int? MolId);
+/// <param name="ExternalNumber">Накладная 1С, по которой меняется МОЛ (повторно не принимается).</param>
+public record ChangeMolRequest(IReadOnlyList<MolChangeLine> Lines, string? Comment = null, string? ExternalNumber = null);
 
-public record ChangeMolRequest(IReadOnlyList<MolChangeLine> Lines, string? Comment = null);
-
-/// <summary>Сотрудник-МОЛ для выбора и фильтров.</summary>
-public record MolDto(int EmployeeId, string Name, bool IsMain);
+/// <summary>МОЛ склада — кладовщик (сотрудник с учётной записью и ролью «Кладовщик»).</summary>
+public record MolDto(int EmployeeId, string Name);
 
