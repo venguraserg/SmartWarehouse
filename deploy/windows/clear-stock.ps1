@@ -77,8 +77,18 @@ try {
     try {
         Write-Host "==> Очистка" -ForegroundColor Cyan
         # Без CASCADE: если на эти таблицы ссылается что-то сохраняемое, PostgreSQL откажет, а не удалит лишнее.
-        Sql ("BEGIN; TRUNCATE " + ($cleared -join ", ") + " RESTART IDENTITY; " +
-             "DELETE FROM app_settings WHERE ""Key"" = 'main-mol'; COMMIT;") | Out-Null
+        # SQL — через файл: Windows PowerShell при передаче в psql теряет кавычки внутри -c ("Key" → Key).
+        $sqlFile = Join-Path $env:TEMP "smartwarehouse-clear-stock.sql"
+        $sql = "BEGIN;`nTRUNCATE " + ($cleared -join ", ") + " RESTART IDENTITY;`n" +
+               "DELETE FROM app_settings WHERE ""Key"" = 'main-mol';`nCOMMIT;`n"
+        [System.IO.File]::WriteAllText($sqlFile, $sql, (New-Object System.Text.UTF8Encoding $false))
+        try {
+            & $psql.FullName -h $parts["host"] -p $port -U $parts["username"] -d $parts["database"] -v ON_ERROR_STOP=1 -q -f $sqlFile
+            if ($LASTEXITCODE -ne 0) { throw "Очистка не выполнена (ошибка SQL выше) — данные не изменены." }
+        }
+        finally {
+            Remove-Item $sqlFile -ErrorAction SilentlyContinue
+        }
         Write-Host "    Готово." -ForegroundColor Green
     }
     finally {
