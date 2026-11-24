@@ -145,6 +145,13 @@ public partial class AccountService(IUserRepository repo, IPasswordHasher hasher
                 throw new DomainException("Должен остаться хотя бы один активный администратор.");
         }
 
+        // Кладовщик — МОЛ склада: пока за ним числятся партии, роль не снять (сначала передать накладной на другого кладовщика).
+        var staysMol = request.IsActive && (request.Roles & UserRole.Storekeeper) != 0 && employee?.Id == user.EmployeeId;
+        if (user.Has(UserRole.Storekeeper) && user.IsActive && user.EmployeeId is int molId && !staysMol
+            && await repo.CountMolStockAsync(molId, ct) is var count and > 0)
+            throw new DomainException($"За {user.Employee?.ShortName ?? "этим кладовщиком"} как МОЛ числятся партии склада ({count}). " +
+                                      "Сначала передайте их другому кладовщику накладной на внутреннее перемещение (1С → «Приёмка»), потом снимайте роль.");
+
         user.EmployeeId = employee?.Id;
         user.Employee = employee;
         user.Roles = request.Roles;

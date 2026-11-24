@@ -157,7 +157,6 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         employee.Department = Clean(request.Department);
         employee.Phone = Clean(request.Phone);
         employee.IsActive = request.IsActive;
-        employee.IsMol = request.IsMol;
         employee.ManagerId = manager?.Id;
         employee.Manager = manager;
     }
@@ -195,5 +194,5 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
 
     internal static EmployeeDto ToDto(Employee e) => new(
         e.Id, e.PersonnelNumber, e.LastName, e.FirstName, e.MiddleName, e.Position, e.Department, e.Phone,
-        e.IsActive, e.FullName, e.ShortName, e.ManagerId, e.Manager?.ShortName, e.IsMol);
+        e.IsActive, e.FullName, e.ShortName, e.ManagerId, e.Manager?.ShortName);
 }

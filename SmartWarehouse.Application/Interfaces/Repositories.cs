@@ -65,8 +65,8 @@ public interface IStockRepository
 
     void AddBatch(Batch batch);
 
-    /// <summary>Отметить сотрудника как МОЛ (за ним числятся партии).</summary>
-    Task MarkMolAsync(int employeeId, CancellationToken ct = default);
+    /// <summary>МОЛ склада — сотрудники, у чьей активной учётной записи есть роль «Кладовщик».</summary>
+    Task<IReadOnlyList<int>> ListStorekeeperIdsAsync(CancellationToken ct = default);
 
     /// <summary>Зарезервировано актами на утверждении по партиям (кроме акта <paramref name="exceptActId"/>).</summary>
     /// <summary>
@@ -79,7 +79,7 @@ public interface IStockRepository
     // ---------- Приёмка по накладным ----------
 
     /// <summary>Приход с таким номером документа уже есть (накладная уже загружена).</summary>
-    Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default);
+    Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default);   // приход или смена МОЛ по накладной
 
     /// <summary>Остатки в месте по партиям (с позицией, единицей, партией) — что ждёт размещения в «Приёмке».</summary>
     Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default);
@@ -106,8 +106,6 @@ public interface IStockRepository
     /// <summary>Сколько партии всего: во всех местах и у сотрудников.</summary>
     Task<decimal> GetBatchTotalAsync(int batchId, CancellationToken ct = default);
 
-    /// <summary>Прежний «подотчёт по 1С» с остатком (с позицией и партией) — для переноса на склад.</summary>
-    Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
 

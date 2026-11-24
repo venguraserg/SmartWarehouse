@@ -39,10 +39,10 @@
             </dd>
             <dt>Телефон</dt>
             <dd>@(employee.Phone ?? "—")</dd>
-            @if (employee.IsMol)
+            @if (isMol)
             {
                 <dt>МОЛ</dt>
-                <dd>Материально ответственное лицо · <a href="/stock?mol=@employee.Id">что числится за ним на складе</a></dd>
+                <dd>Кладовщик — МОЛ склада · <a href="/stock?mol=@employee.Id">что числится за ним</a></dd>
             }
         </dl>
     </div>
@@ -182,6 +182,7 @@ else if (error is null)
     private int? myEmployeeId;
 
     private EmployeeDto? employee;
+    private bool isMol;
     private List<CustodyRowDto> custody = [];
     private List<EmployeeMovementDto> history = [];
     private string? error;
@@ -198,6 +199,7 @@ else if (error is null)
         try
         {
             employee = await Api.GetEmployeeAsync(Id);
+            isMol = (await Api.GetMolsAsync()).Any(m => m.EmployeeId == Id);
             custody = await Api.GetCustodyAsync(employeeId: Id);
             history = await Api.GetEmployeeHistoryAsync(Id);
         }

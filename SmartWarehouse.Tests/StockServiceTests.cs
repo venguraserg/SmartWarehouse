@@ -655,76 +655,78 @@ public class StockServiceTests
         Assert.Equal(3, Custody());
     }
 
-    // ---------- МОЛ: пометка партии и «Место не указано» ----------
+    // ---------- МОЛ партии — кладовщик ----------
 
-    private const int Mol = 3;   // сотрудник-МОЛ (уволен — пометка всё равно ставится)
+    private const int Keeper = 1;   // кладовщик Иванов (учётная запись с ролью «Кладовщик»)
+    private const int Mol = 3;      // второй кладовщик Сидоров (уволен — история МОЛ остаётся)
+
+    private MolChangeLine ToMol(int location, int batch, decimal qty, int mol = Mol) => new(location, batch, qty, mol);
 
     [Fact]
     public async Task Смена_МОЛ_части_партии_отделяет_новую_партию_с_той_же_ценой()
     {
-        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Post(MovementType.Receipt, Line(10, to: CellA));   // кладовщиков ещё нет — МОЛ не указан
+        _repo.Storekeepers.AddRange([Keeper, Mol]);
 
-        var doc = await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellA, 1, 4, Mol)]), 1, null);
+        var doc = await _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellA, 1, 4)], ExternalNumber: "Накладная № 1"), Keeper, null);
 
         Assert.StartsWith("СМ-", doc.Number);
         Assert.Equal(10, Balance(CellA));
         var parts = _repo.Balances.Where(b => b.LocationId == CellA).OrderBy(b => b.BatchId).ToList();
         Assert.Equal([(1, 6m, (int?)null), (2, 4m, Mol)], parts.Select(b => (b.BatchId, b.Quantity, _repo.Batches.Single(x => x.Id == b.BatchId).MolId)));
         Assert.Equal(10m, _repo.Batches.Single(b => b.Id == 2).UnitPrice);
-        Assert.True(_repo.Employees.Single(e => e.Id == Mol).IsMol);
-        var lines = _repo.Documents.Single(d => d.Type == MovementType.MolChange).Lines.ToList();
-        Assert.Equal([(CellA, (int?)null, 1), (null, CellA, 2)], lines.Select(l => (l.FromLocationId, l.ToLocationId, l.BatchId)));
+        var change = _repo.Documents.Single(d => d.Type == MovementType.MolChange);
+        Assert.Equal("Накладная № 1", change.ExternalNumber);
+        Assert.Equal([(CellA, (int?)null, 1), (null, CellA, 2)], change.Lines.Select(l => (l.FromLocationId, l.ToLocationId, l.BatchId)));
     }
 
     [Fact]
-    public async Task Смена_МОЛ_всей_партии_меняет_пометку_без_деления()
+    public async Task Смена_МОЛ_всей_партии_меняет_пометку_и_только_на_кладовщика()
     {
         await Post(MovementType.Receipt, Line(5, to: CellB));
+        _repo.Storekeepers.AddRange([Keeper, Mol]);
 
-        await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, Mol)]), null, "Сверка");
-
+        await _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellB, 1, 5)]), null, "Сверка");
         Assert.Equal(Mol, Assert.Single(_repo.Batches).MolId);
         var line = _repo.Documents.Single(d => d.Type == MovementType.MolChange).Lines.Single();
         Assert.Equal((CellB, CellB), (line.FromLocationId, line.ToLocationId));
 
-        // И обратно — на основного МОЛ.
-        await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, null)]), null, null);
-        Assert.Null(Assert.Single(_repo.Batches).MolId);
-        await Assert.ThrowsAsync<DomainException>(() =>
-            _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, null)]), null, null));   // менять нечего
-        await Assert.ThrowsAsync<DomainException>(() =>
-            _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 6, Mol)]), null, null));   // больше, чем есть
+        await _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellB, 1, 5, Keeper)]), null, null);
+        Assert.Equal(Keeper, Assert.Single(_repo.Batches).MolId);
+        await Assert.ThrowsAsync<DomainException>(() => _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellB, 1, 5, Keeper)]), null, null));   // менять нечего
+        await Assert.ThrowsAsync<DomainException>(() => _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellB, 1, 6)]), null, null));          // больше, чем есть
+        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.ChangeMolAsync(new ChangeMolRequest([ToMol(CellB, 1, 1, Worker)]), null, null));
+        Assert.Contains("только кладовщик", ex.Message);
     }
 
     [Fact]
-    public async Task Приход_с_МОЛ_помечает_партии_и_остатки_фильтруются_по_МОЛ()
+    public async Task Приход_за_кладовщиком_и_остатки_фильтруются_по_МОЛ()
     {
-        await Post(MovementType.Receipt, Line(10, to: CellA));
+        _repo.Storekeepers.AddRange([Keeper, Mol]);
+        await Send(Doc(MovementType.Receipt, Line(10, to: CellA)) with { PerformedById = Keeper });   // проводит кладовщик — он и МОЛ
         await Send(Doc(MovementType.Receipt, Line(3, to: CellB)) with { MolId = Mol });
 
-        Assert.True(_repo.Employees.Single(e => e.Id == Mol).IsMol);
+        Assert.Equal([Keeper, Mol], _repo.Batches.Select(b => b.MolId!.Value));
         var all = await _service.SearchStockAsync(new StockQuery());
         Assert.Equal(["Сидоров О."], all.Rows.Single(r => r.LocationId == CellB).Mols!);
-        Assert.Null(all.Rows.Single(r => r.LocationId == CellA).Mols);
-        Assert.Equal([CellA], (await _service.SearchStockAsync(new StockQuery(MolId: 0))).Rows.Select(r => r.LocationId));
+        Assert.Equal([CellA], (await _service.SearchStockAsync(new StockQuery(MolId: Keeper))).Rows.Select(r => r.LocationId));
         Assert.Equal([CellB], (await _service.SearchStockAsync(new StockQuery(MolId: Mol))).Rows.Select(r => r.LocationId));
+
+        // Кладовщиков несколько, а проводит не кладовщик — МОЛ нужно указать; МОЛ — только кладовщик.
+        Assert.Contains("Укажите МОЛ", (await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Receipt, Line(1, to: CellA)))).Message);
+        await Assert.ThrowsAsync<DomainException>(() => Send(Doc(MovementType.Receipt, Line(1, to: CellA)) with { MolId = Worker }));
         await Assert.ThrowsAsync<DomainException>(() => Send(Doc(MovementType.Transfer, Line(1, from: CellA, to: CellB)) with { MolId = Mol }));
+        // Вне учёта — без МОЛ.
+        await Send(Doc(MovementType.Receipt, Line(1, to: CellA)) with { OffBook = true });
+        Assert.Null(_repo.Batches.Last().MolId);
     }
 
     [Fact]
-    public async Task Из_места_не_указано_выдавать_нельзя_сначала_разместить()
+    public async Task Единственный_кладовщик_становится_МОЛ_по_умолчанию()
     {
-        const int Unknown = 40;
-        _repo.Locations.Add(new StorageLocation { Id = Unknown, WarehouseId = 1, Type = LocationType.Cell, Code = SpecialPlaces.UnknownCode, FullCode = "СК1-UNK" });
-        await Send(Doc(MovementType.Receipt, Line(4, to: Unknown)) with { MolId = Mol });
-
-        var ex = await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Issue, Line(1, from: Unknown)));
-        Assert.Contains("место не указано", ex.Message);
-
-        await Post(MovementType.Transfer, Line(4, from: Unknown, to: CellA));   // нашли — разместили
-        await Post(MovementType.Issue, Line(1, from: CellA));
-        Assert.Equal(Mol, _repo.Batches.Single().MolId);                         // пометка МОЛ осталась
-        Assert.True((await _service.SearchStockAsync(new StockQuery())).Rows.All(r => !r.PlaceUnknown));
+        _repo.Storekeepers.Add(Mol);
+        await Post(MovementType.Receipt, Line(2, to: CellA));
+        Assert.Equal(Mol, Assert.Single(_repo.Batches).MolId);
     }
 
     [Fact]

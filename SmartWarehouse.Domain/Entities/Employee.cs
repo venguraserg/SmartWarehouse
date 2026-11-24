@@ -29,9 +29,6 @@ public class Employee
     /// <summary>Уволенные / неактивные скрыты из выбора в документах, но остаются в истории.</summary>
     public bool IsActive { get; set; } = true;
 
-    /// <summary>Материально ответственное лицо: за ним в 1С могут числиться партии склада.</summary>
-    public bool IsMol { get; set; }
-
     /// <summary>«Иванов Иван Петрович».</summary>
     public string FullName => string.Join(' ', new[] { LastName, FirstName, MiddleName }.Where(p => !string.IsNullOrWhiteSpace(p)));
 

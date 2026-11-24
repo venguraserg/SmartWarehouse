@@ -84,7 +84,6 @@
         {
             <div class="field">
                 <label class="checkbox"><input type="checkbox" @bind="form.IsActive" /> Работает (доступен для выбора в документах)</label>
-                <label class="checkbox"><input type="checkbox" @bind="form.IsMol" /> МОЛ — материально ответственное лицо (за ним в 1С числятся партии)</label>
             </div>
         }
         <div class="actions">
@@ -129,10 +128,6 @@ else
                         <td class="mono">@e.PersonnelNumber</td>
                         <td>
                             <a href="/employees/@e.Id">@e.FullName</a>
-                            @if (e.IsMol)
-                            {
-                                <span class="tag tag-mol" title="Материально ответственное лицо">МОЛ</span>
-                            }
                             @if (!e.IsActive)
                             {
                                 <span class="tag tag-neutral">не работает</span>
@@ -238,8 +233,7 @@ else
             Department = e.Department,
             Phone = e.Phone,
             IsActive = e.IsActive,
-            ManagerId = e.ManagerId,
-            IsMol = e.IsMol
+            ManagerId = e.ManagerId
         };
     }
 
@@ -253,7 +247,7 @@ else
         {
             var request = new SaveEmployeeRequest(
                 form.PersonnelNumber, form.LastName, form.FirstName, form.MiddleName,
-                form.Position, form.Department, form.Phone, form.IsActive, form.ManagerId, form.IsMol);
+                form.Position, form.Department, form.Phone, form.IsActive, form.ManagerId);
 
             var saved = editingId is int id
                 ? await Api.UpdateEmployeeAsync(id, request)
@@ -288,6 +282,5 @@ else
         public string? Phone { get; set; }
         public bool IsActive { get; set; } = true;
         public int? ManagerId { get; set; }
-        public bool IsMol { get; set; }
     }
 }

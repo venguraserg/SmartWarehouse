@@ -36,7 +36,9 @@ public class ReceivingService(
     ILocationService locations,
     IStockService stock,
     IStockRepository repo,
-    TimeProvider clock) : IReceivingService
+    TimeProvider clock,
+    IEmployeeService? employees = null,
+    IMolService? mols = null) : IReceivingService
 {
     /// <summary>Код места «Приёмка» (верхний уровень склада): WH1-RCV.</summary>
     public const string ReceptionCode = "RCV";
@@ -62,8 +64,31 @@ public class ReceivingService(
         {
             if (apply)
                 throw new DomainException($"{title} уже загружена — повторно не принимается.");
-            return new InvoiceImportResult(false, title, true, invoice.Lines.Count, 0, 0, 0, receptionFull, [], issues, []);
+            return new InvoiceImportResult(false, title, true, invoice.Lines.Count, 0, 0, 0, receptionFull, [], issues, [],
+                invoice.Recipient, invoice.Sender);
         }
+
+        // ---------- Кому и от кого ----------
+        // Получатель («Кому») — кладовщик-МОЛ склада: за ним будут партии. Не кладовщик — это не поступление на склад.
+        // Отправитель («Отпустил») — наш кладовщик: товар уже на складе, меняется только МОЛ (замена кладовщика, передача части).
+        var storekeepers = await StorekeepersAsync(ct);
+        EmployeeDto? recipient = null;
+        if (storekeepers is not null)
+        {
+            recipient = string.IsNullOrWhiteSpace(invoice.Recipient)
+                ? storekeepers.Count == 1 ? storekeepers[0] : null
+                : PersonNames.Find(storekeepers, invoice.Recipient);
+            if (recipient is null)
+                throw new DomainException(string.IsNullOrWhiteSpace(invoice.Recipient)
+                    ? "В накладной не найден получатель («Кому»)."
+                    : $"Получатель «{invoice.Recipient}» — не кладовщик склада: принимать на склад можно только на кладовщика " +
+                      "(сотрудник с учётной записью и ролью «Кладовщик»). Если это новый кладовщик — заведите его и дайте роль.");
+        }
+        var sender = storekeepers is null || string.IsNullOrWhiteSpace(invoice.Sender) ? null : PersonNames.Find(storekeepers, invoice.Sender);
+        if (sender is not null && sender.Id == recipient?.Id)
+            throw new DomainException($"В накладной отпустил и получил один и тот же кладовщик ({sender.ShortName}).");
+        if (sender is not null)
+            return await ChangeMolByInvoiceAsync(invoice, title, sender, recipient!, apply, actor, issues, ct);
 
         var units = (await catalog.ListUnitsAsync(ct)).ToDictionary(u => u.Code, StringComparer.OrdinalIgnoreCase);
         // Код 1С в накладной — с нулями впереди (0000000917), в приложении — без: сравниваем без нулей.
@@ -157,7 +182,8 @@ public class ReceivingService(
         var value = decimal.Round(order.Sum(o => o.Amount), 2);
 
         if (!apply)
-            return new InvoiceImportResult(false, title, false, invoice.Lines.Count, newItems.Count, newUnits.Count, value, receptionFull, Preview(), issues, []);
+            return new InvoiceImportResult(false, title, false, invoice.Lines.Count, newItems.Count, newUnits.Count, value, receptionFull, Preview(), issues, [],
+                recipient?.ShortName ?? invoice.Recipient, invoice.Sender);
         if (order.Count == 0)
             throw new DomainException("Ни одна строка накладной не подходит для приёма — см. замечания при проверке.");
 
@@ -186,12 +212,89 @@ public class ReceivingService(
                 UnitPrice: o.Price, BatchDate: occurred, BatchNote: title)).ToList();
             var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
                 MovementType.Receipt, title, null, actor.Name,
-                "Приём по накладной на внутреннее перемещение (файл 1С)" + (invoice.Account is { Length: > 0 } acc ? $", счёт {acc}" : ""),
-                lines, PerformedById: actor.EmployeeId, Origin: BatchOrigin.Invoice), ct);
+                "Приём по накладной на внутреннее перемещение (файл 1С)" + (invoice.Account is { Length: > 0 } acc ? $", счёт {acc}" : "")
+                    + (invoice.Sender is { Length: > 0 } from ? $"; отпустил {from}" : ""),
+                lines, PerformedById: actor.EmployeeId, Origin: BatchOrigin.Invoice, MolId: recipient?.Id), ct);
             documents.Add(doc.Id);
         }
 
-        return new InvoiceImportResult(true, title, false, invoice.Lines.Count, newItems.Count, newUnits.Count, value, receptionFull, Preview(), issues, documents);
+        return new InvoiceImportResult(true, title, false, invoice.Lines.Count, newItems.Count, newUnits.Count, value, receptionFull, Preview(), issues, documents,
+            recipient?.ShortName ?? invoice.Recipient, invoice.Sender);
+    }
+
+    /// <summary>Кладовщики-МОЛ склада; null — не проверяется (сервис собран без сотрудников, например в тестах приёмки).</summary>
+    private async Task<IReadOnlyList<EmployeeDto>?> StorekeepersAsync(CancellationToken ct)
+    {
+        if (employees is null || mols is null)
+            return null;
+        var ids = (await mols.ListAsync(ct)).Select(m => m.EmployeeId).ToHashSet();
+        return (await employees.ListAsync(null, includeInactive: true, ct)).Where(e => ids.Contains(e.Id)).ToList();
+    }
+
+    /// <summary>
+    /// Накладная между нашими кладовщиками: товар не двигается, у партий отправителя меняется МОЛ на получателя.
+    /// Берутся партии отправителя по позициям накладной, старые первыми; если у него столько нет — не проводится.
+    /// </summary>
+    private async Task<InvoiceImportResult> ChangeMolByInvoiceAsync(InvoiceFile invoice, string title, EmployeeDto sender, EmployeeDto recipient,
+        bool apply, ImportActor actor, List<ImportIssue> issues, CancellationToken ct)
+    {
+        var items = (await catalog.ListItemsAsync(null, null, all: true, ct))
+            .GroupBy(i => ReconcileService.Key(i.Sku), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var wanted = new List<(InvoiceLine Line, ItemDto Item)>();
+        foreach (var line in invoice.Lines)
+        {
+            if (!items.TryGetValue(ReconcileService.Key(line.Code), out var item))
+            {
+                issues.Add(new ImportIssue(line.Line, line.Code, $"Позиции {line.Code} нет в приложении — у {sender.ShortName} её нет на складе."));
+                continue;
+            }
+            wanted.Add((line, item));
+        }
+
+        var sources = (await repo.ListMolSourcesAsync(wanted.Select(w => w.Item.Id).Distinct().ToList(), ct))
+            .Where(b => b.Batch.MolId == sender.Id)
+            .ToList();
+        var used = new Dictionary<(int LocationId, int BatchId), decimal>();
+        var changes = new List<MolChangeLine>();
+        var preview = new List<InvoiceBatchDto>();
+        foreach (var (line, item) in wanted)
+        {
+            var left = line.Quantity;
+            foreach (var b in sources.Where(b => b.ItemId == item.Id))
+            {
+                var available = b.Quantity - used.GetValueOrDefault((b.LocationId, b.BatchId));
+                if (available <= 0 || left <= 0)
+                    continue;
+                var take = Math.Min(available, left);
+                used[(b.LocationId, b.BatchId)] = used.GetValueOrDefault((b.LocationId, b.BatchId)) + take;
+                changes.Add(new MolChangeLine(b.LocationId, b.BatchId, take, recipient.Id));
+                left -= take;
+            }
+            var price = line.Amount is decimal a && line.Quantity != 0 ? a / line.Quantity : line.Price ?? 0;
+            string? warning = null;
+            if (left > 0)
+            {
+                warning = $"У {sender.ShortName} на складе только {line.Quantity - left:0.###} из {line.Quantity:0.###}.";
+                issues.Add(new ImportIssue(line.Line, item.Sku, warning));
+            }
+            preview.Add(new InvoiceBatchDto(item.Sku, item.Name, item.UnitCode, line.Quantity, decimal.Round(price, 4),
+                decimal.Round(line.Amount ?? line.Quantity * price, 2), false, warning));
+        }
+        var value = decimal.Round(preview.Sum(p => p.Amount), 2);
+
+        if (!apply)
+            return new InvoiceImportResult(false, title, false, invoice.Lines.Count, 0, 0, value, null, preview, issues, [],
+                recipient.ShortName, sender.ShortName, MolChange: true);
+        if (issues.Any(i => i.Skipped) || changes.Count == 0)
+            throw new DomainException($"Накладная от {sender.ShortName} на {recipient.ShortName} не проводится: у отправителя на складе нет всего, " +
+                                      "что в накладной (см. замечания при проверке). Сверьте остатки и загрузите снова.");
+
+        var doc = await stock.ChangeMolAsync(new ChangeMolRequest(changes,
+            $"{title}: передача от {sender.ShortName} на {recipient.ShortName} (смена МОЛ, товар на месте)", title),
+            actor.EmployeeId, actor.Name, ct);
+        return new InvoiceImportResult(true, title, false, invoice.Lines.Count, 0, 0, value, null, preview, issues, [doc.Id],
+            recipient.ShortName, sender.ShortName, MolChange: true);
     }
 
     private async Task<int> EnsureReceptionAsync(WarehouseDto warehouse, CancellationToken ct)
@@ -211,18 +314,15 @@ public class ReceivingService(
         foreach (var warehouse in await locations.ListWarehousesAsync(ct))
         {
             var tree = await locations.GetLocationTreeAsync(warehouse.Id, ct);
-            // «Приёмка» — товар по накладным, «Сортировка» — остатки, загруженные без места (адрес не по схеме),
-            // «Место не указано» — числится за МОЛ, но где лежит — неизвестно.
+            // «Приёмка» — товар по накладным, «Сортировка» — остатки, загруженные без места (адрес не по схеме).
             foreach (var place in tree.Where(n => n.Code.Equals(ReceptionCode, StringComparison.OrdinalIgnoreCase)
-                                               || n.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase)
-                                               || n.Code.Equals(SpecialPlaces.UnknownCode, StringComparison.OrdinalIgnoreCase)))
+                                               || n.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase)))
             {
                 var sorting = place.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase);
-                var unknown = place.Code.Equals(SpecialPlaces.UnknownCode, StringComparison.OrdinalIgnoreCase);
                 foreach (var b in await repo.ListLocationStockAsync(place.Id, ct))
                     result.Add(new PendingPlacementDto(place.Id, place.FullCode, b.ItemId, b.Item.Sku, b.Item.Name,
                         b.Item.Unit?.Code ?? "", b.Item.Unit?.IsFractional ?? false, b.BatchId, b.Batch.Note, b.Batch.ReceivedAt,
-                        b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId), sorting, unknown, b.Batch.Mol?.ShortName));
+                        b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId), sorting, b.Batch.Mol?.ShortName));
             }
         }
         return result;

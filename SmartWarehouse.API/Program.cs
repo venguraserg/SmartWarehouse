@@ -76,24 +76,6 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await DbSeeder.SeedAsync(db);
 }
 
-// Прежний «подотчёт по 1С» → склад: «Место не указано», МОЛ — пометка партии. Один раз; потом переносить нечего.
-{
-    using var scope = app.Services.CreateScope();
-    var mols = scope.ServiceProvider.GetRequiredService<IMolService>();
-    try
-    {
-        var (moved, problems) = await mols.MoveOfficialCustodyAsync();
-        if (moved > 0)
-            app.Logger.LogWarning("Подотчёт по 1С перенесён на склад («Место не указано», пометка МОЛ): сотрудников — {Count}.", moved);
-        foreach (var problem in problems)
-            app.Logger.LogError("Подотчёт по 1С не перенесён: {Problem}", problem);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Не удалось перенести подотчёт по 1С на склад.");
-    }
-}
-
 // Первый запуск: создаём администратора, если учётных записей ещё нет.
 {
     using var scope = app.Services.CreateScope();

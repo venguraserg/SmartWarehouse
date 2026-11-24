@@ -31,6 +31,10 @@ public class UserRepository(WarehouseDbContext db) : IUserRepository
     public Task<Employee?> GetEmployeeAsync(int employeeId, CancellationToken ct = default) =>
         db.Employees.FirstOrDefaultAsync(x => x.Id == employeeId, ct);
 
+    public Task<int> CountMolStockAsync(int employeeId, CancellationToken ct = default) =>
+        db.Batches.CountAsync(b => b.MolId == employeeId
+            && (db.Balances.Any(x => x.BatchId == b.Id && x.Quantity != 0) || db.EmployeeBalances.Any(x => x.BatchId == b.Id && x.Quantity != 0)), ct);
+
     public void Add(UserAccount user) => db.Users.Add(user);
 
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);

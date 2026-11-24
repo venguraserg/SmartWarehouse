@@ -38,14 +38,13 @@
                 }
             </select>
         </div>
-        @if (mols.Count > 0)
+        @if (mols.Count > 1)
         {
             <div class="field">
                 <label for="f-mol">За кем числится (МОЛ)</label>
                 <select id="f-mol" @bind="molId">
                     <option value="">Все МОЛ</option>
-                    <option value="0">Основной@(mols.FirstOrDefault(m => m.IsMain) is { } main ? $" — {main.Name}" : "")</option>
-                    @foreach (var m in mols.Where(m => !m.IsMain))
+                    @foreach (var m in mols)
                     {
                         <option value="@m.EmployeeId">@m.Name</option>
                     }
@@ -152,13 +151,6 @@ else
                                     <span class="muted"> · @first.LocationName</span>
                                 }
                                 <span class="muted"> — @group.Count() @Plural(group.Count(), "позиция", "позиции", "позиций")</span>
-                                @if (first.PlaceUnknown)
-                                {
-                                    <span class="tag tag-warn" title="Где лежит — неизвестно. Выдать можно после размещения на полку.">найти и разместить</span>
-                                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="placing">
-                                        <a class="btn btn-sm" href="/receiving#unknown">Разместить</a>
-                                    </AuthorizeView>
-                                }
                             </td>
                         </tr>
                         @foreach (var row in group)

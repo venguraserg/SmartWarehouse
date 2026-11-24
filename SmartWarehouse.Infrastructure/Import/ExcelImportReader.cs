@@ -213,7 +213,21 @@ public partial class ExcelImportReader : IImportFileReader
             }
             lines.Add(new InvoiceLine(r + 1, code, name, Cell(At(unitCol)) ?? "", Num(At(priceCol)), qty.Value, Num(At(sumCol))));
         }
-        return new InvoiceFile(number, date, account, lines, issues);
+        // Подписи формы: «Кому», «Отпустил», «Получил», «Со склада», «На склад» — значение правее в той же строке.
+        string? Right(string label)
+        {
+            if (Find(label) is not { } at)
+                return null;
+            for (var c = at.Col + 1; c < grid[at.Row].Length; c++)
+            {
+                var text = Regex.Replace(Cell(grid[at.Row][c]) ?? "", @"[_\s]+", " ").Trim();
+                if (text.Length > 0)
+                    return text;
+            }
+            return null;
+        }
+        var recipient = Right("кому") ?? Right("получил");
+        return new InvoiceFile(number, date, account, lines, issues, recipient, Right("отпустил"), Right("сосклада"), Right("наскла"));
     }
 
     /// <summary>Первый лист файла .xls или .xlsx — как таблица значений.</summary>

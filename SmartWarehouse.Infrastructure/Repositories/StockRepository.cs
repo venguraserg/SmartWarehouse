@@ -53,8 +53,12 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public void AddBatch(Batch batch) => db.Batches.Add(batch);
 
-    public Task MarkMolAsync(int employeeId, CancellationToken ct = default) =>
-        db.Employees.Where(e => e.Id == employeeId && !e.IsMol).ExecuteUpdateAsync(s => s.SetProperty(e => e.IsMol, true), ct);
+    public async Task<IReadOnlyList<int>> ListStorekeeperIdsAsync(CancellationToken ct = default) =>
+        (await db.Users.AsNoTracking().Where(u => u.IsActive && u.EmployeeId != null).ToListAsync(ct))
+            .Where(u => u.Has(UserRole.Storekeeper))
+            .Select(u => u.EmployeeId!.Value)
+            .Distinct()
+            .ToList();
 
     public async Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default)
     {
@@ -84,7 +88,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
     // ---------- Приёмка по накладным ----------
 
     public Task<bool> ReceiptExistsAsync(string externalNumber, CancellationToken ct = default) =>
-        db.Documents.AnyAsync(d => d.Type == MovementType.Receipt && d.ExternalNumber == externalNumber, ct);
+        db.Documents.AnyAsync(d => (d.Type == MovementType.Receipt || d.Type == MovementType.MolChange) && d.ExternalNumber == externalNumber, ct);
 
     public async Task<IReadOnlyList<StockBalance>> ListLocationStockAsync(int locationId, CancellationToken ct = default) =>
         await db.Balances
@@ -183,14 +187,6 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         await db.Balances.Where(b => b.BatchId == batchId).SumAsync(b => b.Quantity, ct)
         + await db.EmployeeBalances.Where(b => b.BatchId == batchId).SumAsync(b => b.Quantity, ct);
 
-    public async Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default) =>
-        await db.EmployeeBalances.AsNoTracking()
-            .Include(b => b.Employee)
-            .Include(b => b.Item)
-            .Include(b => b.Batch)
-            .Where(b => b.Kind == CustodyKind.Official && b.Quantity > 0)
-            .OrderBy(b => b.EmployeeId).ThenBy(b => b.ItemId).ThenBy(b => b.BatchId)
-            .ToListAsync(ct);
 
     private async Task<Dictionary<int, (string Sku, string Name, string Unit)>> ItemNamesAsync(IEnumerable<int> ids, CancellationToken ct)
     {

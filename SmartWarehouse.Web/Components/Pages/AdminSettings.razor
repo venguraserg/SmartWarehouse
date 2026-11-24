@@ -53,29 +53,6 @@ else
         </div>
     </form>
 
-    @* ---------- Основной МОЛ ---------- *@
-    <form class="panel ref-section" style="max-width: 820px; margin-top: 1rem" @onsubmit="SaveMainMolAsync" @onsubmit:preventDefault>
-        <h2 style="margin-top: 0">Основной МОЛ склада</h2>
-        <div class="field">
-            <label for="main-mol">Сотрудник</label>
-            <select id="main-mol" @bind="mainMolId">
-                <option value="">— не выбран —</option>
-                @foreach (var e in staff.Where(e => e.IsActive || e.Id == mainMolId).OrderBy(e => e.FullName))
-                {
-                    <option value="@e.Id">@e.FullName@(e.IsMol ? " (МОЛ)" : "")</option>
-                }
-            </select>
-            <div class="field-hint">
-                За ним числятся партии склада без пометки МОЛ (в 1С — основной склад, например Дорофей С.М.).
-                В сверке с 1С его ведомость сравнивается со складом; в сводном акте его акт печатается первым и с его подписью.
-                Остальные МОЛ отмечаются в карточке сотрудника — у их партий пометка «МОЛ …».
-            </div>
-        </div>
-        <div class="actions">
-            <button class="btn btn-primary" type="submit" disabled="@busy">Сохранить</button>
-        </div>
-    </form>
-
     @* ---------- Шаблон акта ---------- *@
     <form class="panel ref-section" style="max-width: 820px; margin-top: 1rem" @onsubmit="SaveActAsync" @onsubmit:preventDefault>
         <div class="page-head" style="margin-bottom: .5rem">
@@ -173,24 +150,12 @@ else
         {
             labels = LabelsModel.From(await Api.GetLabelSettingsAsync());
             act = ActModel.From(await Api.GetActTemplateAsync());
-            mainMolId = (await Api.GetMainMolAsync()).EmployeeId;
-            staff = await Api.GetEmployeesAsync(includeInactive: true);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             error = ex.Message;
         }
     }
-
-    private int? mainMolId;
-    private List<EmployeeDto> staff = [];
-
-    private Task SaveMainMolAsync() => RunAsync(async () =>
-    {
-        var saved = await Api.SaveMainMolAsync(mainMolId);
-        mainMolId = saved.EmployeeId;
-        return saved.Name is null ? "Основной МОЛ не выбран." : $"Основной МОЛ: {saved.Name}.";
-    });
 
     private Task SaveLabelsAsync() => RunAsync(async () =>
     {
