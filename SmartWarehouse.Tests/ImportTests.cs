@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Application.Services;
@@ -41,7 +41,7 @@ public class ImportTests
             OpeningImportService.PlaceName(LocationType.Zone, "V"), OpeningImportService.PlaceName(LocationType.Rack, "A1"),
             OpeningImportService.PlaceName(LocationType.Shelf, "0"), OpeningImportService.PlaceName(LocationType.Cell, "2")
         ]);
-        Assert.Equal(["2", "B1", "2"], OpeningImportService.ParseAddress("2.b1.2"));   // на полке, ящиков нет
+        Assert.Equal(["2", "B1", "2"], OpeningImportService.ParseAddress("2.b1.2")!);   // на полке, ящиков нет
     }
 
     // ---------- МОЛ ↔ сотрудник ----------

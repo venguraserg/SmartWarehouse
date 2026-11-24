@@ -94,7 +94,7 @@ internal class FakeStockRepository : IStockRepository
             .Select(b =>
             {
                 b.Batch ??= BatchOf(b.BatchId)!;
-                b.Location ??= Locations.First(l => l.Id == b.LocationId);
+                b.Location ??= Locations.FirstOrDefault(l => l.Id == b.LocationId)!;
                 return b;
             })
             .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId)
@@ -260,6 +260,8 @@ internal class FakeStockRepository : IStockRepository
         // Как EF: сначала новые партии получают номера, затем ссылки на них.
         foreach (var batch in _pendingBatches)
         {
+            // Номера — после уже заведённых в тесте партий.
+            _nextBatchId = Math.Max(_nextBatchId, Batches.Select(b => b.Id).DefaultIfEmpty(0).Max() + 1);
             batch.Id = _nextBatchId++;
             Batches.Add(batch);
         }
