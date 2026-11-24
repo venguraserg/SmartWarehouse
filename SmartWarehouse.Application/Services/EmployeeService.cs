@@ -89,7 +89,8 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
                     HeldSince(quantity, issuesByKey[(b.EmployeeId, b.ItemId, b.Kind)]),
                     reservedHere,
                     value, incomplete, b.Kind,
-                    offBook.Sum(x => x.Quantity), offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)));
+                    offBook.Sum(x => x.Quantity), offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)),
+                    StockService.MolsOf(g.Select(x => x.Batch)));
             })
             .OrderBy(r => r.EmployeeName).ThenBy(r => r.ItemName).ThenBy(r => r.Kind)
             .ToList();
@@ -156,6 +157,7 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
         employee.Department = Clean(request.Department);
         employee.Phone = Clean(request.Phone);
         employee.IsActive = request.IsActive;
+        employee.IsMol = request.IsMol;
         employee.ManagerId = manager?.Id;
         employee.Manager = manager;
     }
@@ -193,5 +195,5 @@ public class EmployeeService(IEmployeeRepository repo) : IEmployeeService
 
     internal static EmployeeDto ToDto(Employee e) => new(
         e.Id, e.PersonnelNumber, e.LastName, e.FirstName, e.MiddleName, e.Position, e.Department, e.Phone,
-        e.IsActive, e.FullName, e.ShortName, e.ManagerId, e.Manager?.ShortName);
+        e.IsActive, e.FullName, e.ShortName, e.ManagerId, e.Manager?.ShortName, e.IsMol);
 }

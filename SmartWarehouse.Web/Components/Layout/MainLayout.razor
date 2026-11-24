@@ -48,13 +48,14 @@
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="summary">
                         <NavLink href="/summary-acts"><Icon Name="summary" Size="18" /> Сводные акты</NavLink>
                     </AuthorizeView>
-                    <NavLink href="/acts">
-                        <Icon Name="act" Size="18" /> Акты на списание
-                        @if (actsToApprove > 0)
-                        {
+                    @* Прежние акты по подотчёту 1С больше не оформляются — пункт виден, только пока есть что утвердить. *@
+                    @if (actsToApprove > 0)
+                    {
+                        <NavLink href="/acts">
+                            <Icon Name="act" Size="18" /> Акты на списание
                             <span class="nav-badge" title="Ждут вашего утверждения">@actsToApprove</span>
-                        }
-                    </NavLink>
+                        </NavLink>
+                    }
                     <NavLink href="/documents"><Icon Name="docs" Size="18" /> Документы</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
                         <NavLink href="/receiving"><Icon Name="receive" Size="18" /> Приёмка по накладной</NavLink>

@@ -18,6 +18,7 @@ public static class Ui
         MovementType.Adjustment => "Корректировка",
         MovementType.Return => "Возврат",
         MovementType.CustodyChange => "Перевод в подотчёт по 1С",
+        MovementType.MolChange => "Смена МОЛ",
         _ => type.ToString()
     };
 
@@ -124,8 +125,8 @@ public static class Ui
 
     /// <summary>Вид подотчёта полностью — для заголовков и подсказок.</summary>
     public static string CustodyKindTitle(CustodyKind kind) => kind == CustodyKind.Official
-        ? "Подотчёт по 1С: в 1С на МОЛ сотрудника, списывает он сам своим актом"
-        : "Выдано в работу: в 1С остаётся на МОЛ кладовщика, списывает кладовщик по отчёту сотрудника";
+        ? "Прежний подотчёт по 1С: больше не ведётся — перенесён на склад с пометкой МОЛ"
+        : "Выдано в работу: в 1С остаётся за МОЛ партии, списывается сводным актом кладовщика по отчёту сотрудника";
 
     public static string CustodyKindClass(CustodyKind kind) => kind == CustodyKind.Official ? "tag-official" : "tag-info";
 

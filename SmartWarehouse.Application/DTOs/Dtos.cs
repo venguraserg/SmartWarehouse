@@ -64,7 +64,8 @@ public record SaveEmployeeRequest(
     string? Department,
     string? Phone,
     bool IsActive = true,
-    int? ManagerId = null);
+    int? ManagerId = null,
+    bool IsMol = false);
 
 public record EmployeeDto(
     int Id,
@@ -79,7 +80,8 @@ public record EmployeeDto(
     string FullName,
     string ShortName,
     int? ManagerId,
-    string? ManagerName);
+    string? ManagerName,
+    bool IsMol = false);
 
 /// <summary>
 /// Движение по подотчёту сотрудника: выдача (количество со знаком «+»),
@@ -117,7 +119,8 @@ public record CustodyRowDto(
     bool ValueIncomplete = false,
     CustodyKind Kind = CustodyKind.Work,
     decimal OffBookQuantity = 0,
-    decimal OffBookValue = 0);
+    decimal OffBookValue = 0,
+    IReadOnlyList<string>? Mols = null);
 
 // ---------- Учётные записи ----------
 
@@ -229,7 +232,8 @@ public record CreateDocumentRequest(
     bool OffBook = false,
     BatchOrigin Origin = BatchOrigin.Manual,
     CustodyKind? Custody = null,
-    int? IssueRequestId = null);
+    int? IssueRequestId = null,
+    int? MolId = null);
 
 public record DocumentLineDto(
     int LineNo,
@@ -245,7 +249,8 @@ public record DocumentLineDto(
     DateTimeOffset? BatchDate = null,
     string? FromLocationName = null,
     string? ToLocationName = null,
-    bool OffBook = false);
+    bool OffBook = false,
+    string? Mol = null);
 
 public record DocumentDto(
     long Id,
@@ -305,7 +310,8 @@ public record StockQuery(
     string? Search = null,
     int? CategoryId = null,
     bool BelowMinimum = false,
-    bool? OffBook = null);
+    bool? OffBook = null,
+    int? MolId = null);
 
 /// <summary>Строка остатков: сколько позиции лежит в конкретном месте.</summary>
 public record StockRowDto(
@@ -325,7 +331,9 @@ public record StockRowDto(
     decimal? Value = null,
     bool ValueIncomplete = false,
     decimal OffBookQuantity = 0,
-    decimal OffBookValue = 0);
+    decimal OffBookValue = 0,
+    IReadOnlyList<string>? Mols = null,
+    bool PlaceUnknown = false);
 
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
 public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
@@ -406,7 +414,9 @@ public record ActLineDto(
     string? EmployeeName = null,
     string? SourceNumber = null,
     int? SourceId = null,
-    bool OffBook = false);
+    bool OffBook = false,
+    int? MolId = null,
+    string? Mol = null);
 
 /// <summary>Сводный акт кладовщика: какие отчёты включить и реквизиты.</summary>
 /// <param name="ExternalNumber">Номер документа списания в 1С (можно вписать и после проведения).</param>
@@ -625,3 +635,17 @@ public record IssueRequestLineRequest(int ItemId, decimal Quantity);
 public record CreateIssueRequestRequest(int? EmployeeId, string? Comment, IReadOnlyList<IssueRequestLineRequest> Lines);
 
 public record RejectIssueRequestRequest(string? Reason);
+
+// ---------- МОЛ ----------
+
+/// <summary>Основной МОЛ склада (кладовщик): партии без пометки МОЛ числятся за ним.</summary>
+public record MainMolDto(int? EmployeeId, string? Name = null);
+
+/// <summary>Сменить МОЛ части партии в месте хранения (по сверке с 1С). <paramref name="MolId"/> null — основной МОЛ.</summary>
+public record MolChangeLine(int LocationId, int BatchId, decimal Quantity, int? MolId);
+
+public record ChangeMolRequest(IReadOnlyList<MolChangeLine> Lines, string? Comment = null);
+
+/// <summary>Сотрудник-МОЛ для выбора и фильтров.</summary>
+public record MolDto(int EmployeeId, string Name, bool IsMain);
+

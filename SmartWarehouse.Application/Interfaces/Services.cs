@@ -11,11 +11,8 @@ public interface IStockService
     /// </summary>
     Task<DocumentDto> PostDocumentAsync(CreateDocumentRequest request, CancellationToken ct = default);
 
-    /// <summary>
-    /// Перевод «выдано в работу» → «подотчёт по 1С» (подтверждение кладовщиком предложений сверки).
-    /// Документ на каждого сотрудника; всё проводится одной транзакцией.
-    /// </summary>
-    Task<IReadOnlyList<DocumentRefDto>> ConvertToOfficialAsync(ConvertCustodyRequest request, int? performerId, CancellationToken ct = default);
+    /// <summary>Сменить МОЛ партий в местах хранения (по сверке с 1С) — документ «Смена МОЛ».</summary>
+    Task<DocumentRefDto> ChangeMolAsync(ChangeMolRequest request, int? performerId, string? performedBy, CancellationToken ct = default);
 
     Task<DocumentDto> GetDocumentAsync(long id, CancellationToken ct = default);
 

@@ -16,16 +16,22 @@ public interface ISettingsService
     Task<ActTemplateDto> GetActTemplateAsync(CancellationToken ct = default);
 
     Task<ActTemplateDto> SaveActTemplateAsync(ActTemplateDto template, string? by, CancellationToken ct = default);
+
+    /// <summary>Основной МОЛ склада: партии без пометки МОЛ числятся за ним (в 1С — склад).</summary>
+    Task<MainMolDto> GetMainMolAsync(CancellationToken ct = default);
+
+    Task<MainMolDto> SaveMainMolAsync(int? employeeId, string? by, CancellationToken ct = default);
 }
 
 /// <summary>
 /// Настройки, которые администратор меняет в приложении. Пока раздел не сохранялся — действуют значения по умолчанию
 /// (организация в шапке акта — из файла настроек Documents:Organization).
 /// </summary>
-public class SettingsService(ISettingsRepository repository, DocumentPrintOptions print, TimeProvider clock) : ISettingsService
+public class SettingsService(ISettingsRepository repository, DocumentPrintOptions print, TimeProvider clock, IEmployeeRepository? employees = null) : ISettingsService
 {
     public const string LabelsKey = "labels";
     public const string ActTemplateKey = "act-template";
+    public const string MainMolKey = "main-mol";
 
     public const int MaxMembers = 10;
     public const int MaxBlankMembers = 10;
@@ -96,6 +102,32 @@ public class SettingsService(ISettingsRepository repository, DocumentPrintOption
 
         await WriteAsync(ActTemplateKey, clean, by, ct);
         return clean;
+    }
+
+    // ---------- Основной МОЛ ----------
+
+    private sealed record MainMolSetting(int? EmployeeId);
+
+    public async Task<MainMolDto> GetMainMolAsync(CancellationToken ct = default)
+    {
+        var id = (await ReadAsync<MainMolSetting>(MainMolKey, ct))?.EmployeeId;
+        var employee = id is int e && employees is not null ? await employees.GetAsync(e, ct) : null;
+        return employee is null ? new MainMolDto(null) : new MainMolDto(employee.Id, employee.ShortName);
+    }
+
+    public async Task<MainMolDto> SaveMainMolAsync(int? employeeId, string? by, CancellationToken ct = default)
+    {
+        if (employeeId is int id && employees is not null)
+        {
+            var employee = await employees.GetAsync(id, ct) ?? throw new NotFoundException("Сотрудник не найден.");
+            if (!employee.IsMol)
+            {
+                employee.IsMol = true;
+                await employees.SaveChangesAsync(ct);
+            }
+        }
+        await WriteAsync(MainMolKey, new MainMolSetting(employeeId), by, ct);
+        return await GetMainMolAsync(ct);
     }
 
     private static CommissionMemberDto? Member(CommissionMemberDto? m)

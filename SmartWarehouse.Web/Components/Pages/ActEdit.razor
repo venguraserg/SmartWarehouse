@@ -353,6 +353,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Новые акты по подотчёту 1С не оформляются: списание — отчётом об использовании и сводным актом по МОЛ.
+        if (Id is null && !IsReport)
+        {
+            var query = new Uri(Nav.Uri).Query;
+            Nav.NavigateTo("/reports/new" + query, replace: true);
+            return;
+        }
+
         var user = AuthState is null ? null : (await AuthState).User;
         isWarehouse = user?.IsWarehouseStaff() == true;
         seesPrices = user?.SeesPrices() == true;

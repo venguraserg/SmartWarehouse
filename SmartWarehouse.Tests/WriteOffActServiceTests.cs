@@ -58,15 +58,12 @@ public class WriteOffActServiceTests
         _service = new WriteOffActService(_acts, _stock, _employees, _stockService, clock);
     }
 
-    /// <summary>
-    /// Приход на склад и выдача сотруднику. По умолчанию — «подотчёт по 1С» (с него списывают акты);
-    /// для отчётов об использовании — «в работу».
-    /// </summary>
-    private async Task GiveAsync(int employee, int item, decimal qty, CustodyKind kind = CustodyKind.Official, bool offBook = false)
+    /// <summary>Приход на склад (партия основного МОЛ или указанного <paramref name="mol"/>) и выдача сотруднику «в работу».</summary>
+    private async Task GiveAsync(int employee, int item, decimal qty, CustodyKind kind = CustodyKind.Work, bool offBook = false, int? mol = null)
     {
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
             MovementType.Receipt, offBook ? null : "ТТН 1", null, null, null,
-            [new DocumentLineRequest(item, qty, null, Cell, UnitPrice: offBook ? null : 10)], OffBook: offBook));
+            [new DocumentLineRequest(item, qty, null, Cell, UnitPrice: offBook ? null : 10)], OffBook: offBook, MolId: mol));
         await _stockService.PostDocumentAsync(new CreateDocumentRequest(
             MovementType.Issue, null, null, null, null, [new DocumentLineRequest(item, qty, Cell, null)], ReceivedById: employee,
             Custody: kind));
@@ -75,8 +72,9 @@ public class WriteOffActServiceTests
     private decimal Custody(int employee, int item = Bearing) =>
         _stock.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item).Sum(b => b.Quantity);
 
+    /// <summary>Отчёт об использовании (акты по подотчёту 1С больше не оформляются).</summary>
     private static SaveActRequest Request(int employee, params ActLineRequest[] lines) =>
-        new(employee, null, null, "Наряд 15", null, lines);
+        new(employee, null, null, "Наряд 15", null, lines, ActKind.UsageReport);
 
     private static ActLineRequest Line(decimal qty, int item = Bearing, int? equipment = null, string? usage = "замена подшипника") =>
         new(item, qty, equipment, usage);
@@ -90,14 +88,24 @@ public class WriteOffActServiceTests
 
         var act = await _service.CreateAsync(Request(Fitter, Line(2, equipment: Pump), Line(1, usage: "на стенд")), AsFitter);
 
-        Assert.Equal("АС-000001", act.Number);
+        Assert.Equal("ОИ-000001", act.Number);
         Assert.Equal(ActStatus.Draft, act.Status);
-        Assert.Equal("Сидоров О.", act.ApproverName);
+        Assert.Equal("кладовщик", act.ApproverName);
         Assert.Equal(2, act.Lines.Count);
         Assert.Equal("Н-3 — Насос Н-3", act.Lines[0].Equipment);
         Assert.True(act.Can.Edit);
         Assert.False(act.Can.Decide);
         Assert.Equal(5, Custody(Fitter));
+    }
+
+    [Fact]
+    public async Task Акт_по_подотчёту_1С_больше_не_оформляется()
+    {
+        await GiveAsync(Fitter, Bearing, 5);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            _service.CreateAsync(new SaveActRequest(Fitter, null, null, null, null, [Line(1)]), AsFitter));
+        Assert.Contains("сводным актом", ex.Message);
     }
 
     [Fact]
@@ -141,97 +149,21 @@ public class WriteOffActServiceTests
         var to = new DateOnly(2026, 10, 20);
 
         await Assert.ThrowsAsync<DomainException>(() => _service.CreateAsync(
-            new SaveActRequest(Fitter, to, from, null, null, [Line(1)]), AsFitter));
+            new SaveActRequest(Fitter, to, from, null, null, [Line(1)], ActKind.UsageReport), AsFitter));
         var outside = await Assert.ThrowsAsync<DomainException>(() => _service.CreateAsync(
-            new SaveActRequest(Fitter, from, to, null, null, [Line(1) with { UsedOn = new DateOnly(2026, 10, 25) }]), AsFitter));
+            new SaveActRequest(Fitter, from, to, null, null, [Line(1) with { UsedOn = new DateOnly(2026, 10, 25) }], ActKind.UsageReport), AsFitter));
         Assert.Contains("вне периода", outside.Message);
 
         var act = await _service.CreateAsync(
-            new SaveActRequest(Fitter, from, to, null, null, [Line(1) with { UsedOn = new DateOnly(2026, 10, 5) }]), AsFitter);
+            new SaveActRequest(Fitter, from, to, null, null, [Line(1) with { UsedOn = new DateOnly(2026, 10, 5) }], ActKind.UsageReport), AsFitter);
         Assert.Equal(from, act.PeriodFrom);
         Assert.Equal(new DateOnly(2026, 10, 5), act.Lines[0].UsedOn);
     }
 
-    // ---------- Утверждение ----------
+    // ---------- Отправка, отзыв, удаление ----------
 
     [Fact]
-    public async Task Отправленный_акт_резервирует_и_утверждается_руководителем()
-    {
-        await GiveAsync(Fitter, Bearing, 5);
-        var draft = await _service.CreateAsync(Request(Fitter, Line(3, equipment: Pump)), AsFitter);
-
-        var pending = await _service.SubmitAsync(draft.Id, AsFitter);
-        Assert.Equal(ActStatus.Pending, pending.Status);
-        Assert.False(pending.Can.Edit);
-        Assert.True(pending.Can.Recall);
-        Assert.Equal(5, Custody(Fitter)); // пока только резерв
-        Assert.Equal(1, await _service.CountToApproveAsync(AsBoss));
-        Assert.Single(await _service.ListAsync(ActScope.ToApprove, null, null, AsBoss));
-
-        // Резерв: второй акт на те же позиции не пройдёт.
-        await Assert.ThrowsAsync<InsufficientStockException>(() => _service.CreateAsync(Request(Fitter, Line(3)), AsFitter));
-
-        // Утвердить может только руководитель.
-        await Assert.ThrowsAsync<ForbiddenException>(() => _service.ApproveAsync(draft.Id, AsFitter));
-        await Assert.ThrowsAsync<ForbiddenException>(() => _service.ApproveAsync(draft.Id, AsKeeper));
-
-        var approved = await _service.ApproveAsync(draft.Id, AsBoss);
-
-        Assert.Equal(ActStatus.Approved, approved.Status);
-        Assert.Equal("Сидоров О.", approved.DecidedBy);
-        Assert.Equal("Начальник участка", approved.DecidedByPosition);
-        Assert.Equal(2, Custody(Fitter));
-        var doc = _stock.Documents.Last();
-        Assert.Equal(MovementType.WriteOff, doc.Type);
-        Assert.Equal(approved.DocumentId, doc.Id);
-        Assert.Equal(Pump, doc.EquipmentId);
-        Assert.Equal("АС-000001", doc.ExternalNumber);
-        Assert.Equal(Boss, doc.PerformedById);
-        Assert.Equal(Fitter, doc.ReceivedById);
-        Assert.Equal(0, await _service.CountToApproveAsync(AsBoss));
-    }
-
-    [Fact]
-    public async Task Возврат_на_доработку_с_замечанием_снимает_резерв()
-    {
-        await GiveAsync(Fitter, Bearing, 5);
-        var act = await _service.CreateAsync(Request(Fitter, Line(5)), AsFitter);
-        await _service.SubmitAsync(act.Id, AsFitter);
-
-        await Assert.ThrowsAsync<DomainException>(() => _service.ReturnAsync(act.Id, "  ", AsBoss));
-        var returned = await _service.ReturnAsync(act.Id, "Укажите оборудование", AsBoss);
-
-        Assert.Equal(ActStatus.Returned, returned.Status);
-        Assert.Equal("Укажите оборудование", returned.ReturnRemark);
-        Assert.False(returned.Can.Edit);                                  // руководитель сам не правит
-        Assert.True((await _service.GetAsync(act.Id, AsFitter)).Can.Edit); // а сотрудник — может
-        Assert.Equal(0, await _stock.GetReservedAsync(Bearing, Fitter, null));
-
-        // Исправил и отправил снова.
-        var fixedAct = await _service.UpdateAsync(act.Id, Request(Fitter, Line(5, equipment: Pump)), AsFitter);
-        Assert.Equal(ActStatus.Draft, fixedAct.Status);
-        await _service.SubmitAsync(act.Id, AsFitter);
-        var approved = await _service.ApproveAsync(act.Id, AsBoss);
-        Assert.Null(approved.ReturnRemark);
-        Assert.Equal(0, Custody(Fitter));
-    }
-
-    [Fact]
-    public async Task Без_руководителя_сотрудник_утверждает_сам_сразу_при_отправке()
-    {
-        await GiveAsync(Other, Bearing, 2);
-        var act = await _service.CreateAsync(Request(Other, Line(2)), AsOther);
-        Assert.Equal(Other, act.ApproverId);
-
-        var approved = await _service.SubmitAsync(act.Id, AsOther);
-
-        Assert.Equal(ActStatus.Approved, approved.Status);
-        Assert.Equal("Козлов А.", approved.DecidedBy);
-        Assert.Equal(0, Custody(Other));
-    }
-
-    [Fact]
-    public async Task Отзыв_с_утверждения_возвращает_в_черновик()
+    public async Task Отзыв_с_подтверждения_возвращает_в_черновик()
     {
         await GiveAsync(Fitter, Bearing, 2);
         var act = await _service.CreateAsync(Request(Fitter, Line(2)), AsFitter);
@@ -241,19 +173,19 @@ public class WriteOffActServiceTests
         var recalled = await _service.RecallAsync(act.Id, AsFitter);
 
         Assert.Equal(ActStatus.Draft, recalled.Status);
-        Assert.Equal(0, await _service.CountToApproveAsync(AsBoss));
+        Assert.Equal(0, await _service.CountToApproveAsync(AsKeeper));
     }
 
     [Fact]
-    public async Task Утверждённый_акт_нельзя_изменить_или_удалить()
+    public async Task Подтверждённый_отчёт_нельзя_изменить_или_удалить()
     {
         await GiveAsync(Other, Bearing, 2);
-        var act = await _service.CreateAsync(Request(Other, Line(1)), AsOther);
-        await _service.SubmitAsync(act.Id, AsOther);
+        var act = await _service.CreateAsync(Request(Other, Line(1)), AsKeeper);
+        await _service.SubmitAsync(act.Id, AsKeeper);   // внесено кладовщиком — подтверждено сразу
 
-        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateAsync(act.Id, Request(Other, Line(1)), AsOther));
-        await Assert.ThrowsAsync<DomainException>(() => _service.DeleteAsync(act.Id, AsOther));
-        await Assert.ThrowsAsync<DomainException>(() => _service.ApproveAsync(act.Id, AsOther));
+        await Assert.ThrowsAsync<DomainException>(() => _service.UpdateAsync(act.Id, Request(Other, Line(1)), AsKeeper));
+        await Assert.ThrowsAsync<DomainException>(() => _service.DeleteAsync(act.Id, AsKeeper));
+        await Assert.ThrowsAsync<DomainException>(() => _service.ApproveAsync(act.Id, AsKeeper));
     }
 
     [Fact]
@@ -314,21 +246,6 @@ public class WriteOffActServiceTests
 
         Assert.Equal(ActStatus.Approved, report.Status);
         Assert.Equal(0, await _service.CountToApproveAsync(AsKeeper));
-    }
-
-    [Fact]
-    public async Task Отчёт_только_по_выданному_в_работу_а_акт_только_по_подотчёту_1С()
-    {
-        await GiveAsync(Fitter, Bearing, 2, CustodyKind.Official);
-        await GiveAsync(Fitter, Belt, 1, CustodyKind.Work);
-
-        await Assert.ThrowsAsync<InsufficientStockException>(() => _service.CreateAsync(Report(Fitter, Line(1)), AsFitter));
-        await Assert.ThrowsAsync<InsufficientStockException>(() => _service.CreateAsync(Request(Fitter, Line(1, item: Belt)), AsFitter));
-
-        var act = await _service.CreateAsync(Request(Fitter, Line(2)), AsFitter);
-        var report = await _service.CreateAsync(Report(Fitter, Line(1, item: Belt)), AsFitter);
-        Assert.StartsWith("АС-", act.Number);
-        Assert.StartsWith("ОИ-", report.Number);
     }
 
     [Fact]
@@ -406,6 +323,23 @@ public class WriteOffActServiceTests
 
         summary = await _service.SetExternalNumberAsync(summary.Id, "АКТ-1С № 154", AsKeeper);
         Assert.Equal("АКТ-1С № 154", summary.ExternalNumber);
+    }
+
+    [Fact]
+    public async Task Сводный_акт_делится_по_МОЛ_партий()
+    {
+        await GiveAsync(Fitter, Bearing, 2);              // основной МОЛ
+        await GiveAsync(Fitter, Belt, 3, mol: Boss);      // числится за МОЛ Сидоровым
+        var report = await _service.CreateAsync(Request(Fitter, Line(1), Line(2, item: Belt)), AsKeeper);
+        report = await _service.SubmitAsync(report.Id, AsKeeper);
+
+        var summary = await _service.CreateSummaryAsync(Summary(report.Id), AsKeeper);
+        Assert.Equal([(Bearing, (int?)null, (string?)null), (Belt, Boss, "Сидоров О.")],
+            summary.Lines.OrderBy(l => l.ItemId).Select(l => (l.ItemId, l.MolId, l.Mol)));
+
+        summary = await _service.PostSummaryAsync(summary.Id, AsKeeper);
+        Assert.Equal(2, summary.Documents!.Count);   // один сотрудник, два МОЛ — два документа списания
+        Assert.Contains(_stock.Documents, d => d.Type == MovementType.WriteOff && d.Comment!.Contains("МОЛ Сидоров О."));
     }
 
     [Fact]

@@ -43,6 +43,9 @@ public record WriteOffActData(
 public interface IActPdfRenderer
 {
     byte[] RenderWriteOffAct(WriteOffActData data);
+
+    /// <summary>Несколько актов одним файлом, каждый с новой страницы.</summary>
+    byte[] RenderWriteOffActs(IReadOnlyList<WriteOffActData> acts);
 }
 
 public interface IActService
@@ -86,12 +89,9 @@ public class ActService(
                 "equipment" => act.Lines.OrderBy(l => l.Equipment is null).ThenBy(l => l.Equipment).ThenBy(l => l.LineNo),
                 _ => act.Lines.OrderBy(l => l.LineNo)
             };
-        var lines = ordered
-            .Select((l, i) => new WriteOffActLineData(i + 1, l.Sku, l.ItemName, l.UnitCode, l.Quantity,
-                act.Kind == ActKind.Summary ? SummaryUsage(l) : Usage(l),
-                actor.SeesPrices ? l.UnitPrice : null))
-            .ToList();
-        var employee = await employees.GetAsync(act.EmployeeId, ct);
+        WriteOffActLineData Line(ActLineDto l, int i) => new(i + 1, l.Sku, l.ItemName, l.UnitCode, l.Quantity,
+            act.Kind == ActKind.Summary ? SummaryUsage(l) : Usage(l),
+            actor.SeesPrices ? l.UnitPrice : null);
         var template = await settings.GetActTemplateAsync(ct);
 
         string? period = (act.PeriodFrom, act.PeriodTo) switch
@@ -102,30 +102,47 @@ public class ActService(
             _ => null
         };
 
-        var data = new WriteOffActData(
-            act.Number,
-            act.DecidedAt is { } decided && act.Status == ActStatus.Approved ? decided : act.SubmittedAt ?? act.UpdatedAt,
-            template.Organization,
-            employee?.FullName ?? act.EmployeeName,
-            employee?.Position ?? act.EmployeePosition,
-            employee?.PersonnelNumber,
-            period,
-            act.ExternalNumber,
-            act.Comment,
-            lines,
-            act.Status == ActStatus.Approved && act.DecidedBy is not null && act.DecidedAt is { } at
-                ? new ActApprovalData(await DecidedByFullAsync(act, ct), act.DecidedByPosition, at)
-                : null,
-            act.Status switch
-            {
-                ActStatus.Approved => null,
-                ActStatus.Pending => "НА УТВЕРЖДЕНИИ",
-                _ => "ЧЕРНОВИК"
-            },
-            act.Kind == ActKind.Summary ? string.Join(", ", act.Documents?.Select(d => d.Number) ?? []) : act.DocumentNumber,
-            template);
+        var approval = act.Status == ActStatus.Approved && act.DecidedBy is not null && act.DecidedAt is { } at
+            ? new ActApprovalData(await DecidedByFullAsync(act, ct), act.DecidedByPosition, at)
+            : null;
+        var watermark = act.Status switch
+        {
+            ActStatus.Approved => null,
+            ActStatus.Pending => "НА УТВЕРЖДЕНИИ",
+            _ => "ЧЕРНОВИК"
+        };
+        var date = act.DecidedAt is { } decided && act.Status == ActStatus.Approved ? decided : act.SubmittedAt ?? act.UpdatedAt;
 
-        return (renderer.RenderWriteOffAct(data), $"Акт_{act.Number}.pdf");
+        // Сводный акт: отдельный акт на каждого МОЛ (в 1С каждый списывает своё). Основной МОЛ — первым.
+        var groups = act.Kind == ActKind.Summary
+            ? ordered.GroupBy(l => l.MolId).OrderBy(g => g.Key is null ? 0 : 1).ThenBy(g => g.First().Mol).ToList()
+            : ordered.GroupBy(_ => (int?)null).ToList();
+        var main = act.Kind == ActKind.Summary ? (await settings.GetMainMolAsync(ct)).EmployeeId : null;
+
+        var pages = new List<WriteOffActData>();
+        for (var n = 0; n < groups.Count; n++)
+        {
+            var group = groups[n];
+            var molId = group.Key ?? main ?? act.EmployeeId;
+            var mol = await employees.GetAsync(molId, ct);
+            pages.Add(new WriteOffActData(
+                groups.Count > 1 ? $"{act.Number}/{n + 1}" : act.Number,
+                date,
+                template.Organization,
+                mol?.FullName ?? (group.Key is null ? act.EmployeeName : group.First().Mol ?? act.EmployeeName),
+                mol?.Position ?? (molId == act.EmployeeId ? act.EmployeePosition : null),
+                mol?.PersonnelNumber,
+                period,
+                act.ExternalNumber,
+                act.Comment,
+                group.Select(Line).ToList(),
+                approval,
+                watermark,
+                act.Kind == ActKind.Summary ? string.Join(", ", act.Documents?.Select(d => d.Number) ?? []) : act.DocumentNumber,
+                template));
+        }
+
+        return (renderer.RenderWriteOffActs(pages), $"Акт_{act.Number}.pdf");
     }
 
     public async Task<(byte[] Pdf, string FileName)> GetWriteOffActAsync(long documentId, ActActor actor, CancellationToken ct = default)

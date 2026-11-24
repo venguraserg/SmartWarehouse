@@ -13,20 +13,43 @@ public class ActPdfRenderer : IActPdfRenderer
 {
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
 
-    public byte[] RenderWriteOffAct(WriteOffActData data)
+    public byte[] RenderWriteOffAct(WriteOffActData data) => RenderWriteOffActs([data]);
+
+    /// <summary>Несколько актов одним файлом — каждый с новой страницы (сводный акт по нескольким МОЛ).</summary>
+    public byte[] RenderWriteOffActs(IReadOnlyList<WriteOffActData> acts)
     {
+        if (acts.Count == 0)
+            throw new ArgumentException("Нет актов для печати.", nameof(acts));
         EmbeddedFontResolver.EnsureRegistered();
-        var template = data.Template ?? new ActTemplateDto(
-            data.Organization, SettingsService.DefaultSubtitle, SettingsService.DefaultIntro,
-            SettingsService.DefaultApproverPosition, null, [], 3, true);
 
         var document = new Document();
-        document.Info.Title = $"Акт на списание {data.Number}";
+        document.Info.Title = $"Акт на списание {string.Join(", ", acts.Select(a => a.Number))}";
         document.Info.Author = "Склад ОЭТО — ОАО «Туровский молочный комбинат»";
 
         var normal = document.Styles[StyleNames.Normal]!;
         normal.Font.Name = EmbeddedFontResolver.Family;
         normal.Font.Size = 10;
+
+        foreach (var data in acts)
+            AddAct(document, data);
+
+        var renderer = new PdfDocumentRenderer { Document = document };
+        renderer.RenderDocument();
+
+        var watermark = acts[0].Watermark;
+        if (!string.IsNullOrWhiteSpace(watermark))
+            DrawWatermark(renderer.PdfDocument, watermark!);
+
+        using var output = new MemoryStream();
+        renderer.PdfDocument.Save(output, false);
+        return output.ToArray();
+    }
+
+    private static void AddAct(Document document, WriteOffActData data)
+    {
+        var template = data.Template ?? new ActTemplateDto(
+            data.Organization, SettingsService.DefaultSubtitle, SettingsService.DefaultIntro,
+            SettingsService.DefaultApproverPosition, null, [], 3, true);
 
         var section = document.AddSection();
         var page = section.PageSetup;
@@ -178,16 +201,6 @@ public class ActPdfRenderer : IActPdfRenderer
             $"Сформировано в SmartWarehouse {DateTime.Now.ToString("dd.MM.yyyy HH:mm", Ru)} · акт {data.Number}");
         footer.Format.Font.Size = 7.5;
         footer.Format.Font.Color = Colors.Gray;
-
-        var renderer = new PdfDocumentRenderer { Document = document };
-        renderer.RenderDocument();
-
-        if (!string.IsNullOrWhiteSpace(data.Watermark))
-            DrawWatermark(renderer.PdfDocument, data.Watermark!);
-
-        using var output = new MemoryStream();
-        renderer.PdfDocument.Save(output, false);
-        return output.ToArray();
     }
 
     /// <summary>«УТВЕРЖДАЮ» справа: заполнено, если акт утверждён в программе, иначе — строки для подписи.</summary>

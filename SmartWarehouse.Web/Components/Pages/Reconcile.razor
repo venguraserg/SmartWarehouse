@@ -8,8 +8,9 @@
 
 <h1>Сверка с 1С</h1>
 <p class="muted" style="margin-top: -.5rem">
-    Загрузите «Сальдовые ведомости ТМЦ» из 1С (можно все МОЛ сразу). Остатки МОЛ склада сравниваются со складом приложения,
-    остальных МОЛ — с подотчётом сотрудника (по фамилии и инициалам).
+    Загрузите «Сальдовые ведомости ТМЦ» из 1С (можно все МОЛ сразу). Сравнивается позиция × МОЛ × количество:
+    за основным МОЛ — партии склада без пометки МОЛ и выданное «в работу», за остальными — партии с их пометкой
+    (сотрудник ищется по фамилии и инициалам).
 </p>
 
 <Alert Error="@error" />
@@ -27,7 +28,7 @@
         @if (result is not null)
         {
             <div class="field">
-                <label for="mol">МОЛ склада</label>
+                <label for="mol">Основной МОЛ (склад)</label>
                 <select id="mol" @bind="warehouseMol" @bind:after="RunAsync">
                     @foreach (var m in result.Mols)
                     {
@@ -70,69 +71,69 @@
         </ul>
     }
 
-    @if (converted is { Count: > 0 })
+    @if (changed is not null)
     {
         <div class="alert alert-success">
-            Переведено в подотчёт по 1С:
-            @foreach (var d in converted)
-            {
-                <a class="mono" href="/documents/@d.Id" style="margin-left: .35rem">@d.Number</a>
-            }
+            МОЛ принят из 1С: <a class="mono" href="/documents/@changed.Id">@changed.Number</a>
         </div>
     }
 
-    @if (r.Conversions is { Count: > 0 } conv)
+    @if (r.MolChanges is { Count: > 0 } changes)
     {
         <div class="panel" style="margin-bottom: 1rem">
             <div class="page-head" style="margin-bottom: .5rem">
-                <h2 style="margin: 0">Перевести в подотчёт по 1С <span class="muted">(@toConvert.Count из @conv.Count)</span></h2>
+                <h2 style="margin: 0">Принять МОЛ из 1С <span class="muted">(@toChange.Count из @changes.Count)</span></h2>
                 <span class="spacer"></span>
-                <button class="btn btn-sm" type="button" @onclick="() => toConvert = conv.Select(ConvKey).ToHashSet()">Отметить все</button>
-                <button class="btn btn-sm" type="button" @onclick="() => toConvert.Clear()">Снять все</button>
+                <button class="btn btn-sm" type="button" @onclick="() => toChange = Enumerable.Range(0, changes.Count).ToHashSet()">Отметить все</button>
+                <button class="btn btn-sm" type="button" @onclick="() => toChange.Clear()">Снять все</button>
             </div>
             <p class="muted" style="margin-top: 0">
-                В 1С эти позиции уже на МОЛ сотрудника, а в приложении числятся у него <span class="tag tag-info">в работе</span>.
-                После перевода они станут <span class="tag tag-official">по 1С</span> — сотрудник спишет их своим актом.
-                Позиции в отчётах об использовании и вне учёта не переводятся.
+                Количество в приложении сходится, но в 1С часть числится за другим МОЛ. Пометка меняется у того, что лежит
+                на складе: сначала из «Место не указано», затем из ячеек — количество по местам можно поправить.
+                Выданное «в работу» не меняется.
             </p>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 40px"></th>
-                            <th>Сотрудник</th>
-                            <th>Код</th>
-                            <th>Наименование</th>
-                            <th class="num">В 1С на МОЛ</th>
-                            <th class="num">По 1С в прил.</th>
-                            <th class="num">В работе</th>
-                            <th class="num" style="width: 120px">Перевести</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var c in conv)
-                        {
-                            var key = ConvKey(c);
-                            var on = toConvert.Contains(key);
-                            <tr class="@(on ? "selected" : null)">
-                                <td><input type="checkbox" checked="@on" @onchange="() => ToggleConvert(key)" aria-label="Перевести @c.Code" /></td>
-                                <td><a href="/employees/@c.EmployeeId">@c.EmployeeName</a></td>
-                                <td class="mono"><a href="/items/@c.ItemId">@c.Code</a></td>
-                                <td class="col-name">@c.Name</td>
-                                <td class="num">@Ui.Qty(c.Qty1C) @c.Unit</td>
-                                <td class="num">@Ui.Qty(c.QtyOfficial)</td>
-                                <td class="num">@Ui.Qty(c.WorkFree)</td>
-                                <td class="num">
-                                    <input type="number" min="0" max="@c.WorkFree" step="any" style="width: 100px; text-align: right"
-                                           value="@ConvQty(c)" @onchange="e => SetConvQty(key, e.Value)" disabled="@(!on)" />
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            @for (var i = 0; i < changes.Count; i++)
+            {
+                var index = i;
+                var c = changes[i];
+                var on = toChange.Contains(index);
+                <div class="mol-change @(on ? "selected" : null)">
+                    <label class="mol-change-head">
+                        <input type="checkbox" checked="@on" @onchange="() => ToggleChange(index)" />
+                        <span class="mono"><a href="/items/@c.ItemId">@c.Code</a></span>
+                        <span class="col-name">@c.Name</span>
+                        <span class="muted">@Ui.Qty(c.Suggested) @c.Unit:</span>
+                        <span class="tag tag-neutral">@c.FromMol</span> → <span class="tag tag-info">@c.ToMol</span>
+                    </label>
+                    @if (on)
+                    {
+                        <table class="mol-sources">
+                            <tbody>
+                                @foreach (var src in c.Sources)
+                                {
+                                    var key = (index, src.LocationId, src.BatchId);
+                                    <tr>
+                                        <td>
+                                            @Ui.Place(src.LocationName, src.LocationCode)
+                                            @if (src.Unknown)
+                                            {
+                                                <span class="tag tag-warn">место не указано</span>
+                                            }
+                                            <div class="line-hint">партия от @Ui.Day(src.ReceivedAt) · есть @Ui.Qty(src.Available)</div>
+                                        </td>
+                                        <td class="num" style="width: 120px">
+                                            <input type="number" min="0" max="@src.Available" step="any" style="width: 100px; text-align: right"
+                                                   value="@SourceQty(key, src)" @onchange="e => SetSourceQty(key, src, e.Value)" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            }
             <div class="actions" style="margin-top: .75rem">
-                <button class="btn btn-primary" type="button" disabled="@(busy || toConvert.Count == 0)" @onclick="ConvertAsync">Перевести отмеченное</button>
+                <button class="btn btn-primary" type="button" disabled="@(busy || toChange.Count == 0)" @onclick="ChangeMolAsync">Принять МОЛ из 1С</button>
             </div>
         </div>
     }
@@ -228,36 +229,34 @@
     private bool busy;
     private string? error;
 
-    // ---------- Перевод «в работе» → «по 1С» ----------
-    private HashSet<(int EmployeeId, int ItemId)> toConvert = [];
-    private readonly Dictionary<(int EmployeeId, int ItemId), decimal> convQty = [];
-    private List<DocumentRefDto>? converted;
+    // ---------- Принять МОЛ из 1С ----------
+    private HashSet<int> toChange = [];
+    private readonly Dictionary<(int Index, int LocationId, int BatchId), decimal> sourceQty = [];
+    private DocumentRefDto? changed;
 
-    private static (int EmployeeId, int ItemId) ConvKey(ReconcileConvertDto c) => (c.EmployeeId, c.ItemId);
+    private string SourceQty((int, int, int) key, MolSourceDto src) =>
+        (sourceQty.TryGetValue(key, out var q) ? q : src.Proposed).ToString("0.###", CultureInfo.InvariantCulture);
 
-    private string ConvQty(ReconcileConvertDto c) =>
-        (convQty.TryGetValue(ConvKey(c), out var q) ? q : c.Suggested).ToString("0.###", CultureInfo.InvariantCulture);
-
-    private void SetConvQty((int EmployeeId, int ItemId) key, object? value)
+    private void SetSourceQty((int, int, int) key, MolSourceDto src, object? value)
     {
         var text = value?.ToString()?.Replace(',', '.');
         if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var q) && q >= 0)
-            convQty[key] = q;
+            sourceQty[key] = Math.Min(q, src.Available);
     }
 
-    private void ToggleConvert((int EmployeeId, int ItemId) key)
+    private void ToggleChange(int index)
     {
-        if (!toConvert.Remove(key))
-            toConvert.Add(key);
+        if (!toChange.Remove(index))
+            toChange.Add(index);
     }
 
-    private async Task ConvertAsync()
+    private async Task ChangeMolAsync()
     {
-        if (result?.Conversions is not { } conv)
+        if (result?.MolChanges is not { } changes)
             return;
-        var lines = conv
-            .Where(c => toConvert.Contains(ConvKey(c)))
-            .Select(c => new ConvertCustodyLine(c.EmployeeId, c.ItemId, convQty.TryGetValue(ConvKey(c), out var q) ? q : c.Suggested))
+        var lines = toChange.Order()
+            .SelectMany(i => changes[i].Sources.Select(src => new MolChangeLine(src.LocationId, src.BatchId,
+                sourceQty.TryGetValue((i, src.LocationId, src.BatchId), out var q) ? q : src.Proposed, changes[i].ToMolId)))
             .Where(l => l.Quantity > 0)
             .ToList();
         if (lines.Count == 0)
@@ -266,10 +265,10 @@
         error = null;
         try
         {
-            var docs = await Api.ConvertCustodyAsync(new ConvertCustodyRequest(lines, result.AsOf is null ? null : $"По сверке с 1С на {result.AsOf}"));
+            var doc = await Api.ChangeMolAsync(new ChangeMolRequest(lines, result.AsOf is null ? "Смена МОЛ по сверке с 1С" : $"Смена МОЛ по сверке с 1С на {result.AsOf}"));
             busy = false;
             await RunAsync();
-            converted = docs;
+            changed = doc;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
@@ -342,9 +341,9 @@
         {
             result = await Api.ReconcileAsync(files, warehouseMol);
             warehouseMol = result.WarehouseMol;
-            converted = null;
-            convQty.Clear();
-            toConvert = result.Conversions?.Select(ConvKey).ToHashSet() ?? [];
+            changed = null;
+            sourceQty.Clear();
+            toChange = Enumerable.Range(0, result.MolChanges?.Count ?? 0).ToHashSet();
             filter = result.Rows.Any(r => r.Status != ReconcileStatus.Match) ? null : ReconcileStatus.Match;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

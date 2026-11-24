@@ -168,7 +168,7 @@ public class ImportTests
         var employeeRepo = new FakeEmployeeRepository();
         var service = new OpeningImportService(
             new CatalogService(catalogRepo, new FixedTimeProvider(Now)), new LocationService(locationRepo),
-            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)));
+            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)), new StubMolService());
 
         OpeningRow Row(int line, string code, decimal qty, decimal value, string? address, bool custody = false, string unit = "шт", string? mol = null,
                        bool offBook = false) =>
@@ -193,7 +193,7 @@ public class ImportTests
         Assert.Equal(6, result.ItemsNew);
         Assert.Equal(1, result.UnitsNew);
         Assert.Equal(1, result.EmployeesNew);
-        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + временное IMP + «Сортировка» SORT
+        // C3, C3.1, C3.1.4, C3.1.0, C3.2 + «Место не указано» UNK (МОЛ Рудаков без адреса) + «Сортировка» SORT
         Assert.Equal(7, result.LocationsNew);
         Assert.Equal([4], result.Issues.Where(i => i.Skipped).Select(i => i.Line));
         Assert.Contains(result.Issues, i => i.Line == 5 && !i.Skipped && i.Message.Contains("Сортировк"));
@@ -216,7 +216,8 @@ public class ImportTests
             new StockBalance { ItemId = 1, LocationId = 1, BatchId = 1, Quantity = 12 },  // совпадает
             new StockBalance { ItemId = 2, LocationId = 1, BatchId = 2, Quantity = 3 },   // в 1С — 5
             new StockBalance { ItemId = 3, LocationId = 1, BatchId = 3, Quantity = 1 }]); // в 1С нет
-        stock.EmployeeBalances.Add(new EmployeeBalance { EmployeeId = 7, ItemId = 4, BatchId = 4, Quantity = 7, Kind = CustodyKind.Official });
+        stock.Batches.Single(b => b.Id == 4).MolId = 7;   // числится за Рудаковым, лежит на складе
+        stock.Balances.Add(new StockBalance { ItemId = 4, LocationId = 1, BatchId = 4, Quantity = 7 });
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
@@ -267,17 +268,20 @@ public class ImportTests
     }
 
     [Fact]
-    public async Task Сверка_предлагает_перевести_в_подотчёт_по_1С_то_что_в_1С_уже_на_МОЛ_сотрудника()
+    public async Task Сверка_предлагает_принять_МОЛ_из_1С_сначала_из_места_не_указано()
     {
         var stock = new FakeStockRepository();
         var unit = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" };
         stock.Items.Add(new Item { Id = 1, Sku = "23148", Name = "Ремень", UnitId = 1, Unit = unit });
-        stock.Batches.Add(new Batch { Id = 1, ItemId = 1, UnitPrice = 10 });
+        stock.Locations.AddRange([
+            new StorageLocation { Id = 1, WarehouseId = 1, Code = "01", FullCode = "СК1-01" },
+            new StorageLocation { Id = 40, WarehouseId = 1, Code = "UNK", FullCode = "СК1-UNK" }]);
+        stock.Batches.Add(new Batch { Id = 1, ItemId = 1, UnitPrice = 10, ReceivedAt = Now });
         stock.Batches.Add(new Batch { Id = 2, ItemId = 1, UnitPrice = null, OffBook = true });
-        stock.EmployeeBalances.AddRange([
-            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 1, Quantity = 4, Kind = CustodyKind.Work },
-            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 2, Quantity = 9, Kind = CustodyKind.Work },   // вне учёта
-            new EmployeeBalance { EmployeeId = 7, ItemId = 1, BatchId = 1, Quantity = 1, Kind = CustodyKind.Official }]);
+        stock.Balances.AddRange([
+            new StockBalance { ItemId = 1, LocationId = 1, BatchId = 1, Quantity = 4 },
+            new StockBalance { ItemId = 1, LocationId = 40, BatchId = 1, Quantity = 5 },
+            new StockBalance { ItemId = 1, LocationId = 1, BatchId = 2, Quantity = 9 }]);   // вне учёта — не участвует
 
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
@@ -285,13 +289,15 @@ public class ImportTests
 
         SaldoBatch B(string mol, string code, decimal qty) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, qty * 10);
         var result = await service.ReconcileAsync(
-            [new SaldoSheet("склад.xlsx", "17.11.2026", [B("Дорофей С.М.", "77777", 50)]),
-             new SaldoSheet("рудаков.xlsx", "17.11.2026", [B("Рудаков М.А.", "0000023148", 3)])],
+            [new SaldoSheet("склад.xlsx", "17.11.2026", [B("Дорофей С.М.", "23148", 2)]),
+             new SaldoSheet("рудаков.xlsx", "17.11.2026", [B("Рудаков М.А.", "0000023148", 6)])],
             "Дорофей С.М.");
 
-        // В 1С за Рудаковым 3, «по 1С» в приложении 1 → не хватает 2; учётного «в работе» 4 → перевести 2.
-        var c = Assert.Single(result.Conversions!);
-        Assert.Equal((7, 1, 3m, 1m, 4m, 2m), (c.EmployeeId, c.ItemId, c.Qty1C, c.QtyOfficial, c.WorkFree, c.Suggested));
+        // В приложении всё (9) за основным МОЛ; в 1С за Рудаковым 6 → сменить МОЛ у 6: 5 из «Место не указано» и 1 из ячейки.
+        var c = Assert.Single(result.MolChanges!);
+        Assert.Equal((1, (int?)null, (int?)7, 6m), (c.ItemId, c.FromMolId, c.ToMolId, c.Suggested));
+        Assert.Equal([(40, 5m, true), (1, 1m, false)], c.Sources.Select(x => (x.LocationId, x.Proposed, x.Unknown)));
+        Assert.Equal(ReconcileStatus.OnlyIn1C, result.Rows.Single(r => r.Mol == "Рудаков М.А.").Status);
     }
 
     [Fact]
@@ -321,4 +327,15 @@ public class ImportTests
         Assert.Equal(ReconcileStatus.OnlyInApp, StatusOf("99999"));
         Assert.Equal(ReconcileStatus.QtyDiffers, result.Rows[0].Status); // расхождения — первыми
     }
+}
+
+/// <summary>Для проверки импорта без загрузки: «Место не указано» не создаётся.</summary>
+internal class StubMolService : IMolService
+{
+    public Task<IReadOnlyList<MolDto>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MolDto>>([]);
+
+    public Task<int> EnsureUnknownPlaceAsync(int warehouseId, CancellationToken ct = default) => Task.FromResult(0);
+
+    public Task<(int Employees, IReadOnlyList<string> Problems)> MoveOfficialCustodyAsync(CancellationToken ct = default) =>
+        Task.FromResult<(int, IReadOnlyList<string>)>((0, []));
 }

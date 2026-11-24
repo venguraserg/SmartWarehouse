@@ -37,6 +37,15 @@ public class Batch
 
     /// <summary>Как партия попала в приложение.</summary>
     public BatchOrigin Origin { get; set; }
+
+    /// <summary>
+    /// За каким МОЛ числится в 1С. null — основной МОЛ склада (кладовщик).
+    /// Где партия лежит — отдельно (место хранения, «Место не указано», у сотрудника в работе).
+    /// Меняется только по сверке с сальдовой ведомостью 1С.
+    /// </summary>
+    public int? MolId { get; set; }
+
+    public Employee? Mol { get; set; }
 }
 
 /// <summary>

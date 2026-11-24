@@ -38,6 +38,20 @@
                 }
             </select>
         </div>
+        @if (mols.Count > 0)
+        {
+            <div class="field">
+                <label for="f-mol">За кем числится (МОЛ)</label>
+                <select id="f-mol" @bind="molId">
+                    <option value="">Все МОЛ</option>
+                    <option value="0">Основной@(mols.FirstOrDefault(m => m.IsMain) is { } main ? $" — {main.Name}" : "")</option>
+                    @foreach (var m in mols.Where(m => !m.IsMain))
+                    {
+                        <option value="@m.EmployeeId">@m.Name</option>
+                    }
+                </select>
+            </div>
+        }
         <div class="field">
             <label for="f-cat">Категория</label>
             <select id="f-cat" @bind="categoryId">
@@ -138,6 +152,13 @@ else
                                     <span class="muted"> · @first.LocationName</span>
                                 }
                                 <span class="muted"> — @group.Count() @Plural(group.Count(), "позиция", "позиции", "позиций")</span>
+                                @if (first.PlaceUnknown)
+                                {
+                                    <span class="tag tag-warn" title="Где лежит — неизвестно. Выдать можно после размещения на полку.">найти и разместить</span>
+                                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="placing">
+                                        <a class="btn btn-sm" href="/receiving#unknown">Разместить</a>
+                                    </AuthorizeView>
+                                }
                             </td>
                         </tr>
                         @foreach (var row in group)
@@ -145,7 +166,7 @@ else
                             <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
                                 <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
                                 <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                                <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /></td>
+                                <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /> <MolTags Mols="row.Mols" /></td>
                                 <td>@row.CategoryName</td>
                                 <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
                                 @if (ShowValue)
@@ -190,6 +211,7 @@ else
                             <td class="col-name">
                                 <a href="/items/@first.ItemId">@first.ItemName</a>
                                 <OffBookTag Quantity="totalOffBook" Total="total" />
+                                <MolTags Mols="MolsOf(group)" />
                                 @if (belowMinimum)
                                 {
                                     <div class="line-hint">минимум @Ui.Qty(first.MinStock) @first.UnitCode</div>
@@ -243,6 +265,7 @@ else
                         {
                             <span class="tag tag-warn">ниже минимума</span>
                         }
+                        <MolTags Mols="MolsOf(group)" />
                         <RequestAddButton ItemId="first.ItemId" Class="card-action" />
                     </span>
                 </div>
@@ -260,11 +283,16 @@ else
     [SupplyParameterFromQuery(Name = "low")] public bool? LowParam { get; set; }
     [SupplyParameterFromQuery(Name = "view")] public string? ViewParam { get; set; }
     [SupplyParameterFromQuery(Name = "book")] public string? BookParam { get; set; }
+    [SupplyParameterFromQuery(Name = "mol")] public int? MolParam { get; set; }
 
     private string? search;
     private string? location;
     private int? warehouseId;
     private int? categoryId;
+
+    /// <summary>МОЛ: null — все, 0 — основной, иначе — сотрудник-МОЛ.</summary>
+    private int? molId;
+    private List<MolDto> mols = [];
     private bool belowMinimum;
     private bool byItem;
 
@@ -292,7 +320,7 @@ else
 
     private bool HasFilters =>
         !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(location)
-        || warehouseId is not null || categoryId is not null || belowMinimum || offBook is not null;
+        || warehouseId is not null || categoryId is not null || belowMinimum || offBook is not null || molId is not null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -300,6 +328,7 @@ else
         location = LocationParam;
         warehouseId = WarehouseParam;
         categoryId = CategoryParam;
+        molId = MolParam;
         belowMinimum = LowParam ?? false;
         byItem = ViewParam == "items";
         offBook = BookParam switch { "1c" => false, "off" => true, _ => null };
@@ -311,10 +340,11 @@ else
                 warehouses = await Api.GetWarehousesAsync();
                 categories = await Api.GetCategoriesAsync();
                 placeTree = await Api.GetPlacesAsync();
+                mols = await Api.GetMolsAsync();
                 referencesLoaded = true;
             }
 
-            result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum, offBook));
+            result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum, offBook, molId));
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
@@ -333,7 +363,7 @@ else
     private Task ResetAsync()
     {
         search = location = null;
-        warehouseId = categoryId = null;
+        warehouseId = categoryId = molId = null;
         belowMinimum = false;
         offBook = null;
         return ApplyAsync();
@@ -364,12 +394,19 @@ else
         ["location"] = location ?? (string.IsNullOrWhiteSpace(this.location) ? null : this.location.Trim()),
         ["warehouse"] = location is null ? warehouseId : null,
         ["category"] = categoryId,
+        ["mol"] = molId,
         ["low"] = belowMinimum ? true : null,
         ["view"] = byItem ? "items" : null,
         ["book"] = offBook switch { false => "1c", true => "off", null => null }
     });
 
     private static string Plural(int n, string one, string few, string many) => Ui.Plural(n, one, few, many);
+
+    private static IReadOnlyList<string>? MolsOf(IEnumerable<StockRowDto> rows)
+    {
+        var names = rows.SelectMany(r => r.Mols ?? []).Distinct().OrderBy(n => n).ToList();
+        return names.Count == 0 ? null : names;
+    }
 
     // ---------- Выгрузка для Excel (CSV с разделителем «;», открывается двойным щелчком) ----------
 

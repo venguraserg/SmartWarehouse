@@ -687,3 +687,11 @@ button.chip:hover { border-color: var(--border-strong); }
     .cart-bar { bottom: calc(76px + env(safe-area-inset-bottom)); }
     .card-action { min-height: 40px; }
 }
+
+/* ===== Сверка: принять МОЛ из 1С ===== */
+.mol-change { border: 1px solid var(--border); border-radius: var(--radius); padding: .5rem .75rem; margin-bottom: .5rem; }
+.mol-change.selected { border-color: var(--brand-primary); }
+.mol-change-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; cursor: pointer; }
+.mol-sources { width: 100%; margin-top: .4rem; }
+.mol-sources td { padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+.tag-mol { background: var(--info-weak); color: var(--text); border: 1px dashed var(--border-strong); }

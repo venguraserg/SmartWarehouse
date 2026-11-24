@@ -6,17 +6,17 @@ namespace SmartWarehouse.Application.Services;
 public interface IReconcileService
 {
     /// <summary>
-    /// Сверка остатков приложения с «Сальдовыми ведомостями ТМЦ» 1С.
-    /// <paramref name="warehouseMol"/> — МОЛ основного склада (его остатки сравниваются со складом приложения);
-    /// null — тот, у кого в 1С больше всего стоимость. Остальные МОЛ сравниваются с подотчётом сотрудников.
+    /// Сверка остатков приложения с «Сальдовыми ведомостями ТМЦ» 1С — по каждому МОЛ: позиция × МОЛ × количество.
+    /// <paramref name="warehouseMol"/> — основной МОЛ склада (его партии — без пометки МОЛ); null — основной МОЛ из настроек,
+    /// а если он не задан или его нет в файлах — тот, у кого в 1С больше всего стоимость.
     /// </summary>
     Task<ReconcileResultDto> ReconcileAsync(IReadOnlyList<SaldoSheet> sheets, string? warehouseMol, CancellationToken ct = default);
 }
 
-public class ReconcileService(IStockRepository stock, IEmployeeService employees) : IReconcileService
+public class ReconcileService(IStockRepository stock, IEmployeeService employees, ISettingsService? settings = null) : IReconcileService
 {
-    /// <summary>Место для МОЛ склада: склад + «выдано в работу» (в 1С это за кладовщиком).</summary>
-    public const string WarehousePlace = "Склад + в работе";
+    /// <summary>Подпись основного МОЛ: его партии — весь склад без пометки МОЛ плюс выданное «в работу».</summary>
+    public const string WarehousePlace = "Склад (основной МОЛ)";
 
     public async Task<ReconcileResultDto> ReconcileAsync(IReadOnlyList<SaldoSheet> sheets, string? warehouseMol, CancellationToken ct = default)
     {
@@ -26,76 +26,85 @@ public class ReconcileService(IStockRepository stock, IEmployeeService employees
         if (asOf.Count > 1)
             notes.Add("В файлах разные даты остатков: " + string.Join(", ", asOf) + ".");
 
-        // МОЛ: склад — указанный или с наибольшей стоимостью; остальные — сотрудники (подотчёт).
+        var staff = await employees.ListAsync(null, includeInactive: true, ct);
+        var main = settings is null ? null : (await settings.GetMainMolAsync(ct)).EmployeeId;
+
+        // Основной МОЛ: указанный; иначе — из настроек (если есть в файлах); иначе — с наибольшей стоимостью.
         var molValues = batches.GroupBy(b => b.Mol)
             .Select(g => (Mol: g.Key, Count: g.Count(), Value: g.Sum(b => b.Value ?? 0)))
             .OrderByDescending(m => m.Value)
             .ToList();
         var requested = warehouseMol?.Trim();
         warehouseMol = molValues.Select(m => m.Mol).FirstOrDefault(m => string.Equals(m, requested, StringComparison.OrdinalIgnoreCase))
+                       ?? (main is int mainId ? molValues.Select(m => m.Mol).FirstOrDefault(m => PersonNames.Find(staff, m)?.Id == mainId) : null)
                        ?? molValues.Select(m => m.Mol).FirstOrDefault();
 
-        var staff = await employees.ListAsync(null, includeInactive: true, ct);
-        var molPlace = new Dictionary<string, (string? Place, int? EmployeeId)>();
+        // МОЛ из 1С → пометка партий в приложении: основной — без пометки (null), остальные — сотрудник.
+        var molKey = new Dictionary<string, (bool Found, int? MolId, string Place)>();
         var mols = new List<ReconcileMolDto>();
         foreach (var m in molValues)
         {
-            (string? Place, int? EmployeeId) place = m.Mol == warehouseMol
-                ? (WarehousePlace, null)
-                : PersonNames.Find(staff, m.Mol) is { } e ? (e.FullName, e.Id) : (null, null);
-            molPlace[m.Mol] = place;
-            mols.Add(new ReconcileMolDto(m.Mol, place.Place, place.EmployeeId, m.Count, decimal.Round(m.Value, 2)));
-            if (place.Place is null)
-                notes.Add($"МОЛ «{m.Mol}» не найден среди сотрудников приложения — его позиции показаны как «есть только в 1С».");
+            (bool Found, int? MolId, string Place) key = m.Mol == warehouseMol
+                ? (true, null, WarehousePlace)
+                : PersonNames.Find(staff, m.Mol) is { } e
+                    ? e.Id == main ? (true, null, WarehousePlace) : (true, e.Id, e.FullName)
+                    : (false, null, "");
+            molKey[m.Mol] = key;
+            mols.Add(new ReconcileMolDto(m.Mol, key.Found ? key.Place : null, key.MolId, m.Count, decimal.Round(m.Value, 2)));
+            if (!key.Found)
+                notes.Add($"МОЛ «{m.Mol}» не найден среди сотрудников приложения — его позиции показаны как «есть только в 1С». " +
+                          "Заведите сотрудника и отметьте «МОЛ».");
         }
+        var loaded = molKey.Values.Where(k => k.Found).Select(k => k.MolId).ToHashSet();
+        string PlaceOf(int? molId) => molKey.Values.FirstOrDefault(k => k.Found && k.MolId == molId).Place ?? "";
+        string MolOf(int? molId) => molKey.FirstOrDefault(k => k.Value.Found && k.Value.MolId == molId).Key ?? "";
 
-        var warehouse = (await stock.ListWarehouseTotalsAsync(ct)).ToDictionary(t => Key(t.Sku));
-        var custody = (await stock.ListCustodyTotalsAsync(ct)).ToLookup(t => t.EmployeeId);
+        var totals = (await stock.ListMolTotalsAsync(ct)).ToDictionary(t => (t.MolId, Code: Key(t.Sku)));
 
         var rows = new List<ReconcileRowDto>();
-        var seen = new HashSet<(string Mol, string Code)>();
+        var seen = new HashSet<(int? MolId, string Code)>();
+        var qty1C = new Dictionary<(int? MolId, string Code), decimal>();
         foreach (var g in batches.GroupBy(b => (b.Mol, Code: Key(b.Code))))
         {
-            seen.Add(g.Key);
             var first = g.First();
-            var qty1C = g.Sum(b => b.Quantity);
+            var quantity = g.Sum(b => b.Quantity);
             var value1C = g.All(b => b.Value is null) ? (decimal?)null : decimal.Round(g.Sum(b => b.Value ?? 0), 2);
-            var (place, employeeId) = molPlace[g.Key.Mol];
+            var key = molKey[g.Key.Mol];
 
-            (int ItemId, string Name, string Unit, decimal Qty, decimal Value, bool Incomplete)? app = null;
-            if (place == WarehousePlace && warehouse.TryGetValue(g.Key.Code, out var w))
-                app = (w.ItemId, w.Name, w.Unit, w.Quantity, w.Value, w.ValueIncomplete);
-            else if (employeeId is int eid && custody[eid].FirstOrDefault(c => Key(c.Sku) == g.Key.Code) is { } c)
-                app = (c.ItemId, c.Name, c.Unit, c.Quantity, c.Value, c.ValueIncomplete);
+            MolTotal? app = null;
+            if (key.Found)
+            {
+                // Два МОЛ из 1С могут указывать на одну пометку (основной МОЛ под двумя написаниями) — сравнивается один раз.
+                if (!seen.Add((key.MolId, g.Key.Code)))
+                    notes.Add($"{first.Code}: МОЛ «{g.Key.Mol}» совпал с другим МОЛ из файлов — проверьте вручную.");
+                qty1C[(key.MolId, g.Key.Code)] = qty1C.GetValueOrDefault((key.MolId, g.Key.Code)) + quantity;
+                totals.TryGetValue((key.MolId, g.Key.Code), out app);
+            }
 
-            var qtyApp = app?.Qty ?? 0;
+            var qtyApp = app?.Quantity ?? 0;
             var status = app is null || qtyApp == 0
                 ? ReconcileStatus.OnlyIn1C
-                : qtyApp != qty1C
+                : qtyApp != quantity
                     ? ReconcileStatus.QtyDiffers
-                    : value1C is decimal v && (app.Value.Incomplete || Math.Abs(app.Value.Value - v) > 0.01m)
+                    : value1C is decimal v && (app.ValueIncomplete || Math.Abs(app.Value - v) > 0.01m)
                         ? ReconcileStatus.ValueDiffers
                         : ReconcileStatus.Match;
             rows.Add(new ReconcileRowDto(status, first.Code, first.Name, app?.Unit ?? first.Unit, g.Key.Mol,
-                place ?? "не найден в приложении", app?.ItemId, qty1C, qtyApp, value1C, app?.Value));
+                key.Found ? key.Place : "не найден в приложении", app?.ItemId, quantity, qtyApp, value1C, app?.Value));
         }
 
-        // Есть в приложении, нет в 1С — у склада и у сотрудников, чьи ведомости загружены.
-        foreach (var w in warehouse.Values.Where(w => w.Quantity != 0 && !seen.Contains((warehouseMol!, Key(w.Sku)))))
-            rows.Add(new ReconcileRowDto(ReconcileStatus.OnlyInApp, w.Sku, w.Name, w.Unit, warehouseMol ?? "", WarehousePlace,
-                w.ItemId, 0, w.Quantity, null, w.Value));
-        foreach (var (mol, (place, employeeId)) in molPlace.Where(m => m.Value.EmployeeId is not null))
-            foreach (var c in custody[employeeId!.Value].Where(c => c.Quantity != 0 && !seen.Contains((mol, Key(c.Sku)))))
-                rows.Add(new ReconcileRowDto(ReconcileStatus.OnlyInApp, c.Sku, c.Name, c.Unit, mol, place!,
-                    c.ItemId, 0, c.Quantity, null, c.Value));
+        // Есть в приложении, нет в 1С — у МОЛ, чьи ведомости загружены.
+        foreach (var t in totals.Values.Where(t => t.Quantity != 0 && loaded.Contains(t.MolId) && !seen.Contains((t.MolId, Key(t.Sku)))))
+            rows.Add(new ReconcileRowDto(ReconcileStatus.OnlyInApp, t.Sku, t.Name, t.Unit, MolOf(t.MolId), PlaceOf(t.MolId),
+                t.ItemId, 0, t.Quantity, null, t.Value));
 
-        var conversions = await SuggestConversionsAsync(batches, molPlace, custody, ct);
-        if (conversions.Count > 0)
-            notes.Add($"Позиций к переводу «в работе» → «подотчёт по 1С»: {conversions.Count} — в 1С они уже на МОЛ сотрудников.");
+        var notLoaded = totals.Values.Where(t => t.Quantity != 0 && !loaded.Contains(t.MolId)).Select(t => t.MolId).Distinct().Count();
+        if (notLoaded > 0)
+            notes.Add($"Ещё {notLoaded} МОЛ не сверялись — их ведомостей 1С нет среди загруженных.");
 
-        var otherCustody = custody.Select(c => c.Key).Except(molPlace.Values.Select(v => v.EmployeeId).OfType<int>()).Count();
-        if (otherCustody > 0)
-            notes.Add($"Подотчёт ещё {otherCustody} сотрудников не сверялся — их ведомостей 1С нет среди загруженных.");
+        var changes = await SuggestMolChangesAsync(totals, qty1C, loaded, PlaceOf, ct);
+        if (changes.Count > 0)
+            notes.Add($"Позиций, где МОЛ в приложении расходится с 1С: {changes.Count} — их можно «принять МОЛ из 1С».");
 
         var order = new[] { ReconcileStatus.QtyDiffers, ReconcileStatus.OnlyIn1C, ReconcileStatus.OnlyInApp, ReconcileStatus.ValueDiffers, ReconcileStatus.Match };
         rows = rows
@@ -104,38 +113,77 @@ public class ReconcileService(IStockRepository stock, IEmployeeService employees
             .ThenBy(r => r.Mol)
             .ThenBy(r => r.Code, StringComparer.Ordinal)
             .ToList();
-        return new ReconcileResultDto(asOf.FirstOrDefault(), warehouseMol, mols, rows, notes, conversions);
+        return new ReconcileResultDto(asOf.FirstOrDefault(), warehouseMol, mols, rows, notes, changes);
     }
 
     /// <summary>
-    /// Что перевести из «в работе» в «подотчёт по 1С»: в 1С на МОЛ сотрудника позиции больше, чем у него «по 1С»
-    /// в приложении, — значит, бухгалтерия передала её с МОЛ кладовщика. Переводится не больше свободного «в работе».
+    /// «Принять МОЛ из 1С»: по позиции у одного МОЛ в приложении больше, чем в 1С, у другого — меньше.
+    /// Сменить пометку можно у того, что лежит в местах хранения: сначала из «Место не указано», затем из ячеек
+    /// (старые партии первыми). Выданное «в работу» не трогается.
     /// </summary>
-    private async Task<List<ReconcileConvertDto>> SuggestConversionsAsync(
-        List<SaldoBatch> batches,
-        Dictionary<string, (string? Place, int? EmployeeId)> molPlace,
-        ILookup<int, CustodyTotal> custody,
+    private async Task<List<ReconcileMolChangeDto>> SuggestMolChangesAsync(
+        Dictionary<(int? MolId, string Code), MolTotal> totals,
+        Dictionary<(int? MolId, string Code), decimal> qty1C,
+        HashSet<int?> loaded,
+        Func<int?, string> placeOf,
         CancellationToken ct)
     {
-        var result = new List<ReconcileConvertDto>();
-        if (!molPlace.Values.Any(p => p.EmployeeId is not null))
+        var result = new List<ReconcileMolChangeDto>();
+        var codes = qty1C.Keys.Select(k => k.Code).Concat(totals.Keys.Where(k => loaded.Contains(k.MolId)).Select(k => k.Code)).Distinct().ToList();
+        var plan = new List<(string Code, int? From, int? To, decimal Quantity, MolTotal Item)>();
+        foreach (var code in codes)
+        {
+            decimal Diff(int? mol) => (totals.TryGetValue((mol, code), out var t) ? t.Quantity : 0) - qty1C.GetValueOrDefault((mol, code));
+            var surplus = loaded.Select(m => (Mol: m, Qty: Diff(m))).Where(x => x.Qty > 0).ToList();
+            var deficit = loaded.Select(m => (Mol: m, Qty: -Diff(m))).Where(x => x.Qty > 0).ToList();
+            foreach (var d in deficit)
+            {
+                var need = d.Qty;
+                for (var i = 0; i < surplus.Count && need > 0; i++)
+                {
+                    var take = Math.Min(need, surplus[i].Qty);
+                    if (take <= 0)
+                        continue;
+                    plan.Add((code, surplus[i].Mol, d.Mol, take, totals[(surplus[i].Mol, code)]));
+                    surplus[i] = (surplus[i].Mol, surplus[i].Qty - take);
+                    need -= take;
+                }
+            }
+        }
+        if (plan.Count == 0)
             return result;
 
-        var work = (await stock.ListWorkFreeTotalsAsync(ct)).ToLookup(w => w.EmployeeId);
-        foreach (var g in batches.GroupBy(b => (b.Mol, Code: Key(b.Code))))
+        var sources = (await stock.ListMolSourcesAsync(plan.Select(p => p.Item.ItemId).Distinct().ToList(), ct))
+            .Where(b => b.Batch is not null)
+            .ToList();
+        var used = new Dictionary<(int LocationId, int BatchId), decimal>();
+        foreach (var p in plan)
         {
-            var (place, employeeId) = molPlace[g.Key.Mol];
-            if (employeeId is not int eid || work[eid].FirstOrDefault(w => Key(w.Sku) == g.Key.Code) is not { } w)
-                continue;
-            var qty1C = g.Sum(b => b.Quantity);
-            var official = custody[eid].Where(c => Key(c.Sku) == g.Key.Code).Sum(c => c.Quantity);
-            var suggested = Math.Min(qty1C - official, w.Quantity);
+            var candidates = sources
+                .Where(b => b.ItemId == p.Item.ItemId && b.Batch.MolId == p.From)
+                .OrderBy(b => SpecialPlaces.IsUnknown(b.Location?.FullCode) ? 0 : 1)
+                .ThenBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId)
+                .ToList();
+            var left = p.Quantity;
+            var list = new List<MolSourceDto>();
+            foreach (var b in candidates)
+            {
+                var available = b.Quantity - used.GetValueOrDefault((b.LocationId, b.BatchId));
+                if (available <= 0)
+                    continue;
+                var proposed = Math.Min(available, left);
+                left -= proposed;
+                used[(b.LocationId, b.BatchId)] = used.GetValueOrDefault((b.LocationId, b.BatchId)) + proposed;
+                list.Add(new MolSourceDto(b.LocationId, b.Location?.FullCode ?? "", b.Location?.Name, b.BatchId, b.Batch.ReceivedAt,
+                    available, SpecialPlaces.IsUnknown(b.Location?.FullCode), proposed));
+            }
+            var suggested = p.Quantity - left;
             if (suggested <= 0)
-                continue;
-            result.Add(new ReconcileConvertDto(eid, place!, g.Key.Mol, w.ItemId, w.Sku, w.Name, w.Unit,
-                qty1C, official, w.Quantity, suggested));
+                continue;   // всё «в работе» — пометку там не меняем
+            result.Add(new ReconcileMolChangeDto(p.Item.ItemId, p.Item.Sku, p.Item.Name, p.Item.Unit,
+                p.From, placeOf(p.From), p.To, placeOf(p.To), suggested, list));
         }
-        return result.OrderBy(r => r.EmployeeName).ThenBy(r => r.Name).ToList();
+        return result.OrderBy(r => r.ToMol).ThenBy(r => r.Name).ToList();
     }
 
     /// <summary>Код для сравнения: 0000032353 и 32353 — один код.</summary>

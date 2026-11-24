@@ -524,30 +524,38 @@ public class StockServiceTests
         _repo.EmployeeBalances.Where(b => b.EmployeeId == employee && b.ItemId == item && b.Kind == kind).Sum(b => b.Quantity);
 
     [Fact]
-    public async Task Выдача_со_склада_по_умолчанию_в_работу()
+    public async Task Выдача_со_склада_только_в_работу()
     {
         await Post(MovementType.Receipt, Line(10, to: CellA));
         await Post(MovementType.Issue, Line(4, from: CellA));
-        await Send(Doc(MovementType.Issue, Line(1, from: CellA)) with { Custody = CustodyKind.Official });
 
-        Assert.Equal((4m, 1m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
-        var issues = _repo.Documents.Where(d => d.Type == MovementType.Issue).SelectMany(d => d.Lines).ToList();
-        Assert.Equal([CustodyKind.Work, CustodyKind.Official], issues.Select(l => l.CustodyKind));
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            Send(Doc(MovementType.Issue, Line(1, from: CellA)) with { Custody = CustodyKind.Official }));
+        Assert.Contains("только «в работу»", ex.Message);
+        Assert.Equal((4m, 0m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+        Assert.All(_repo.Documents.Where(d => d.Type == MovementType.Issue).SelectMany(d => d.Lines), l => Assert.Equal(CustodyKind.Work, l.CustodyKind));
+    }
+
+    /// <summary>Прежний «подотчёт по 1С» (как до перехода на пометку МОЛ): часть партии из ячейки — за сотрудником.</summary>
+    private void SeedOfficial(int location, int batchId, decimal qty)
+    {
+        _repo.Balances.Single(b => b.LocationId == location && b.BatchId == batchId).Quantity -= qty;
+        _repo.EmployeeBalances.Add(new EmployeeBalance
+        {
+            EmployeeId = Worker, ItemId = Bearing, BatchId = batchId, Kind = CustodyKind.Official, Quantity = qty,
+            Batch = _repo.Batches.Single(b => b.Id == batchId)
+        });
     }
 
     [Fact]
-    public async Task Возврат_сначала_из_выданного_в_работу_списание_сначала_из_подотчёта_по_1С()
+    public async Task Прежний_подотчёт_по_1С_возвращается_после_выданного_в_работу()
     {
         await Post(MovementType.Receipt, Line(10, to: CellA));
-        await Post(MovementType.Issue, Line(3, from: CellA));                                                  // в работу
-        await Send(Doc(MovementType.Issue, Line(3, from: CellA)) with { Custody = CustodyKind.Official });   // по 1С
+        await Post(MovementType.Issue, Line(3, from: CellA));   // в работу
+        SeedOfficial(CellA, 1, 3);                               // прежний «по 1С»
 
-        await Post(MovementType.Return, Line(4, to: CellA));       // 3 из «в работу» + 1 из «по 1С»
+        await Post(MovementType.Return, Line(4, to: CellA));    // 3 из «в работу» + 1 из «по 1С»
         Assert.Equal((0m, 2m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
-
-        await Post(MovementType.Issue, Line(2, from: CellA));      // снова 2 в работу
-        await Post(MovementType.WriteOff, Line(3));                // 2 из «по 1С» + 1 из «в работу»
-        Assert.Equal((1m, 0m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
     }
 
     [Fact]
@@ -647,53 +655,86 @@ public class StockServiceTests
         Assert.Equal(3, Custody());
     }
 
-    // ---------- Перевод «в работу» → «подотчёт по 1С» (по сверке с 1С) ----------
+    // ---------- МОЛ: пометка партии и «Место не указано» ----------
+
+    private const int Mol = 3;   // сотрудник-МОЛ (уволен — пометка всё равно ставится)
 
     [Fact]
-    public async Task Перевод_в_подотчёт_по_1С_меняет_вид_но_не_количество()
+    public async Task Смена_МОЛ_части_партии_отделяет_новую_партию_с_той_же_ценой()
     {
         await Post(MovementType.Receipt, Line(10, to: CellA));
-        await Post(MovementType.Issue, Line(5, from: CellA));   // «в работу»
 
-        var docs = await _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 3)]), performerId: 1);
+        var doc = await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellA, 1, 4, Mol)]), 1, null);
 
-        Assert.Single(docs);
-        Assert.StartsWith("ПП-", docs[0].Number);
-        Assert.Equal((2m, 3m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
-        Assert.Equal(5, Balance(CellA));
-        var line = _repo.Documents.Single(d => d.Type == MovementType.CustodyChange).Lines.Single();
-        Assert.Equal((Worker, Worker, CustodyKind.Official, 3m), (line.FromEmployeeId!.Value, line.ToEmployeeId!.Value, line.CustodyKind!.Value, line.Quantity));
+        Assert.StartsWith("СМ-", doc.Number);
+        Assert.Equal(10, Balance(CellA));
+        var parts = _repo.Balances.Where(b => b.LocationId == CellA).OrderBy(b => b.BatchId).ToList();
+        Assert.Equal([(1, 6m, (int?)null), (2, 4m, Mol)], parts.Select(b => (b.BatchId, b.Quantity, _repo.Batches.Single(x => x.Id == b.BatchId).MolId)));
+        Assert.Equal(10m, _repo.Batches.Single(b => b.Id == 2).UnitPrice);
+        Assert.True(_repo.Employees.Single(e => e.Id == Mol).IsMol);
+        var lines = _repo.Documents.Single(d => d.Type == MovementType.MolChange).Lines.ToList();
+        Assert.Equal([(CellA, (int?)null, 1), (null, CellA, 2)], lines.Select(l => (l.FromLocationId, l.ToLocationId, l.BatchId)));
     }
 
     [Fact]
-    public async Task Перевод_не_трогает_зарезервированное_отчётом_и_вне_учёта()
+    public async Task Смена_МОЛ_всей_партии_меняет_пометку_без_деления()
     {
-        await Post(MovementType.Receipt, Line(10, to: CellA));
-        await Send(new CreateDocumentRequest(MovementType.Receipt, null, null, null, null, [Line(5, to: CellB)], OffBook: true));
-        await Post(MovementType.Issue, Line(4, from: CellA));   // учётные, «в работу»
-        await Post(MovementType.Issue, Line(5, from: CellB));   // вне учёта, «в работу»
-        _repo.Acts.Add(new WriteOffAct
-        {
-            Id = 7, EmployeeId = Worker, Status = ActStatus.Pending, Kind = ActKind.UsageReport,
-            Lines = { new WriteOffActLine { ItemId = Bearing, BatchId = 1, Quantity = 3, Usage = "ремонт" } }
-        });
+        await Post(MovementType.Receipt, Line(5, to: CellB));
 
-        // Свободно учётного «в работе» — 1 шт.
-        await Assert.ThrowsAsync<InsufficientStockException>(() =>
-            _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 2)]), null));
-        await _service.ConvertToOfficialAsync(new ConvertCustodyRequest([new ConvertCustodyLine(Worker, Bearing, 1)]), null);
+        await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, Mol)]), null, "Сверка");
 
-        Assert.Equal((8m, 1m), (Custody(CustodyKind.Work), Custody(CustodyKind.Official)));
+        Assert.Equal(Mol, Assert.Single(_repo.Batches).MolId);
+        var line = _repo.Documents.Single(d => d.Type == MovementType.MolChange).Lines.Single();
+        Assert.Equal((CellB, CellB), (line.FromLocationId, line.ToLocationId));
+
+        // И обратно — на основного МОЛ.
+        await _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, null)]), null, null);
+        Assert.Null(Assert.Single(_repo.Batches).MolId);
+        await Assert.ThrowsAsync<DomainException>(() =>
+            _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 5, null)]), null, null));   // менять нечего
+        await Assert.ThrowsAsync<DomainException>(() =>
+            _service.ChangeMolAsync(new ChangeMolRequest([new MolChangeLine(CellB, 1, 6, Mol)]), null, null));   // больше, чем есть
     }
 
     [Fact]
-    public async Task Перевод_обычным_документом_не_проводится()
+    public async Task Приход_с_МОЛ_помечает_партии_и_остатки_фильтруются_по_МОЛ()
+    {
+        await Post(MovementType.Receipt, Line(10, to: CellA));
+        await Send(Doc(MovementType.Receipt, Line(3, to: CellB)) with { MolId = Mol });
+
+        Assert.True(_repo.Employees.Single(e => e.Id == Mol).IsMol);
+        var all = await _service.SearchStockAsync(new StockQuery());
+        Assert.Equal(["Сидоров О."], all.Rows.Single(r => r.LocationId == CellB).Mols!);
+        Assert.Null(all.Rows.Single(r => r.LocationId == CellA).Mols);
+        Assert.Equal([CellA], (await _service.SearchStockAsync(new StockQuery(MolId: 0))).Rows.Select(r => r.LocationId));
+        Assert.Equal([CellB], (await _service.SearchStockAsync(new StockQuery(MolId: Mol))).Rows.Select(r => r.LocationId));
+        await Assert.ThrowsAsync<DomainException>(() => Send(Doc(MovementType.Transfer, Line(1, from: CellA, to: CellB)) with { MolId = Mol }));
+    }
+
+    [Fact]
+    public async Task Из_места_не_указано_выдавать_нельзя_сначала_разместить()
+    {
+        const int Unknown = 40;
+        _repo.Locations.Add(new StorageLocation { Id = Unknown, WarehouseId = 1, Type = LocationType.Cell, Code = SpecialPlaces.UnknownCode, FullCode = "СК1-UNK" });
+        await Send(Doc(MovementType.Receipt, Line(4, to: Unknown)) with { MolId = Mol });
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => Post(MovementType.Issue, Line(1, from: Unknown)));
+        Assert.Contains("место не указано", ex.Message);
+
+        await Post(MovementType.Transfer, Line(4, from: Unknown, to: CellA));   // нашли — разместили
+        await Post(MovementType.Issue, Line(1, from: CellA));
+        Assert.Equal(Mol, _repo.Batches.Single().MolId);                         // пометка МОЛ осталась
+        Assert.True((await _service.SearchStockAsync(new StockQuery())).Rows.All(r => !r.PlaceUnknown));
+    }
+
+    [Fact]
+    public async Task Подотчёт_по_1С_и_смена_МОЛ_обычным_документом_не_проводятся()
     {
         await Post(MovementType.Receipt, Line(10, to: CellA));
         await Post(MovementType.Issue, Line(2, from: CellA));
 
-        var ex = await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(Doc(MovementType.CustodyChange, Line(1))));
-        Assert.Contains("сверки", ex.Message);
+        Assert.Contains("сверк", (await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(Doc(MovementType.CustodyChange, Line(1))))).Message);
+        Assert.Contains("сверк", (await Assert.ThrowsAsync<DomainException>(() => _service.PostDocumentAsync(Doc(MovementType.MolChange, Line(1, from: CellA, to: CellA))))).Message);
     }
 
     // ---------- Партии и цены ----------

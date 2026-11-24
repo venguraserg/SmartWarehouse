@@ -145,6 +145,8 @@ internal class BatchConfiguration : IEntityTypeConfiguration<Batch>
         b.HasIndex(x => new { x.ItemId, x.ReceivedAt });
         b.Property(x => x.OffBook).HasDefaultValue(false);
         b.Property(x => x.Origin).HasDefaultValue(BatchOrigin.Manual);
+        b.HasOne(x => x.Mol).WithMany().HasForeignKey(x => x.MolId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.MolId);
     }
 }
 
@@ -226,6 +228,7 @@ internal class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         b.Property(x => x.Phone).HasMaxLength(32);
         b.HasIndex(x => new { x.LastName, x.FirstName });
         b.HasOne(x => x.Manager).WithMany().HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.Restrict);
+        b.Property(x => x.IsMol).HasDefaultValue(false);
     }
 }
 

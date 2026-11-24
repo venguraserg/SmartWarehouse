@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IOpeningImportService, OpeningImportService>();
         services.AddScoped<IReconcileService, ReconcileService>();
         services.AddScoped<IReceivingService, ReceivingService>();
+        services.AddScoped<IMolService, MolService>();
         services.AddScoped<AccountService>();
         services.AddScoped<IAuthService>(sp => sp.GetRequiredService<AccountService>());
         services.AddScoped<IUserService>(sp => sp.GetRequiredService<AccountService>());
