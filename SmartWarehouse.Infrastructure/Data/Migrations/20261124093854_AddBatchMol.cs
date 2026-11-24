@@ -35,6 +35,15 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                 principalTable: "employees",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Restrict);
+
+            // «Подотчёт по 1С» больше не ведётся: при запуске API он переносится на склад («Место не указано», пометка МОЛ).
+            // Отправленные на утверждение акты по нему (Kind = 0) держат резерв — возвращаем их сотруднику с пояснением.
+            migrationBuilder.Sql("""
+                UPDATE write_off_acts
+                SET "Status" = 'Returned',
+                    "ReturnRemark" = 'Подотчёт по 1С больше не ведётся: позиции перенесены на склад с пометкой МОЛ. Акт не утверждается — его можно удалить. Списание — отчётом об использовании и сводным актом кладовщика.'
+                WHERE "Kind" = 0 AND "Status" = 'Pending';
+                """);
         }
 
         /// <inheritdoc />
