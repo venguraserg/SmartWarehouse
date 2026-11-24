@@ -69,6 +69,8 @@ try {
 
     Write-Host "==> Резервная копия" -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot "backup.ps1") -InstallDir $InstallDir
+    # backup.ps1 в конце убирает пароль из окружения — задаём снова, иначе psql спросит пароль и не подключится.
+    $env:PGPASSWORD = $parts["password"]
 
     Write-Host "==> Остановка служб" -ForegroundColor Cyan
     Stop-Service $webService, $apiService -Force
