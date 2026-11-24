@@ -55,6 +55,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Property<int>("ItemId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("MolId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Note")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -80,6 +83,8 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasColumnType("numeric(18,4)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MolId");
 
                     b.HasIndex("ReceiptDocumentId");
 
@@ -139,6 +144,11 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsMol")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("LastName")
                         .IsRequired()
@@ -927,12 +937,19 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartWarehouse.Domain.Entities.Employee", "Mol")
+                        .WithMany()
+                        .HasForeignKey("MolId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "ReceiptDocument")
                         .WithMany()
                         .HasForeignKey("ReceiptDocumentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Item");
+
+                    b.Navigation("Mol");
 
                     b.Navigation("ReceiptDocument");
                 });
