@@ -211,15 +211,18 @@ public class ReceivingService(
         foreach (var warehouse in await locations.ListWarehousesAsync(ct))
         {
             var tree = await locations.GetLocationTreeAsync(warehouse.Id, ct);
-            // «Приёмка» — товар по накладным, «Сортировка» — остатки, загруженные без места (адрес не по схеме).
+            // «Приёмка» — товар по накладным, «Сортировка» — остатки, загруженные без места (адрес не по схеме),
+            // «Место не указано» — числится за МОЛ, но где лежит — неизвестно.
             foreach (var place in tree.Where(n => n.Code.Equals(ReceptionCode, StringComparison.OrdinalIgnoreCase)
-                                               || n.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase)))
+                                               || n.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase)
+                                               || n.Code.Equals(SpecialPlaces.UnknownCode, StringComparison.OrdinalIgnoreCase)))
             {
                 var sorting = place.Code.Equals(OpeningImportService.SortingCode, StringComparison.OrdinalIgnoreCase);
+                var unknown = place.Code.Equals(SpecialPlaces.UnknownCode, StringComparison.OrdinalIgnoreCase);
                 foreach (var b in await repo.ListLocationStockAsync(place.Id, ct))
                     result.Add(new PendingPlacementDto(place.Id, place.FullCode, b.ItemId, b.Item.Sku, b.Item.Name,
                         b.Item.Unit?.Code ?? "", b.Item.Unit?.IsFractional ?? false, b.BatchId, b.Batch.Note, b.Batch.ReceivedAt,
-                        b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId), sorting));
+                        b.Quantity, b.Batch.UnitPrice, open.Contains(b.BatchId), sorting, unknown, b.Batch.Mol?.ShortName));
             }
         }
         return result;

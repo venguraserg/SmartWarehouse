@@ -398,8 +398,17 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         return await ReadAsync<ReconcileResultDto>(response, ct);
     }
 
-    public Task<List<DocumentRefDto>> ConvertCustodyAsync(ConvertCustodyRequest request, CancellationToken ct = default) =>
-        SendAsync<List<DocumentRefDto>>(HttpMethod.Post, "api/import/reconcile/convert", request, ct);
+    public Task<DocumentRefDto> ChangeMolAsync(ChangeMolRequest request, CancellationToken ct = default) =>
+        SendAsync<DocumentRefDto>(HttpMethod.Post, "api/import/reconcile/change-mol", request, ct);
+
+    public Task<MainMolDto> GetMainMolAsync(CancellationToken ct = default) =>
+        GetAsync<MainMolDto>("api/settings/main-mol", ct);
+
+    public Task<MainMolDto> SaveMainMolAsync(int? employeeId, CancellationToken ct = default) =>
+        SendAsync<MainMolDto>(HttpMethod.Put, "api/settings/main-mol", new MainMolDto(employeeId), ct);
+
+    public Task<List<MolDto>> GetMolsAsync(CancellationToken ct = default) =>
+        GetAsync<List<MolDto>>("api/settings/mols", ct);
 
     private static ByteArrayContent XlsxContent(byte[] data)
     {
@@ -513,6 +522,7 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         if (query.CategoryId is not null) parts.Add($"categoryId={query.CategoryId}");
         if (query.BelowMinimum) parts.Add("belowMinimum=true");
         if (query.OffBook is bool offBook) parts.Add($"offBook={(offBook ? "true" : "false")}");
+        if (query.MolId is int molId) parts.Add($"molId={molId}");
 
         return GetAsync<StockSearchResult>(parts.Count == 0 ? "api/stock" : $"api/stock?{string.Join('&', parts)}", ct);
     }

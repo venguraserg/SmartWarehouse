@@ -21,10 +21,8 @@ public record OpeningFile(IReadOnlyList<OpeningRow> Rows, IReadOnlyList<ImportIs
 /// <summary>Учётная партия, введённая вручную и ещё лежащая на складе.</summary>
 public record ManualBatch(int ItemId, int BatchId, string? DocumentNumber, DateTimeOffset ReceivedAt, decimal Quantity);
 
-/// <summary>Итоги остатков для сверки с 1С.</summary>
-public record ItemTotal(int ItemId, string Sku, string Name, string Unit, decimal Quantity, decimal Value, bool ValueIncomplete);
-
-/// <summary>Свободное «в работе» за сотрудником (учётные партии, без зарезервированного отчётами) — для перевода в подотчёт по 1С.</summary>
-public record WorkTotal(int EmployeeId, int ItemId, string Sku, string Name, string Unit, decimal Quantity);
-
-public record CustodyTotal(int EmployeeId, int ItemId, string Sku, string Name, string Unit, decimal Quantity, decimal Value, bool ValueIncomplete);
+/// <summary>
+/// Что числится за МОЛ по позиции — для сверки с 1С: остатки во всех местах (и «Место не указано»)
+/// плюс «выдано в работу», по пометке МОЛ партий. <paramref name="MolId"/> null — основной МОЛ. Вне учёта не входит.
+/// </summary>
+public record MolTotal(int? MolId, int ItemId, string Sku, string Name, string Unit, decimal Quantity, decimal Value, bool ValueIncomplete);

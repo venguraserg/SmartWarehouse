@@ -9,7 +9,10 @@
 <div class="page-head">
     <h1>@PageName</h1>
     <span class="spacer"></span>
-    <a class="btn btn-primary" href="@(IsSummary ? "/summary-acts/new" : IsReport ? "/reports/new" : "/acts/new")"><Icon Name="plus" Size="18" /> @(IsSummary ? "Сводный акт" : IsReport ? "Новый отчёт" : "Новый акт")</a>
+    @if (IsSummary || IsReport)
+    {
+        <a class="btn btn-primary" href="@(IsSummary ? "/summary-acts/new" : "/reports/new")"><Icon Name="plus" Size="18" /> @(IsSummary ? "Сводный акт" : "Новый отчёт")</a>
+    }
 </div>
 <p class="muted" style="margin-top: -.5rem">
     @if (IsSummary)
@@ -22,7 +25,7 @@
     }
     else
     {
-        @("Сотрудник списывает ")<span class="tag tag-official">подотчёт по 1С</span>@(": отчитывается, куда израсходовал, руководитель утверждает — тогда позиции списываются.")
+        @("Прежние акты по подотчёту 1С — для истории. Новые не оформляются: списание — отчётом об использовании и сводным актом кладовщика, отдельно по каждому МОЛ.")
     }
 </p>
 

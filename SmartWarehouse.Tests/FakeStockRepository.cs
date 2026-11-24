@@ -73,51 +73,55 @@ internal class FakeStockRepository : IStockRepository
             .GroupBy(x => (x.Line.BatchId!.Value, x.Act.Custody))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Line.Quantity)));
 
-    public Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ItemTotal>>(Balances
+    public Task<IReadOnlyList<MolTotal>> ListMolTotalsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<MolTotal>>(Balances
             .Select(b => (b.ItemId, b.BatchId, b.Quantity))
             .Concat(EmployeeBalances.Where(b => b.Kind == CustodyKind.Work).Select(b => (b.ItemId, b.BatchId, b.Quantity)))
             .Where(b => b.Quantity != 0 && BatchOf(b.BatchId)?.OffBook != true)
-            .GroupBy(b => b.ItemId)
+            .GroupBy(b => (BatchOf(b.BatchId)?.MolId, b.ItemId))
             .Select(g =>
             {
-                var item = Items.First(i => i.Id == g.Key);
-                return new ItemTotal(g.Key, item.Sku, item.Name, item.Unit?.Code ?? "",
+                var item = Items.First(i => i.Id == g.Key.ItemId);
+                return new MolTotal(g.Key.MolId, g.Key.ItemId, item.Sku, item.Name, item.Unit?.Code ?? "",
                     g.Sum(b => b.Quantity), g.Sum(b => b.Quantity * (BatchOf(b.BatchId)?.UnitPrice ?? 0)),
                     g.Any(b => BatchOf(b.BatchId)?.UnitPrice is null));
             })
             .ToList());
 
-    public Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<CustodyTotal>>(EmployeeBalances
-            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Official && BatchOf(b.BatchId)?.OffBook != true)
-            .GroupBy(b => (b.EmployeeId, b.ItemId))
-            .Select(g =>
+    public Task<IReadOnlyList<StockBalance>> ListMolSourcesAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<StockBalance>>(Balances
+            .Where(b => itemIds.Contains(b.ItemId) && b.Quantity > 0 && BatchOf(b.BatchId)?.OffBook != true)
+            .Select(b =>
             {
-                var item = Items.First(i => i.Id == g.Key.ItemId);
-                return new CustodyTotal(g.Key.EmployeeId, g.Key.ItemId, item.Sku, item.Name, item.Unit?.Code ?? "",
-                    g.Sum(b => b.Quantity), g.Sum(b => b.Quantity * (BatchOf(b.BatchId)?.UnitPrice ?? 0)),
-                    g.Any(b => BatchOf(b.BatchId)?.UnitPrice is null));
+                b.Batch ??= BatchOf(b.BatchId)!;
+                b.Location ??= Locations.First(l => l.Id == b.LocationId);
+                return b;
+            })
+            .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId)
+            .ToList());
+
+    public Task<decimal> GetBatchTotalAsync(int batchId, CancellationToken ct = default) =>
+        Task.FromResult(Balances.Where(b => b.BatchId == batchId).Sum(b => b.Quantity)
+                        + EmployeeBalances.Where(b => b.BatchId == batchId).Sum(b => b.Quantity));
+
+    public Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<EmployeeBalance>>(EmployeeBalances
+            .Where(b => b.Kind == CustodyKind.Official && b.Quantity > 0)
+            .Select(b =>
+            {
+                b.Employee ??= Employees.First(e => e.Id == b.EmployeeId);
+                b.Item ??= Items.First(i => i.Id == b.ItemId);
+                b.Batch ??= BatchOf(b.BatchId)!;
+                return b;
             })
             .ToList());
 
-    public Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<WorkTotal>>(EmployeeBalances
-            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && BatchOf(b.BatchId)?.OffBook != true)
-            .GroupBy(b => (b.EmployeeId, b.ItemId))
-            .Select(g =>
-            {
-                var item = Items.First(i => i.Id == g.Key.ItemId);
-                var reserved = Acts
-                    .Where(a => a.EmployeeId == g.Key.EmployeeId && a.Kind != ActKind.WriteOff
-                        && (a.Status == ActStatus.Pending || (a.Status == ActStatus.Approved && a.Kind == ActKind.UsageReport)))
-                    .SelectMany(a => a.Lines)
-                    .Where(l => l.ItemId == g.Key.ItemId && l.DocumentId is null && l.BatchId is int bid && BatchOf(bid)?.OffBook != true)
-                    .Sum(l => l.Quantity);
-                return new WorkTotal(g.Key.EmployeeId, g.Key.ItemId, item.Sku, item.Name, item.Unit?.Code ?? "", g.Sum(b => b.Quantity) - reserved);
-            })
-            .Where(w => w.Quantity > 0)
-            .ToList());
+    public Task MarkMolAsync(int employeeId, CancellationToken ct = default)
+    {
+        if (Employees.FirstOrDefault(e => e.Id == employeeId) is { } employee)
+            employee.IsMol = true;
+        return Task.CompletedTask;
+    }
 
     private Batch? BatchOf(int id) => Batches.FirstOrDefault(b => b.Id == id);
 
@@ -239,6 +243,10 @@ internal class FakeStockRepository : IStockRepository
             query = query.Where(b => b.Item.CategoryId == c);
         if (filter.OffBook is bool offBook)
             query = query.Where(b => (BatchOf(b.BatchId)?.OffBook ?? false) == offBook);
+        if (filter.MolId is 0)
+            query = query.Where(b => BatchOf(b.BatchId)?.MolId is null);
+        else if (filter.MolId is int molId)
+            query = query.Where(b => BatchOf(b.BatchId)?.MolId == molId);
         if (filter.BelowMinimum)
             query = query.Where(b => Balances.Where(x => x.ItemId == b.ItemId).Sum(x => x.Quantity) < b.Item.MinStock);
 
@@ -269,6 +277,8 @@ internal class FakeStockRepository : IStockRepository
             Batches.Add(batch);
         }
         _pendingBatches.Clear();
+        foreach (var batch in Batches)
+            batch.Mol = batch.MolId is int molId ? Employees.FirstOrDefault(e => e.Id == molId) : null;
         foreach (var b in _pendingBalances)
             if (b.Batch is not null) b.BatchId = b.Batch.Id;
         foreach (var b in _pendingEmployeeBalances)

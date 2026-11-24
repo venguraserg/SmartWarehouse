@@ -15,7 +15,7 @@ public class WriteOffActRepository(WarehouseDbContext db) : IWriteOffActReposito
             .Include(x => x.Reports).ThenInclude(r => r.Employee)
             .Include(x => x.Reports).ThenInclude(r => r.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Reports).ThenInclude(r => r.Lines).ThenInclude(l => l.Equipment)
-            .Include(x => x.Reports).ThenInclude(r => r.Lines).ThenInclude(l => l.Batch)
+            .Include(x => x.Reports).ThenInclude(r => r.Lines).ThenInclude(l => l.Batch).ThenInclude(b => b!.Mol)
             .Include(x => x.Reports).ThenInclude(r => r.Lines).ThenInclude(l => l.Document)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -25,7 +25,7 @@ public class WriteOffActRepository(WarehouseDbContext db) : IWriteOffActReposito
             .Include(x => x.Employee).ThenInclude(e => e.Manager)
             .Include(x => x.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Lines).ThenInclude(l => l.Equipment)
-            .Include(x => x.Lines).ThenInclude(l => l.Batch)
+            .Include(x => x.Lines).ThenInclude(l => l.Batch).ThenInclude(b => b!.Mol)
             .Include(x => x.Lines).ThenInclude(l => l.Document);
 
     public async Task<IReadOnlyList<WriteOffAct>> ListSummaryCandidatesAsync(int? summaryId, CancellationToken ct = default) =>

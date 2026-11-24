@@ -21,19 +21,17 @@ public record ImportActor(int? EmployeeId, string? Name);
 /// <summary>
 /// Начальные остатки: единицы, позиции, места хранения (из адресов «2A.2.1.3»), сотрудники-МОЛ — создаются,
 /// если их нет; остатки вводятся обычными документами, чтобы журнал и партии были как при работе:
-///   приход «Ввод остатков» — партии с ценой и датой документа 1С; партии на складе — сразу в свои ячейки,
-///   партии подотчёта — через временное место «IMP» и выдачей сотруднику (МОЛ).
+///   приход «Ввод остатков» — партии с ценой и датой документа 1С, сразу в свои ячейки;
+///   партии других МОЛ — с пометкой МОЛ: в ячейку по адресу, а без адреса — в «Место не указано».
 /// Повторный запуск позиции и места не дублирует, а остатки — добавит ещё раз: загружать один раз.
 /// </summary>
 public class OpeningImportService(
     ICatalogService catalog,
     ILocationService locations,
     IEmployeeService employees,
-    IStockService stock) : IOpeningImportService
+    IStockService stock,
+    IMolService molService) : IOpeningImportService
 {
-    /// <summary>Временное место для подотчёта: приход туда, затем выдача сотрудникам.</summary>
-    public const string TransitCode = "IMP";
-
     /// <summary>
     /// «Сортировка»: сюда попадает товар, у которого в файле нет адреса или адрес не по схеме.
     /// Прежнее место пишется в примечание партии, кладовщик раскладывает со страницы «Приёмка».
@@ -129,10 +127,10 @@ public class OpeningImportService(
                 continue;
             }
 
-            string[]? path = null;
+            // Партии других МОЛ: по адресу — в ячейку, без адреса — в «Место не указано» (найти и разместить).
+            var path = ParseAddress(row.Address);
             if (!row.Custody)
             {
-                path = ParseAddress(row.Address);
                 if (path is null)
                     issues.Add(new ImportIssue(row.Line, sku, (string.IsNullOrWhiteSpace(row.Address)
                         ? "Нет адреса хранения"
@@ -140,7 +138,7 @@ public class OpeningImportService(
             }
             else if (PersonNames.Parse(row.Mol) is null)
             {
-                issues.Add(new ImportIssue(row.Line, sku, $"Подотчёт: МОЛ «{row.Mol}» — нужно «Фамилия И.О.»."));
+                issues.Add(new ImportIssue(row.Line, sku, $"МОЛ «{row.Mol}» — нужно «Фамилия И.О.»."));
                 continue;
             }
 
@@ -170,7 +168,7 @@ public class OpeningImportService(
             .ToList();
         var newNodes = neededNodes.Where(a => !existingByCode.ContainsKey(FullCode(warehouse.Code, a))).ToList();
         var custodyRows = valid.Where(p => p.Row.Custody).ToList();
-        var needTransit = custodyRows.Count > 0 && !existingByCode.ContainsKey(FullCode(warehouse.Code, TransitCode));
+        var needUnknown = valid.Any(ToUnknown) && !existingByCode.ContainsKey(FullCode(warehouse.Code, SpecialPlaces.UnknownCode));
         var needSorting = valid.Any(ToSort) && !existingByCode.ContainsKey(FullCode(warehouse.Code, SortingCode));
 
         // ---------- 3. Сотрудники (МОЛ) ----------
@@ -186,7 +184,7 @@ public class OpeningImportService(
         if (!apply)
         {
             return Result(false, file, valid, issues, notes, newItems.Count, items, newUnits.Count,
-                newNodes.Count + (needTransit ? 1 : 0) + (needSorting ? 1 : 0), newEmployees.Count, []);
+                newNodes.Count + (needUnknown ? 1 : 0) + (needSorting ? 1 : 0), newEmployees.Count, []);
         }
 
         // ---------- 4. Загрузка ----------
@@ -249,73 +247,48 @@ public class OpeningImportService(
                       "Прежнее место — в примечании партии; разложить на странице «Приёмка».");
         }
 
-        int? transitId = null;
-        if (custodyRows.Count > 0)
+        int? unknownId = null;
+        if (valid.Any(ToUnknown))
         {
-            var transitFull = FullCode(warehouse.Code, TransitCode);
-            if (!existingByCode.TryGetValue(transitFull, out var transit))
-            {
-                var created = await locations.AddLocationAsync(warehouse.Id,
-                    new CreateLocationRequest(null, LocationType.Cell, TransitCode, "Ввод остатков подотчёта (временное, можно удалить)"), ct);
-                transitId = created.Id;
-            }
-            else
-            {
-                transitId = transit.Id;
-            }
+            unknownId = await molService.EnsureUnknownPlaceAsync(warehouse.Id, ct);
+            notes.Add($"В «Место не указано» ({FullCode(warehouse.Code, SpecialPlaces.UnknownCode)}): {valid.Count(ToUnknown)} партий других МОЛ без адреса. " +
+                      "Выдавать их можно после того, как найдёте и разместите на полку.");
+        }
 
-            foreach (var mol in newEmployees)
-            {
-                var (last, first, middle) = PersonNames.Parse(mol)!.Value;
-                var created = await employees.CreateAsync(new SaveEmployeeRequest(null, last, first, middle, null, null, null), ct);
-                molEmployee[mol] = created.Id;
-            }
+        foreach (var mol in newEmployees)
+        {
+            var (last, first, middle) = PersonNames.Parse(mol)!.Value;
+            var created = await employees.CreateAsync(new SaveEmployeeRequest(null, last, first, middle, null, null, null, IsMol: true), ct);
+            molEmployee[mol] = created.Id;
         }
 
         // Приход: партии с ценой, датой и документом 1С. Не больше 500 строк в документе.
         // Учётное и «вне учёта» — разными документами: признак вне учёта ставится на документ и его партии.
         var documents = new List<long>();
-        var batchOf = new Dictionary<Planned, int>();
-        foreach (var (offBook, chunk) in valid.GroupBy(p => p.Row.OffBook).OrderBy(g => g.Key)
+        // Партии других МОЛ — отдельными документами: МОЛ ставится на партии документа.
+        foreach (var ((offBook, mol), chunk) in valid
+                     .GroupBy(p => (p.Row.OffBook, Mol: p.Row.Custody ? p.Row.Mol!.Trim() : null))
+                     .OrderBy(g => g.Key.OffBook).ThenBy(g => g.Key.Mol is null ? 0 : 1).ThenBy(g => g.Key.Mol)
                      .SelectMany(g => g.Chunk(StockService.MaxLines).Select(c => (g.Key, c))))
         {
             var lines = chunk.Select(p => new DocumentLineRequest(
                     items[p.Sku].Id, p.Row.Quantity, null,
-                    p.Row.Custody ? transitId : ToSort(p) ? sortingId : existingByCode[FullCode(warehouse.Code, string.Join('.', p.Target!))].Id,
+                    ToUnknown(p) ? unknownId : ToSort(p) ? sortingId : existingByCode[FullCode(warehouse.Code, string.Join('.', p.Target!))].Id,
                     UnitPrice: p.Price,
                     BatchDate: p.Row.DocumentDate is DateOnly date ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : null,
                     BatchNote: ToSort(p) ? SortingNote(p.Row) : BatchNote(p.Row)))
                 .ToList();
             var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
                 MovementType.Receipt, offBook ? "Ввод остатков вне учёта" : "Ввод остатков из 1С", null, actor.Name,
-                offBook ? "Начальные остатки вне учёта (б/у, неучтённое — в 1С нет)" : "Начальные остатки (импорт из 1С)",
-                lines, PerformedById: actor.EmployeeId, OffBook: offBook, Origin: BatchOrigin.Opening), ct);
+                (offBook ? "Начальные остатки вне учёта (б/у, неучтённое — в 1С нет)" : "Начальные остатки (импорт из 1С)")
+                    + (mol is null ? "" : $"; МОЛ {mol}"),
+                lines, PerformedById: actor.EmployeeId, OffBook: offBook, Origin: BatchOrigin.Opening,
+                MolId: mol is null ? null : molEmployee[mol]), ct);
             documents.Add(doc.Id);
-            var ordered = doc.Lines.OrderBy(l => l.LineNo).ToList();
-            for (var i = 0; i < chunk.Length; i++)
-                if (ordered[i].BatchId is int batchId)
-                    batchOf[chunk[i]] = batchId;
         }
-
-        // Подотчёт: выдача сотрудникам-МОЛ из временного места — той же партией.
-        foreach (var group in custodyRows.GroupBy(p => p.Row.Mol!.Trim()))
-        {
-            foreach (var chunk in group.Chunk(StockService.MaxLines))
-            {
-                var lines = chunk.Select(p => new DocumentLineRequest(items[p.Sku].Id, p.Row.Quantity, transitId, null, BatchId: batchOf[p])).ToList();
-                var doc = await stock.PostDocumentAsync(new CreateDocumentRequest(
-                    MovementType.Issue, "Ввод остатков из 1С", null, actor.Name,
-                    $"Подотчёт по 1С (МОЛ {group.Key})", lines, PerformedById: actor.EmployeeId, ReceivedById: molEmployee[group.Key],
-                    Custody: CustodyKind.Official), ct);
-                documents.Add(doc.Id);
-            }
-        }
-
-        if (transitId is not null)
-            notes.Add($"Временное место {FullCode(warehouse.Code, TransitCode)} теперь пустое — его можно удалить в «Складах и местах».");
 
         return Result(true, file, valid, issues, notes, newItems.Count, items, newUnits.Count,
-            newNodes.Count + (needTransit ? 1 : 0), newEmployees.Count, documents);
+            newNodes.Count + (needUnknown ? 1 : 0) + (needSorting ? 1 : 0), newEmployees.Count, documents);
     }
 
     private static OpeningImportResult Result(bool applied, OpeningFile file, List<Planned> valid, List<ImportIssue> issues,
@@ -343,6 +316,9 @@ public class OpeningImportService(
 
     /// <summary>Партия без места: на склад, но адреса нет или он не по схеме.</summary>
     private static bool ToSort(Planned p) => !p.Row.Custody && p.Target is null;
+
+    /// <summary>Партия другого МОЛ без адреса — в «Место не указано».</summary>
+    private static bool ToUnknown(Planned p) => p.Row.Custody && p.Target is null;
 
     /// <summary>«Прежнее место: шкаф свар; ТТН … от …» — чтобы кладовщик знал, где искать.</summary>
     public static string SortingNote(OpeningRow row)

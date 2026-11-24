@@ -98,33 +98,30 @@ public record ReconcileResultDto(
     IReadOnlyList<ReconcileMolDto> Mols,
     IReadOnlyList<ReconcileRowDto> Rows,
     IReadOnlyList<string> Notes,
-    IReadOnlyList<ReconcileConvertDto>? Conversions = null);
+    IReadOnlyList<ReconcileMolChangeDto>? MolChanges = null);
 
 /// <summary>
-/// Предложение перевести «выдано в работу» в «подотчёт по 1С»: в 1С на МОЛ сотрудника позиции больше,
-/// чем у него «по 1С» в приложении, а «в работе» у него она есть.
+/// Предложение «принять МОЛ из 1С»: в 1С за МОЛ <paramref name="ToMol"/> позиции больше, чем помечено в приложении,
+/// а за <paramref name="FromMol"/> — меньше. Сменить пометку у <paramref name="Suggested"/> из мест <paramref name="Sources"/>
+/// (сначала «Место не указано», затем ячейки — кладовщик может поправить).
 /// </summary>
-/// <param name="QtyOfficial">Сколько «по 1С» за сотрудником в приложении.</param>
-/// <param name="WorkFree">Сколько «в работе» можно перевести (учётные партии, не в отчётах).</param>
-/// <param name="Suggested">Сколько предлагается перевести: недостача по 1С, но не больше свободного «в работе».</param>
-public record ReconcileConvertDto(
-    int EmployeeId,
-    string EmployeeName,
-    string Mol,
+/// <param name="FromMolId">null — основной МОЛ.</param>
+/// <param name="ToMolId">null — основной МОЛ.</param>
+public record ReconcileMolChangeDto(
     int ItemId,
     string Code,
     string Name,
     string Unit,
-    decimal Qty1C,
-    decimal QtyOfficial,
-    decimal WorkFree,
-    decimal Suggested);
+    int? FromMolId,
+    string FromMol,
+    int? ToMolId,
+    string ToMol,
+    decimal Suggested,
+    IReadOnlyList<MolSourceDto> Sources);
 
-/// <summary>Строка перевода в подотчёт по 1С.</summary>
-public record ConvertCustodyLine(int EmployeeId, int ItemId, decimal Quantity);
-
-/// <summary>Перевести «в работе» → «подотчёт по 1С» (по сверке с 1С). Документ — на каждого сотрудника.</summary>
-public record ConvertCustodyRequest(IReadOnlyList<ConvertCustodyLine> Lines, string? Comment = null);
+/// <summary>Откуда можно сменить МОЛ: партия в месте хранения и сколько предлагается.</summary>
+public record MolSourceDto(int LocationId, string LocationCode, string? LocationName, int BatchId, DateTimeOffset ReceivedAt,
+    decimal Available, bool Unknown, decimal Proposed);
 
 public record ReconcileMolDto(string Mol, string? Place, int? EmployeeId, int Batches, decimal Value);
 
@@ -159,6 +156,9 @@ public record InvoiceImportResult(
     IReadOnlyList<long> DocumentIds);
 
 /// <summary>Партия в «Приёмке», ожидающая размещения по ячейкам.</summary>
+/// <param name="Sorting">В «Сортировке»: загружена из 1С без адреса.</param>
+/// <param name="Unknown">В «Место не указано»: числится за МОЛ, где лежит — неизвестно (найти и разместить).</param>
+/// <param name="Mol">За кем числится, если не основной МОЛ.</param>
 public record PendingPlacementDto(
     int LocationId,
     string LocationCode,
@@ -173,7 +173,9 @@ public record PendingPlacementDto(
     decimal Quantity,
     decimal? UnitPrice,
     bool HasDiscrepancy,
-    bool Sorting = false);
+    bool Sorting = false,
+    bool Unknown = false,
+    string? Mol = null);
 
 /// <summary>Расхождение приёмки: по накладной и фактически.</summary>
 public record DiscrepancyDto(

@@ -20,39 +20,116 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
         if (request.Type == MovementType.WriteOff)
             throw new DomainException("Списание оформляется актом на списание: сотрудник составляет акт, руководитель утверждает — тогда позиции списываются.");
         if (request.Type == MovementType.CustodyChange)
-            throw new DomainException("Перевод в подотчёт по 1С проводится из сверки с 1С.");
+            throw new DomainException("Подотчёт по 1С больше не ведётся: МОЛ — пометка партии, меняется по сверке с 1С.");
+        if (request.Type == MovementType.MolChange)
+            throw new DomainException("МОЛ меняется только по сверке с сальдовой ведомостью 1С.");
 
         var staged = await StageAsync(request, exceptActId: null, ct);
         await repo.SaveChangesAsync(ct);
         return staged.ToDto();
     }
 
-    public async Task<IReadOnlyList<DocumentRefDto>> ConvertToOfficialAsync(ConvertCustodyRequest request, int? performerId, CancellationToken ct = default)
+    public async Task<DocumentRefDto> ChangeMolAsync(ChangeMolRequest request, int? performerId, string? performedBy, CancellationToken ct = default)
+    {
+        var document = await StageMolChangeAsync(request, performerId, performedBy, ct);
+        await repo.SaveChangesAsync(ct);
+        return new DocumentRefDto(document.Id, document.Number);
+    }
+
+    /// <summary>
+    /// Смена МОЛ партий в местах хранения. Если меняется вся партия (она целиком в этом месте) — меняется пометка партии;
+    /// если часть — эта часть отделяется в новую партию с той же ценой, датой и примечанием. Количество и место не меняются.
+    /// </summary>
+    internal async Task<StockDocument> StageMolChangeAsync(ChangeMolRequest request, int? performerId, string? performedBy, CancellationToken ct)
     {
         var lines = (request.Lines ?? []).Where(l => l.Quantity != 0).ToList();
         if (lines.Count == 0)
-            throw new DomainException("Отметьте, что перевести в подотчёт по 1С.");
-        var comment = Clean(request.Comment) ?? "По сверке с 1С: передано на МОЛ сотрудника";
+            throw new DomainException("Отметьте, у чего сменить МОЛ.");
+        if (lines.Count > MaxLines)
+            throw new DomainException($"За один раз — не больше {MaxLines} строк.");
+        if (lines.Any(l => l.Quantity < 0))
+            throw new DomainException("Количество должно быть больше нуля.");
 
-        var documents = new List<StockDocument>();
-        foreach (var employee in lines.GroupBy(l => l.EmployeeId))
+        var performer = await GetEmployeeAsync(performerId, "Кто проводит", requireActive: false, ct);
+        foreach (var molId in lines.Select(l => l.MolId).OfType<int>().Distinct())
         {
-            var byItem = employee
-                .GroupBy(l => l.ItemId)
-                .Select(g => new DocumentLineRequest(g.Key, g.Sum(l => l.Quantity), null, null))
-                .ToList();
-            foreach (var chunk in byItem.Chunk(MaxLines))
-            {
-                var staged = await StageAsync(
-                    new CreateDocumentRequest(MovementType.CustodyChange, null, null, null, comment, chunk,
-                        PerformedById: performerId, ReceivedById: employee.Key),
-                    exceptActId: null, ct);
-                documents.Add(staged.Document);
-            }
+            _ = await GetEmployeeAsync(molId, "МОЛ", requireActive: false, ct);
+            await repo.MarkMolAsync(molId, ct);
         }
 
-        await repo.SaveChangesAsync(ct);
-        return documents.Select(d => new DocumentRefDto(d.Id, d.Number)).ToList();
+        var now = clock.GetUtcNow();
+        var locations = await repo.GetLocationsAsync(lines.Select(l => l.LocationId).Distinct(), ct);
+        var document = new StockDocument
+        {
+            Type = MovementType.MolChange,
+            OccurredAt = now,
+            PerformedById = performer?.Id,
+            PerformedBy = performer?.ShortName ?? Clean(performedBy),
+            Comment = Clean(request.Comment) ?? "Смена МОЛ по сверке с 1С"
+        };
+        var lineNo = 0;
+
+        foreach (var group in lines.GroupBy(l => l.BatchId))
+        {
+            var batch = await repo.GetBatchAsync(group.Key, ct) ?? throw new NotFoundException($"Партия {group.Key} не найдена.");
+            if (batch.OffBook)
+                throw new DomainException($"Партия {batch.Id} — вне учёта: в 1С её нет, МОЛ у неё не ведётся.");
+            var total = await repo.GetBatchTotalAsync(batch.Id, ct);
+            var moving = group.Where(l => l.MolId != batch.MolId).ToList();
+            if (moving.Count == 0)
+                continue;
+
+            // Вся партия целиком и к одному МОЛ — меняется пометка, без деления.
+            var whole = moving.Sum(l => l.Quantity) == total && moving.Select(l => l.MolId).Distinct().Count() == 1
+                        && moving.Count == group.Count();
+            foreach (var line in moving)
+            {
+                if (!locations.TryGetValue(line.LocationId, out var place))
+                    throw new NotFoundException($"Место хранения {line.LocationId} не найдено.");
+                var balance = (await repo.GetLocationBatchesAsync(batch.ItemId, line.LocationId, ct)).FirstOrDefault(b => b.BatchId == batch.Id);
+                if (balance is null || balance.Quantity < line.Quantity)
+                    throw new DomainException($"В {place.FullCode} партии {batch.Id} только {balance?.Quantity ?? 0:0.###} — сменить МОЛ у {line.Quantity:0.###} нельзя.");
+
+                if (whole)
+                {
+                    document.Lines.Add(Movement(batch, line.LocationId, line.LocationId, line.Quantity));
+                    continue;
+                }
+
+                var part = new Batch
+                {
+                    ItemId = batch.ItemId, UnitPrice = batch.UnitPrice, ReceivedAt = batch.ReceivedAt,
+                    ReceiptDocumentId = batch.ReceiptDocumentId, Note = batch.Note, OffBook = false,
+                    Origin = batch.Origin, MolId = line.MolId
+                };
+                repo.AddBatch(part);
+                balance.Quantity -= line.Quantity;
+                repo.AddBalance(new StockBalance { ItemId = batch.ItemId, LocationId = line.LocationId, Batch = part, Quantity = line.Quantity });
+                document.Lines.Add(Movement(batch, line.LocationId, null, line.Quantity));
+                document.Lines.Add(Movement(part, null, line.LocationId, line.Quantity));
+            }
+            if (whole)
+                batch.MolId = moving[0].MolId;
+        }
+
+        if (document.Lines.Count == 0)
+            throw new DomainException("МОЛ уже такой, как указано, — менять нечего.");
+        repo.AddDocument(document);
+        return document;
+
+        StockMovement Movement(Batch batch, int? from, int? to, decimal quantity) => new()
+        {
+            Document = document,
+            LineNo = ++lineNo,
+            Type = MovementType.MolChange,
+            OccurredAt = now,
+            ItemId = batch.ItemId,
+            BatchId = batch.Id,
+            Batch = batch,
+            FromLocationId = from,
+            ToLocationId = to,
+            Quantity = quantity
+        };
     }
 
     /// <summary>Подготовленный к сохранению документ: остатки изменены, документ добавлен, но не сохранён.</summary>
@@ -152,6 +229,11 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 if (!locations.ContainsKey(locationId))
                     throw new NotFoundException($"Строка {n}: место хранения {locationId} не найдено.");
             }
+
+            // «Место не указано»: где лежит — неизвестно, выдавать нельзя, пока не найдут и не разместят на полку.
+            if (request.Type == MovementType.Issue && line.FromLocationId is int issueFrom && SpecialPlaces.IsUnknown(locations[issueFrom].FullCode))
+                throw new DomainException($"Строка {n} («{item.Name}»): место не указано — сначала найдите и разместите на полку " +
+                                          "(перемещение из «Место не указано»), потом выдавайте.");
         }
 
         // ---------- 4. Распределение по партиям и расчёт новых остатков (без изменения данных) ----------
@@ -216,6 +298,17 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 : request.Type == MovementType.Return ? [CustodyKind.Work, CustodyKind.Official] : [CustodyKind.Official, CustodyKind.Work];
         if (request.Custody is not null && (isCustodyChange || !UsesAccountable(request.Type)))
             throw new DomainException("Вид подотчёта указывается только для выдачи, возврата и списания.");
+        if (request.Type == MovementType.Issue && issueKind == CustodyKind.Official)
+            throw new DomainException("Подотчёт по 1С больше не оформляется: выдача — только «в работу». За кем числится в 1С — пометка МОЛ партии.");
+
+        // МОЛ новых партий (ввод остатков других МОЛ); по умолчанию — основной МОЛ склада.
+        if (request.MolId is int newMolId)
+        {
+            if (request.Type is not (MovementType.Receipt or MovementType.Adjustment))
+                throw new DomainException("МОЛ указывается только при поступлении.");
+            _ = await GetEmployeeAsync(newMolId, "МОЛ", requireActive: false, ct);
+            await repo.MarkMolAsync(newMolId, ct);
+        }
 
         var parts = new List<(DocumentLineRequest Line, int BatchKey, decimal Quantity, CustodyKind? Kind)>();
         var nextTempKey = 0;
@@ -301,7 +394,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                 newBatches[key] = new Batch
                 {
                     ItemId = line.ItemId, UnitPrice = price, ReceivedAt = line.BatchDate ?? now, Note = note,
-                    OffBook = request.OffBook, Origin = request.Origin
+                    OffBook = request.OffBook, Origin = request.Origin, MolId = request.OffBook ? null : request.MolId
                 };
                 taken.Add((key, line.Quantity));
             }
@@ -449,7 +542,7 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             line.LineNo, line.ItemId, line.Item.Sku, line.Item.Name, line.Item.Unit.Code, line.Quantity,
             line.FromLocation?.FullCode, line.ToLocation?.FullCode,
             line.BatchId, line.Batch?.UnitPrice, line.Batch?.ReceivedAt,
-            line.FromLocation?.Name, line.ToLocation?.Name, line.Batch?.OffBook ?? false));
+            line.FromLocation?.Name, line.ToLocation?.Name, line.Batch?.OffBook ?? false, line.Batch?.Mol?.ShortName));
     }
 
     public async Task<IReadOnlyList<DocumentSummaryDto>> ListDocumentsAsync(
@@ -531,7 +624,8 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
             query.CategoryId,
             query.BelowMinimum,
-            query.OffBook);
+            query.OffBook,
+            query.MolId);
 
         // Берём на одну строку больше лимита, чтобы понять, что результат обрезан.
         var balances = await repo.SearchBalancesAsync(filter, MaxStockRows + 1, ct);
@@ -562,7 +656,9 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
                     value,
                     incomplete,
                     offBook.Sum(x => x.Quantity),
-                    offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)));
+                    offBook.Sum(x => x.Quantity * (x.Batch.UnitPrice ?? 0)),
+                    MolsOf(g.Select(x => x.Batch)),
+                    SpecialPlaces.IsUnknown(b.Location.FullCode));
             })
             .ToList();
 
@@ -593,6 +689,13 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             BelowMinimum: low.Count(x => x.Total > 0),
             OutOfStock: low.Count(x => x.Total <= 0),
             custodyEmployees, custodyItems);
+    }
+
+    /// <summary>Пометки МОЛ партий (кроме основного): «Иванов И. П.»; null — всё за основным МОЛ.</summary>
+    internal static IReadOnlyList<string>? MolsOf(IEnumerable<Batch?> batches)
+    {
+        var names = batches.Select(b => b?.Mol?.ShortName).OfType<string>().Distinct().OrderBy(n => n).ToList();
+        return names.Count == 0 ? null : names;
     }
 
     private async Task<Employee?> GetEmployeeAsync(int? id, string field, bool requireActive, CancellationToken ct)

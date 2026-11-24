@@ -37,7 +37,7 @@
     </div>
     <div class="field-hint">
         Позиции, единицы, места хранения (из адресов «2A.2.1.3») и сотрудники-МОЛ создаются, если их нет.
-        Остатки вводятся документами прихода (партии — с ценой и датой документа 1С), подотчёт — выдачей сотрудникам.
+        Остатки вводятся документами прихода (партии — с ценой и датой документа 1С). Партии других МОЛ — с пометкой МОЛ: по адресу в ячейку, без адреса — в «Место не указано».
         <strong>Загружайте один раз:</strong> повторная загрузка добавит остатки ещё раз.
     </div>
     <div class="actions">
@@ -69,7 +69,7 @@
             <tbody>
                 <tr><td>Строк в файле</td><td class="num">@r.Rows</td></tr>
                 <tr><td>Партий @(r.Applied ? "загружено" : "к загрузке")</td><td class="num"><strong>@r.RowsImported</strong></td></tr>
-                <tr><td>&nbsp;&nbsp;на склад / в подотчёт</td><td class="num">@r.WarehouseBatches / @r.CustodyBatches</td></tr>
+                <tr><td>&nbsp;&nbsp;основной МОЛ / другие МОЛ</td><td class="num">@r.WarehouseBatches / @r.CustodyBatches</td></tr>
                 @if (r.OffBookBatches > 0)
                 {
                     <tr><td>&nbsp;&nbsp;из них вне учёта (б/у, неучтённое)</td><td class="num">@r.OffBookBatches</td></tr>

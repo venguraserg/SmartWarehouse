@@ -83,6 +83,14 @@ else
                 <span class="kpi-note">партий ждут размещения</span>
             </a>
         }
+        @if (unknownPlace > 0)
+        {
+            <a class="kpi" href="/receiving#unknown">
+                <span class="kpi-label"><Icon Name="search" Size="16" /> Место не указано</span>
+                <span class="kpi-value">@unknownPlace</span>
+                <span class="kpi-note">партий МОЛ найти и разместить</span>
+            </a>
+        }
         @if (reportsToConfirm > 0)
         {
             <a class="kpi kpi-warn" href="/reports?scope=approve">
@@ -123,7 +131,6 @@ else
         {
             <a class="qa qa-main" href="/requests/new"><Icon Name="request" Size="22" /><span>Запросить со склада</span></a>
             <a class="qa" href="/reports/new"><Icon Name="report" Size="22" /><span>Отчёт об использовании</span></a>
-            <a class="qa" href="/acts/new"><Icon Name="act" Size="22" /><span>Акт на списание</span></a>
             <a class="qa" href="/custody"><Icon Name="custody" Size="22" /><span>Мой подотчёт</span></a>
         }
     </div>
@@ -204,6 +211,7 @@ else
     private int actsToApprove;
     private int reportsToConfirm;
     private int toPlace;
+    private int unknownPlace;
     private int openRequests;
 
     // Для сотрудника — своё
@@ -248,7 +256,9 @@ else
             if (warehouse)
             {
                 summary = await Api.GetStockSummaryAsync();
-                toPlace = (await Api.GetPendingPlacementAsync()).Count;
+                var pending = await Api.GetPendingPlacementAsync();
+                toPlace = pending.Count(p => !p.Unknown);
+                unknownPlace = pending.Count(p => p.Unknown);
             }
             else if (me is int employeeId)
             {

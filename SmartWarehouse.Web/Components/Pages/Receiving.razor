@@ -115,10 +115,22 @@
 </div>
 
 @* ---------- 2. Размещение ---------- *@
-<h2>2. Разложить по ячейкам <span class="muted">(@pending.Count)</span></h2>
+<h2 id="unknown">2. Разложить по ячейкам <span class="muted">(@pending.Count)</span></h2>
+@if (pending.Any(p => p.Unknown))
+{
+    <div class="segmented" role="group" aria-label="Что раскладывать" style="margin-bottom: .5rem">
+        <button type="button" class="@(onlyUnknown is null ? "active" : null)" @onclick="() => onlyUnknown = null">Всё (@pending.Count)</button>
+        <button type="button" class="@(onlyUnknown == false ? "active" : null)" @onclick="() => onlyUnknown = false">Приёмка и сортировка (@pending.Count(p => !p.Unknown))</button>
+        <button type="button" class="@(onlyUnknown == true ? "active" : null)" @onclick="() => onlyUnknown = true">Место не указано (@pending.Count(p => p.Unknown))</button>
+    </div>
+    <p class="muted" style="margin-top: 0">
+        <span class="tag tag-warn">место не указано</span> — числится за МОЛ, но где лежит, неизвестно. Нашли — отсканируйте место
+        и нажмите «Сюда»: пометка МОЛ сохранится, позицию можно будет выдавать.
+    </p>
+}
 @if (pending.Count == 0)
 {
-    <div class="empty">В «Приёмке» и «Сортировке» пусто — всё разложено.</div>
+    <div class="empty">В «Приёмке», «Сортировке» и «Место не указано» пусто — всё разложено.</div>
 }
 else
 {
@@ -157,6 +169,14 @@ else
                             {
                                 <span class="tag tag-warn" title="Загружено с остатками без места: адрес в ведомости не по схеме">сортировка</span><br />
                             }
+                            @if (p.Unknown)
+                            {
+                                <span class="tag tag-warn" title="Числится за МОЛ, где лежит — неизвестно">место не указано</span><br />
+                            }
+                            @if (p.Mol is not null)
+                            {
+                                <span class="tag tag-mol">МОЛ @p.Mol</span><br />
+                            }
                             @p.Invoice
                         </td>
                         <td class="num">@Ui.Qty(p.Quantity) @p.UnitCode</td>
@@ -168,7 +188,7 @@ else
                         <td class="row-actions">
                             <button class="btn btn-primary btn-sm" type="button" disabled="@(busy || targetId is null || QtyOf(p) <= 0 || QtyOf(p) > p.Quantity)"
                                     @onclick="() => PlaceAsync(p)">Сюда</button>
-                            @if (!p.Sorting)
+                            @if (!p.Sorting && !p.Unknown)
                             {
                                 <button class="btn btn-sm" type="button" disabled="@busy" title="Фактически привезли не столько, сколько в накладной"
                                         @onclick="() => StartDiscrepancy(p)">Расхождение</button>
@@ -282,11 +302,16 @@ else
     private string? success;
     private IDisposable? scanSubscription;
 
-    private IEnumerable<PendingPlacementDto> VisiblePending => string.IsNullOrWhiteSpace(filter)
-        ? pending
-        : pending.Where(p => p.Sku.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
-                             || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
-                             || (p.Invoice?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false));
+    /// <summary>null — всё; true — только «Место не указано»; false — только приёмка и сортировка.</summary>
+    private bool? onlyUnknown;
+
+    private IEnumerable<PendingPlacementDto> VisiblePending => pending
+        .Where(p => onlyUnknown is null || p.Unknown == onlyUnknown)
+        .Where(p => string.IsNullOrWhiteSpace(filter)
+                    || p.Sku.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
+                    || (p.Invoice?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (p.Mol?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false));
 
     private string PlacePath(int id) => placePaths.TryGetValue(id, out var path) ? path : id.ToString(CultureInfo.InvariantCulture);
 
@@ -325,7 +350,7 @@ else
         placeTree = await Api.GetPlacesAsync();
         // Раскладывать — в обычные места: не в «Приёмку»/«Сортировку» и не во временное место ввода остатков.
         notPlaces = pending.Select(p => p.LocationId)
-            .Concat(placeTree.All.Where(l => l.Code is "RCV" or "IMP" or "SORT").Select(l => l.Id))
+            .Concat(placeTree.All.Where(l => l.Code is "RCV" or "IMP" or "SORT" or "UNK").Select(l => l.Id))
             .SelectMany(placeTree.SubtreeOf)
             .ToHashSet();
         placePaths = placeTree.Paths;
@@ -388,7 +413,8 @@ else
     {
         var qty = QtyOf(p);
         await Api.PostDocumentAsync(new CreateDocumentRequest(
-            MovementType.Transfer, null, null, null, $"Размещение из приёмки ({p.Invoice})",
+            MovementType.Transfer, null, null, null,
+            p.Unknown ? "Найдено и размещено (было «Место не указано»)" : $"Размещение из приёмки ({p.Invoice})",
             [new DocumentLineRequest(p.ItemId, qty, p.LocationId, targetId, BatchId: p.BatchId)],
             PerformedById: myEmployeeId));
         var place = PlacePath(targetId!.Value);

@@ -14,7 +14,8 @@ public record DocumentHeader(StockDocument Document, int LineCount);
 
 /// <summary>Нормализованные фильтры поиска остатков для репозитория.</summary>
 /// <param name="OffBook">null — все партии; false — только учётные (по 1С); true — только вне учёта.</param>
-public record StockFilter(int? WarehouseId, string? LocationCode, string? Search, int? CategoryId, bool BelowMinimum, bool? OffBook = null);
+/// <param name="MolId">null — все; 0 — основной МОЛ (партии без пометки); иначе — партии этого МОЛ.</param>
+public record StockFilter(int? WarehouseId, string? LocationCode, string? Search, int? CategoryId, bool BelowMinimum, bool? OffBook = null, int? MolId = null);
 
 /// <summary>Краткие сведения о месте хранения для проверок при проведении документа.</summary>
 public record LocationInfo(int Id, string FullCode, bool HasChildren, string? Name = null);
@@ -64,6 +65,9 @@ public interface IStockRepository
 
     void AddBatch(Batch batch);
 
+    /// <summary>Отметить сотрудника как МОЛ (за ним числятся партии).</summary>
+    Task MarkMolAsync(int employeeId, CancellationToken ct = default);
+
     /// <summary>Зарезервировано актами на утверждении по партиям (кроме акта <paramref name="exceptActId"/>).</summary>
     /// <summary>
     /// Резерв подотчёта сотрудника по партиям и видам: строки актов и отчётов на утверждении/подтверждении,
@@ -93,17 +97,17 @@ public interface IStockRepository
     /// <summary>Расхождения приёмки (с партией и позицией); по умолчанию — только незакрытые.</summary>
     Task<IReadOnlyList<ReceiptDiscrepancy>> ListDiscrepanciesAsync(bool includeResolved, CancellationToken ct = default);
 
-    /// <summary>
-    /// Что числится в 1С за МОЛ склада, по позициям — для сверки: остатки во всех местах склада
-    /// плюс «выдано в работу» (в 1С это по-прежнему у кладовщика). Партии вне учёта не входят.
-    /// </summary>
-    Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default);
+    /// <summary>Что числится за каждым МОЛ по позициям (склад + «в работе», без вне учёта) — для сверки с 1С.</summary>
+    Task<IReadOnlyList<MolTotal>> ListMolTotalsAsync(CancellationToken ct = default);
 
-    /// <summary>«Подотчёт по 1С» по сотрудникам и позициям — для сверки с ведомостями их МОЛ.</summary>
-    Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default);
+    /// <summary>Учётные партии позиций на местах хранения (с местом и партией) — откуда можно сменить МОЛ.</summary>
+    Task<IReadOnlyList<StockBalance>> ListMolSourcesAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
 
-    /// <summary>«Выдано в работу», которое можно перевести в подотчёт по 1С: учётные партии без резерва отчётов.</summary>
-    Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default);
+    /// <summary>Сколько партии всего: во всех местах и у сотрудников.</summary>
+    Task<decimal> GetBatchTotalAsync(int batchId, CancellationToken ct = default);
+
+    /// <summary>Прежний «подотчёт по 1С» с остатком (с позицией и партией) — для переноса на склад.</summary>
+    Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<BatchStock>> ListBatchStockAsync(int itemId, int? locationId, int? employeeId, CancellationToken ct = default);
 

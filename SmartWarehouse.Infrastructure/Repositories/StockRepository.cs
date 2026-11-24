@@ -53,6 +53,9 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
     public void AddBatch(Batch batch) => db.Batches.Add(batch);
 
+    public Task MarkMolAsync(int employeeId, CancellationToken ct = default) =>
+        db.Employees.Where(e => e.Id == employeeId && !e.IsMol).ExecuteUpdateAsync(s => s.SetProperty(e => e.IsMol, true), ct);
+
     public async Task<IReadOnlyDictionary<(int BatchId, CustodyKind Kind), decimal>> GetReservedByBatchAsync(int itemId, int employeeId, int? exceptActId, CancellationToken ct = default)
     {
         var rows = await ReservedLines(db.WriteOffActLines)
@@ -87,7 +90,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         await db.Balances
             .AsNoTracking()
             .Include(b => b.Item).ThenInclude(i => i.Unit)
-            .Include(b => b.Batch)
+            .Include(b => b.Batch).ThenInclude(x => x.Mol)
             .Where(b => b.LocationId == locationId && b.Quantity != 0)
             .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.Item.Name)
             .ToListAsync(ct);
@@ -127,14 +130,16 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Take(500)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<ItemTotal>> ListWarehouseTotalsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<MolTotal>> ListMolTotalsAsync(CancellationToken ct = default)
     {
+        // Склад (все места, включая «Место не указано») и «выдано в работу» — по пометке МОЛ партии.
         var stock = await db.Balances
             .Where(b => b.Quantity != 0 && !b.Batch.OffBook)
-            .GroupBy(b => b.ItemId)
+            .GroupBy(b => new { b.Batch.MolId, b.ItemId })
             .Select(g => new
             {
-                ItemId = g.Key,
+                g.Key.MolId,
+                g.Key.ItemId,
                 Quantity = g.Sum(b => b.Quantity),
                 Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
                 Incomplete = g.Any(b => b.Batch.UnitPrice == null)
@@ -142,69 +147,50 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .ToListAsync(ct);
         var atWork = await db.EmployeeBalances
             .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && !b.Batch.OffBook)
-            .GroupBy(b => b.ItemId)
+            .GroupBy(b => new { b.Batch.MolId, b.ItemId })
             .Select(g => new
             {
-                ItemId = g.Key,
-                Quantity = g.Sum(b => b.Quantity),
-                Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
-                Incomplete = g.Any(b => b.Batch.UnitPrice == null)
-            })
-            .ToListAsync(ct);
-        var totals = stock.Concat(atWork)
-            .GroupBy(t => t.ItemId)
-            .Select(g => new { ItemId = g.Key, Quantity = g.Sum(t => t.Quantity), Value = g.Sum(t => t.Value), Incomplete = g.Any(t => t.Incomplete) })
-            .ToList();
-        var items = await ItemNamesAsync(totals.Select(t => t.ItemId), ct);
-        return totals
-            .Select(t => new ItemTotal(t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
-                t.Quantity, decimal.Round(t.Value, 2), t.Incomplete))
-            .ToList();
-    }
-
-    public async Task<IReadOnlyList<CustodyTotal>> ListCustodyTotalsAsync(CancellationToken ct = default)
-    {
-        var totals = await db.EmployeeBalances
-            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Official && !b.Batch.OffBook)
-            .GroupBy(b => new { b.EmployeeId, b.ItemId })
-            .Select(g => new
-            {
-                g.Key.EmployeeId,
+                g.Key.MolId,
                 g.Key.ItemId,
                 Quantity = g.Sum(b => b.Quantity),
                 Value = g.Sum(b => b.Quantity * (b.Batch.UnitPrice ?? 0)),
                 Incomplete = g.Any(b => b.Batch.UnitPrice == null)
             })
             .ToListAsync(ct);
+        var totals = stock.Concat(atWork)
+            .GroupBy(t => (t.MolId, t.ItemId))
+            .Select(g => new { g.Key.MolId, g.Key.ItemId, Quantity = g.Sum(t => t.Quantity), Value = g.Sum(t => t.Value), Incomplete = g.Any(t => t.Incomplete) })
+            .ToList();
         var items = await ItemNamesAsync(totals.Select(t => t.ItemId), ct);
         return totals
-            .Select(t => new CustodyTotal(t.EmployeeId, t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
+            .Select(t => new MolTotal(t.MolId, t.ItemId, items[t.ItemId].Sku, items[t.ItemId].Name, items[t.ItemId].Unit,
                 t.Quantity, decimal.Round(t.Value, 2), t.Incomplete))
             .ToList();
     }
 
-    public async Task<IReadOnlyList<WorkTotal>> ListWorkFreeTotalsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<StockBalance>> ListMolSourcesAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default)
     {
-        var held = await db.EmployeeBalances
-            .Where(b => b.Quantity != 0 && b.Kind == CustodyKind.Work && !b.Batch.OffBook)
-            .GroupBy(b => new { b.EmployeeId, b.ItemId })
-            .Select(g => new { g.Key.EmployeeId, g.Key.ItemId, Quantity = g.Sum(b => b.Quantity) })
+        var ids = itemIds.Distinct().ToList();
+        return await db.Balances.AsNoTracking()
+            .Include(b => b.Location)
+            .Include(b => b.Batch)
+            .Where(b => ids.Contains(b.ItemId) && b.Quantity > 0 && !b.Batch.OffBook)
+            .OrderBy(b => b.Batch.ReceivedAt).ThenBy(b => b.BatchId)
             .ToListAsync(ct);
-        var reserved = (await ReservedLines(db.WriteOffActLines)
-                .Where(l => l.Act.Kind != ActKind.WriteOff && l.Batch != null && !l.Batch.OffBook)
-                .GroupBy(l => new { l.Act.EmployeeId, l.ItemId })
-                .Select(g => new { g.Key.EmployeeId, g.Key.ItemId, Quantity = g.Sum(l => l.Quantity) })
-                .ToListAsync(ct))
-            .ToDictionary(r => (r.EmployeeId, r.ItemId), r => r.Quantity);
-        var free = held
-            .Select(h => (h.EmployeeId, h.ItemId, Quantity: h.Quantity - reserved.GetValueOrDefault((h.EmployeeId, h.ItemId))))
-            .Where(h => h.Quantity > 0)
-            .ToList();
-        var items = await ItemNamesAsync(free.Select(f => f.ItemId), ct);
-        return free
-            .Select(f => new WorkTotal(f.EmployeeId, f.ItemId, items[f.ItemId].Sku, items[f.ItemId].Name, items[f.ItemId].Unit, f.Quantity))
-            .ToList();
     }
+
+    public async Task<decimal> GetBatchTotalAsync(int batchId, CancellationToken ct = default) =>
+        await db.Balances.Where(b => b.BatchId == batchId).SumAsync(b => b.Quantity, ct)
+        + await db.EmployeeBalances.Where(b => b.BatchId == batchId).SumAsync(b => b.Quantity, ct);
+
+    public async Task<IReadOnlyList<EmployeeBalance>> ListOfficialCustodyAsync(CancellationToken ct = default) =>
+        await db.EmployeeBalances.AsNoTracking()
+            .Include(b => b.Employee)
+            .Include(b => b.Item)
+            .Include(b => b.Batch)
+            .Where(b => b.Kind == CustodyKind.Official && b.Quantity > 0)
+            .OrderBy(b => b.EmployeeId).ThenBy(b => b.ItemId).ThenBy(b => b.BatchId)
+            .ToListAsync(ct);
 
     private async Task<Dictionary<int, (string Sku, string Name, string Unit)>> ItemNamesAsync(IEnumerable<int> ids, CancellationToken ct)
     {
@@ -267,7 +253,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Include(x => x.Lines).ThenInclude(l => l.Item).ThenInclude(i => i.Unit)
             .Include(x => x.Lines).ThenInclude(l => l.FromLocation)
             .Include(x => x.Lines).ThenInclude(l => l.ToLocation)
-            .Include(x => x.Lines).ThenInclude(l => l.Batch)
+            .Include(x => x.Lines).ThenInclude(l => l.Batch).ThenInclude(b => b.Mol)
             .Include(x => x.Act)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -324,7 +310,7 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             .Include(b => b.Item).ThenInclude(i => i.Unit)
             .Include(b => b.Item).ThenInclude(i => i.Category)
             .Include(b => b.Location).ThenInclude(l => l.Warehouse)
-            .Include(b => b.Batch)
+            .Include(b => b.Batch).ThenInclude(x => x.Mol)
             .Where(b => b.Quantity > 0);
 
         if (filter.WarehouseId is int warehouseId)
@@ -354,6 +340,11 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
 
         if (filter.OffBook is bool offBook)
             query = query.Where(b => b.Batch.OffBook == offBook);
+
+        if (filter.MolId is 0)
+            query = query.Where(b => b.Batch.MolId == null);
+        else if (filter.MolId is int molId)
+            query = query.Where(b => b.Batch.MolId == molId);
 
         if (filter.BelowMinimum)
             query = query.Where(b => b.Item.Balances.Sum(x => x.Quantity) < b.Item.MinStock);

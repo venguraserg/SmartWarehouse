@@ -121,6 +121,14 @@
                     <span class="muted">· @act.EmployeePosition</span>
                 }
             </dd>
+            @if (IsSummary && MolCount > 1)
+            {
+                <dt>МОЛ</dt>
+                <dd>
+                    @MolCount — печатается отдельный акт на каждого МОЛ
+                    (@string.Join(", ", act.Lines.Select(l => l.Mol ?? "основной").Distinct()))
+                </dd>
+            }
             @if (IsSummary)
             {
                 <dt>№ документа 1С</dt>
@@ -240,7 +248,7 @@
                     <tr class="@(l.OffBook ? "row-offbook" : null)">
                         <td class="num">@l.LineNo</td>
                         <td class="mono"><a href="/items/@l.ItemId">@l.Sku</a></td>
-                        <td class="col-name">@l.ItemName <OffBookTag Quantity="@(l.OffBook ? 1m : 0m)" /></td>
+                        <td class="col-name">@l.ItemName <OffBookTag Quantity="@(l.OffBook ? 1m : 0m)" /> <MolTags Mols="@(l.Mol is null ? null : new[] { l.Mol })" /></td>
                         <td class="num">
                             @Ui.Qty(l.Quantity) @l.UnitCode
                             @if (l.BatchDate is { } batchDate)
@@ -297,6 +305,9 @@ else if (error is null)
     private ActDto? act;
 
     private bool ShowPrices => act?.Lines.Any(l => l.UnitPrice is not null) == true;
+
+    /// <summary>Сколько МОЛ в сводном акте: по каждому — свой акт при печати.</summary>
+    private int MolCount => act?.Lines.Select(l => l.MolId).Distinct().Count() ?? 0;
 
     private decimal ActTotal => act?.Lines
         .Where(l => l.UnitPrice is not null)

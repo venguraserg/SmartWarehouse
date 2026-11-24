@@ -1,0 +1,12 @@
+@* Пометка «за кем числится в 1С», если не основной МОЛ: «МОЛ Иванов И. П.». *@
+@if (Mols is { Count: > 0 })
+{
+    @foreach (var mol in Mols)
+    {
+        <span class="tag tag-mol" title="В 1С числится за МОЛ @mol">МОЛ @mol</span>
+    }
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string>? Mols { get; set; }
+}

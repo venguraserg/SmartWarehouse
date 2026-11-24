@@ -77,13 +77,9 @@ else
                         else if (type == MovementType.Issue)
                         {
                             <div class="field-hint">
-                                Выдаётся <span class="tag tag-info">в работу</span>: в 1С остаётся за кладовщиком,
+                                Выдаётся <span class="tag tag-info">в работу</span>: в 1С остаётся за МОЛ партии,
                                 сотрудник потом отчитывается об использовании или возвращает.
                             </div>
-                        }
-                        else if (type == MovementType.Return)
-                        {
-                            <div class="field-hint">Сначала возвращается выданное <span class="tag tag-info">в работу</span>, затем <span class="tag tag-official">по 1С</span>.</div>
                         }
                     </div>
                 }
@@ -664,12 +660,13 @@ else
         // Списание оформляется актом на списание (с утверждением руководителем).
         if (type == MovementType.WriteOff)
         {
-            Nav.NavigateTo(EmployeeParam is int forEmployee ? $"/acts/new?employee={forEmployee}" : "/acts/new", replace: true);
+            // Списание — через отчёт об использовании и сводный акт кладовщика (по каждому МОЛ).
+            Nav.NavigateTo(EmployeeParam is int forEmployee ? $"/reports/new?employee={forEmployee}" : "/reports/new", replace: true);
             return;
         }
 
-        // Перевод в подотчёт по 1С — из сверки с 1С.
-        if (type == MovementType.CustodyChange)
+        // Подотчёт по 1С больше не ведётся; смена МОЛ — только из сверки с 1С.
+        if (type is MovementType.CustodyChange or MovementType.MolChange)
         {
             Nav.NavigateTo("/reconcile", replace: true);
             return;

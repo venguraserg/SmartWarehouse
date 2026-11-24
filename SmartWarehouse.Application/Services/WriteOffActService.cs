@@ -122,6 +122,8 @@ public class WriteOffActService(
     {
         if (request.Kind == ActKind.Summary)
             throw new DomainException("Сводный акт кладовщика составляется из отчётов об использовании.");
+        if (request.Kind == ActKind.WriteOff)
+            throw new DomainException(NoOfficialActs);
         if (!actor.IsWarehouse && actor.EmployeeId != request.EmployeeId)
             throw new ForbiddenException(request.Kind == ActKind.UsageReport
                 ? "Отчёт об использовании вносит сам сотрудник (или кладовщик с его слов)."
@@ -155,6 +157,8 @@ public class WriteOffActService(
             throw new DomainException("Сотрудника в акте сменить нельзя — составьте новый акт.");
         if (request.Kind != act.Kind || act.Kind == ActKind.Summary)
             throw new DomainException("Акт нельзя превратить в отчёт об использовании и наоборот — составьте новый.");
+        if (act.Kind == ActKind.WriteOff)
+            throw new DomainException(NoOfficialActs);
 
         await ApplyAsync(act, request, act.Employee, ct);
         act.Status = ActStatus.Draft;
@@ -185,6 +189,8 @@ public class WriteOffActService(
         var act = await LoadVisibleAsync(id, actor, ct);
         EnsureNotSummary(act);
         EnsureCanEdit(act, actor);
+        if (act.Kind == ActKind.WriteOff)
+            throw new DomainException(NoOfficialActs);
         if (act.Lines.Count == 0)
             throw new DomainException("В акте нет строк.");
 
@@ -329,6 +335,11 @@ public class WriteOffActService(
         act.DecidedByPosition = approver.Position;
     }
 
+    /// <summary>Прежние акты сотрудника по «подотчёту по 1С» (АС) больше не оформляются.</summary>
+    public const string NoOfficialActs =
+        "Акты на списание подотчёта по 1С больше не оформляются: позиции МОЛ числятся на складе с пометкой МОЛ. " +
+        "Выдайте «в работу», отчитайтесь об использовании — спишется сводным актом, отдельно по каждому МОЛ.";
+
     // ---------- Сводный акт кладовщика ----------
 
     public const int MaxSummaryReports = 500;
@@ -387,11 +398,12 @@ public class WriteOffActService(
         if (pending.Count == 0)
             throw new DomainException("В сводном акте нет строк к списанию — включите подтверждённые отчёты.");
 
-        // Документ списания на каждого сотрудника: позиции списываются с его «в работе»
-        // (резерв отчётов этого сводного акта не мешает — exceptActId).
-        foreach (var group in pending.GroupBy(x => x.Report.EmployeeId))
+        // Документ списания на каждого сотрудника и МОЛ: позиции списываются с его «в работе»
+        // (резерв отчётов этого сводного акта не мешает — exceptActId); в 1С каждый МОЛ списывает своё.
+        foreach (var group in pending.GroupBy(x => (x.Report.EmployeeId, MolId: x.Line.Batch?.MolId)))
         {
             var reportNumbers = string.Join(", ", group.Select(x => x.Report.Number).Distinct());
+            var mol = group.First().Line.Batch?.Mol?.ShortName;
             foreach (var chunk in group.Chunk(StockService.MaxLines))
             {
                 var equipment = chunk.Select(x => x.Line.EquipmentId).Distinct().ToList();
@@ -401,10 +413,11 @@ public class WriteOffActService(
                     equipment.Count == 1 ? equipment[0] : null,
                     null,
                     $"По сводному акту {act.Number} (отчёты {reportNumbers})"
+                        + (mol is null ? "" : $"; МОЛ {mol}")
                         + (act.ExternalNumber is null ? "" : $"; в 1С: {act.ExternalNumber}"),
                     chunk.Select(x => new DocumentLineRequest(x.Line.ItemId, x.Line.Quantity, null, null, x.Line.BatchId)).ToList(),
                     PerformedById: act.EmployeeId,
-                    ReceivedById: group.Key,
+                    ReceivedById: group.Key.EmployeeId,
                     Custody: CustodyKind.Work);
 
                 var staged = await stock.StageAsync(request, exceptActId: act.Id, ct);
@@ -784,7 +797,9 @@ public class WriteOffActService(
         EmployeeName: report?.Employee.ShortName,
         SourceNumber: report?.Number,
         SourceId: report?.Id,
-        OffBook: l.Batch?.OffBook ?? false);
+        OffBook: l.Batch?.OffBook ?? false,
+        MolId: l.Batch?.MolId,
+        Mol: l.Batch?.Mol?.ShortName);
 
     /// <summary>Кто решает: по акту — руководитель (или сам сотрудник), по отчёту — кладовщик.</summary>
     private static (int Id, string Name) DeciderOf(WriteOffAct act)

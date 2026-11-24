@@ -33,6 +33,21 @@ public class SettingsController(ISettingsService settings) : ControllerBase
     public Task<ActTemplateDto> SaveActTemplate(ActTemplateDto request, CancellationToken ct) =>
         settings.SaveActTemplateAsync(request, By(), ct);
 
+    /// <summary>Основной МОЛ склада: за ним партии без пометки МОЛ (в сверке — склад, в сводном акте — его акт).</summary>
+    [HttpGet("main-mol")]
+    [Authorize]
+    public Task<MainMolDto> GetMainMol(CancellationToken ct) => settings.GetMainMolAsync(ct);
+
+    [HttpPut("main-mol")]
+    [Authorize(Roles = Roles.Admin)]
+    public Task<MainMolDto> SaveMainMol(MainMolDto request, CancellationToken ct) =>
+        settings.SaveMainMolAsync(request.EmployeeId, By(), ct);
+
+    /// <summary>Сотрудники-МОЛ (основной — первым) — для фильтров и выбора.</summary>
+    [HttpGet("mols")]
+    [Authorize]
+    public Task<IReadOnlyList<MolDto>> Mols([FromServices] IMolService mols, CancellationToken ct) => mols.ListAsync(ct);
+
     /// <summary>Образец акта по сохранённому шаблону.</summary>
     [HttpGet("act-template/sample")]
     [Authorize(Roles = Roles.Admin)]

@@ -39,6 +39,11 @@
             </dd>
             <dt>Телефон</dt>
             <dd>@(employee.Phone ?? "—")</dd>
+            @if (employee.IsMol)
+            {
+                <dt>МОЛ</dt>
+                <dd>Материально ответственное лицо · <a href="/stock?mol=@employee.Id">что числится за ним на складе</a></dd>
+            }
         </dl>
     </div>
 
@@ -82,10 +87,6 @@
                 {
                     <a class="btn btn-primary btn-sm" href="/reports/new?employee=@employee.Id">Отчёт об использовании</a>
                 }
-                else
-                {
-                    <a class="btn btn-primary btn-sm" href="/acts/new?employee=@employee.Id">Акт на списание</a>
-                }
             }
         </div>
         <div class="table-wrap">
@@ -109,7 +110,7 @@
                         <tr class="@(c.OffBookQuantity >= c.Quantity ? "row-offbook" : null)">
                             <td><Thumb ItemId="c.ItemId" ImageVersion="c.ImageVersion" /></td>
                             <td class="mono"><a href="/items/@c.ItemId">@c.Sku</a></td>
-                            <td class="col-name">@c.ItemName <OffBookTag Quantity="c.OffBookQuantity" Total="c.Quantity" /></td>
+                            <td class="col-name">@c.ItemName <OffBookTag Quantity="c.OffBookQuantity" Total="c.Quantity" /> <MolTags Mols="c.Mols" /></td>
                             <td class="num">
                                 <strong>@Ui.Qty(c.Quantity) @c.UnitCode</strong>
                                 @if (c.Reserved > 0)
