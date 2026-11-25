@@ -23,7 +23,7 @@ public sealed class LocationTree
         LocationNodeDto Node(StorageLocation l)
         {
             var node = new LocationNodeDto(l.Id, l.ParentId, l.Type, l.Code, l.FullCode, l.Name,
-                byParent[l.Id].Select(Node).ToList());
+                byParent[l.Id].Select(Node).ToList(), l.CheckedAt);
             tree[l.Id] = node;
             return node;
         }

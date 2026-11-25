@@ -213,7 +213,7 @@ public record LocationDto(
     string FullCode,
     string? Name);
 
-/// <summary>Узел дерева мест хранения.</summary>
+/// <summary>Узел дерева мест хранения. CheckedAt — когда место проверено проведённой инвентаризацией.</summary>
 public record LocationNodeDto(
     int Id,
     int? ParentId,
@@ -221,7 +221,8 @@ public record LocationNodeDto(
     string Code,
     string FullCode,
     string? Name,
-    IReadOnlyList<LocationNodeDto> Children);
+    IReadOnlyList<LocationNodeDto> Children,
+    DateTimeOffset? CheckedAt = null);
 
 /// <summary>Что лежит в месте хранения (например, после сканирования QR ячейки).</summary>
 public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity, long? ImageVersion = null, decimal? Value = null, bool ValueIncomplete = false);

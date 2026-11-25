@@ -168,6 +168,10 @@ else
                                     }
                                     <a class="mono place-code" href="@StockUrl(location: GroupCode(rack.Key, head))" title="Показать только это место"
                                        @onclick:preventDefault @onclick="() => FilterByLocationAsync(GroupCode(rack.Key, head))">@GroupCode(rack.Key, head)</a>
+                                    @if (single && CheckedAt(places[0].Rows[0].LocationId) is { } headChecked)
+                                    {
+                                        <span class="tag tag-ok" title="Проверено инвентаризацией">проверено @Ui.Day(headChecked)</span>
+                                    }
                                     <span class="place-count">@positions @Plural(positions, "позиция", "позиции", "позиций")</span>
                                 </span>
                             </td>
@@ -182,6 +186,10 @@ else
                                     <tr class="place-row">
                                         <td colspan="@(ShowValue ? 7 : 6)">
                                             <span class="place-sub">@(a.Rest ?? HereLabel(a))</span>
+                                            @if (CheckedAt(place.Rows[0].LocationId) is { } checkedAt)
+                                            {
+                                                <span class="tag tag-ok" title="Проверено инвентаризацией">проверено @Ui.Day(checkedAt)</span>
+                                            }
                                             @if (a.Note is not null)
                                             {
                                                 <span class="place-note">@a.Note</span>
@@ -450,6 +458,8 @@ else
     private readonly HashSet<int> collapsed = [];
 
     private sealed record PlaceRows(PlaceAddress Address, List<StockRowDto> Rows);
+
+    private DateTimeOffset? CheckedAt(int locationId) => placeTree.ById.TryGetValue(locationId, out var n) ? n.CheckedAt : null;
 
     private PlaceAddress Address(StockRowDto row) => placeTree.AddressOf(row.LocationId, row.LocationCode, row.LocationName);
 
