@@ -28,9 +28,9 @@ public static class SearchWords
         "%" + word.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
 
     /// <summary>Все слова запроса есть хотя бы в одном из полей (пустой запрос подходит ко всему).</summary>
-    public static bool Matches(string? query, params string?[] fields) => Matches(Split(query), fields);
+    public static bool Matches(string? query, params string?[] fields) => MatchesAll(Split(query), fields);
 
-    public static bool Matches(IReadOnlyList<string> words, params string?[] fields) =>
+    public static bool MatchesAll(IReadOnlyList<string> words, params string?[] fields) =>
         words.All(w => fields.Any(f => f?.Contains(w, StringComparison.OrdinalIgnoreCase) == true));
 
     /// <summary>Первое по тексту вхождение любого из слов: позиция и само слово (-1, если ни одного).</summary>
