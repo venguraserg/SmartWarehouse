@@ -91,7 +91,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
             .Select(l => new LabelData(
                 payload?.Location(l.FullCode) ?? l.FullCode,
                 l.FullCode,
-                l.Name,
+                string.IsNullOrWhiteSpace(l.Name) ? LocationService.AutoName(l.Type, l.Code) : l.Name,
                 $"{LocationService.TypeName(l.Type)}, склад {l.Warehouse.Code}"))
             .ToList();
     }

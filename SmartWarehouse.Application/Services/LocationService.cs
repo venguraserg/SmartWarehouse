@@ -124,6 +124,10 @@ public class LocationService(ILocationRepository repo) : ILocationService
             .ToList();
     }
 
+    /// <summary>Подпись места без описания: «1-й этаж», «У ворот», «Стеллаж C3», «Полка 1», полка 0 — «На полу», «Ячейка 2».</summary>
+    public static string AutoName(LocationType type, string code) =>
+        type == LocationType.Shelf && code == "0" ? "На полу" : OpeningImportService.PlaceName(type, code);
+
     internal static string TypeName(LocationType type) => type switch
     {
         LocationType.Zone => "зона",

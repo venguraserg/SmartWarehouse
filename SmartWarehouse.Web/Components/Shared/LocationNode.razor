@@ -14,9 +14,13 @@
         <button type="button" class="tree-node @(Node.Id == SelectedId ? "selected" : null)" @onclick="() => OnSelect.InvokeAsync(Node)">
             <span class="tree-type">@Ui.LocType(Node.Type)</span>
             <span class="mono">@Node.Code</span>
-            @if (!string.IsNullOrEmpty(Node.Name))
+            @if (PlaceAddress.CustomName(Node) is string note)
             {
-                <span class="muted">@Node.Name</span>
+                <span class="muted">@note</span>
+            }
+            else if (PlaceAddress.IsFloor(Node))
+            {
+                <span class="muted">на полу</span>
             }
             @if (Node.Children.Count > 0 && !IsOpen)
             {
