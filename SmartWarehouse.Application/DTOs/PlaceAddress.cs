@@ -1,11 +1,10 @@
-using SmartWarehouse.Application.DTOs;
 using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Enums;
 
-namespace SmartWarehouse.Web.Services;
+namespace SmartWarehouse.Application.DTOs;
 
 /// <summary>
-/// Адрес места словами — вместо шифра «SK1-1-C3-1-1».
+/// Адрес места словами — вместо шифра «SK1-1-C3-1-1». Общий для экранов (Web) и наклеек (PDF).
 /// Area — этаж или зона («1-й этаж», «У ворот»); Full — «Стеллаж C3 · полка 1 · ячейка 1»;
 /// Short — для чипов и телефона: «C3 · п.1 · яч.1»; Rest — то, что ниже стеллажа («полка 1 · ячейка 1»);
 /// Note — описание, которое ввели руками (не автоимя из импорта); Code — шифр для сверки с QR-меткой.
@@ -18,8 +17,12 @@ public sealed record PlaceAddress(
     string? Note,
     string Code,
     int GroupId,
-    string GroupTitle)
+    string GroupTitle,
+    string? Compact = null)
 {
+    /// <summary>Крупная надпись на наклейке: короткий адрес без этажа/зоны («C3 · п.1 · яч.1», «34 · пол»); этаж — отдельной строкой.</summary>
+    public string Sticker => Capitalize(Compact ?? Short);
+
     /// <summary>Подсказка при наведении: этаж, адрес, описание, шифр.</summary>
     public string Title => string.Join(" · ",
         new[] { Area != Full ? Area : null, Full, Note, Code }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -38,6 +41,7 @@ public sealed record PlaceAddress(
         string? area = null;
         var full = new List<string>();
         var brief = new List<string>();
+        var zoneInBrief = false;
         var rest = new List<string>();
         string? note = null;
         var group = chain[0];
@@ -55,7 +59,10 @@ public sealed record PlaceAddress(
                     area = custom ?? OpeningImportService.PlaceName(LocationType.Zone, n.Code);
                     // Этажи (1, 2) в короткой форме не пишем — есть в подсказке; прочие зоны («у ворот») пишем.
                     if (!n.Code.All(char.IsDigit))
+                    {
                         brief.Add(area.ToLowerInvariant());
+                        zoneInBrief = true;
+                    }
                     group = n;
                     if (custom is not null)
                         note = null; // своё имя зоны уже стоит в Area
@@ -80,7 +87,7 @@ public sealed record PlaceAddress(
                     if (!seenRack && rest.Count == 1) group = n;
                     break;
                 default:
-                    var label = custom ?? $"{Ui.LocType(n.Type).ToLowerInvariant()} {n.Code}";
+                    var label = custom ?? $"{LocationService.TypeName(n.Type).ToLowerInvariant()} {n.Code}";
                     full.Add(label);
                     brief.Add(n.Code);
                     rest.Add(label);
@@ -99,9 +106,10 @@ public sealed record PlaceAddress(
             ? string.Join(" · ", new[] { area, $"Стеллаж {group.Code}" }.Where(s => s is not null))
             : group.Type == LocationType.Zone ? area ?? group.FullCode : fullText;
 
+        var compact = zoneInBrief && brief.Count > 1 ? string.Join(" · ", brief.Skip(1)) : null;
         return new PlaceAddress(area, fullText, shortText,
             group.Id == place.Id ? null : rest.Count > 0 ? string.Join(" · ", rest) : null,
-            note, place.FullCode, group.Id, groupTitle);
+            note, place.FullCode, group.Id, groupTitle, compact);
     }
 
     /// <summary>Полка 0 — под стеллажом, на полу.</summary>
@@ -116,7 +124,7 @@ public sealed record PlaceAddress(
         var auto = OpeningImportService.PlaceName(n.Type, n.Code);
         if (string.Equals(name, auto, StringComparison.OrdinalIgnoreCase)
             || string.Equals(name, n.Code, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(name, $"{Ui.LocType(n.Type)} {n.Code}", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(name, $"{LocationService.TypeName(n.Type)} {n.Code}", StringComparison.OrdinalIgnoreCase))
             return null;
         return name;
     }

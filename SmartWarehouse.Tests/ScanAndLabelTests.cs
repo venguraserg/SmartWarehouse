@@ -179,6 +179,77 @@ public class ScanAndLabelTests
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"/Type\s*/Page[^s]").Count);
     }
 
+    /// <summary>1-й этаж › стеллаж C3: полки 0 (пол), 1 (ячейки 1, 2), 2 («ремни»).</summary>
+    private void AddRackC3()
+    {
+        var wh = _locations.Warehouses[0];
+        void Add(int id, int? parent, LocationType type, string code, string full, string? name = null) =>
+            _locations.Locations.Add(new StorageLocation { Id = id, WarehouseId = 1, Warehouse = wh, ParentId = parent, Type = type, Code = code, FullCode = full, Name = name });
+        Add(19, null, LocationType.Zone, "1", "WH1-1");
+        Add(20, 19, LocationType.Rack, "C3", "WH1-1-C3", "Подшипники, ремни");
+        Add(21, 20, LocationType.Shelf, "0", "WH1-1-C3-0");
+        Add(22, 20, LocationType.Shelf, "1", "WH1-1-C3-1");
+        Add(23, 20, LocationType.Shelf, "2", "WH1-1-C3-2", "ремни");
+        Add(25, 22, LocationType.Cell, "2", "WH1-1-C3-1-2");
+        Add(24, 22, LocationType.Cell, "1", "WH1-1-C3-1-1", "Подшипники SKF");
+    }
+
+    [Fact]
+    public async Task Наклейка_места_с_адресом_словами()
+    {
+        AddRackC3();
+        var labels = new LabelService(_locations, _stock, _captured, _settings);
+
+        await labels.RenderAsync(new LabelRequest(LabelKind.Location, [24, 21], null));
+
+        var cell = _captured.Labels.Single(l => l.Code == "WH1-1-C3-1-1");
+        Assert.Equal("C3 · п.1 · яч.1", cell.Big);
+        Assert.Equal("1-й этаж", cell.Area);
+        Assert.Equal("Подшипники SKF", cell.Title);
+        Assert.Equal("C3 · пол", _captured.Labels.Single(l => l.Code == "WH1-1-C3-0").Big);
+    }
+
+    [Fact]
+    public async Task Стеллаж_табличка_и_наклейки_сверху_вниз()
+    {
+        AddRackC3();
+        var labels = new LabelService(_locations, _stock, _captured, _settings);
+
+        var (_, fileName) = await labels.RenderAsync(new LabelRequest(LabelKind.Rack, [20], "3x8"));
+
+        Assert.Equal("Стеллаж_C3.pdf", fileName);
+        var sign = Assert.Single(_captured.Signs);
+        Assert.Equal("C3", sign.Rack);
+        Assert.Equal("1-й этаж", sign.Area);
+        Assert.Equal("Подшипники, ремни", sign.Note);
+        Assert.Equal([("п.2", "ремни"), ("п.1", "яч. 1–2"), ("пол", "под стеллажом")],
+            sign.Shelves.Select(x => (x.Label, x.Hint)));
+        // Полка 2 — своя наклейка; на полке 1 — только ячейки; пол — последним.
+        Assert.Equal(["WH1-1-C3-2", "WH1-1-C3-1-1", "WH1-1-C3-1-2", "WH1-1-C3-0"], _captured.Labels.Select(l => l.Code));
+
+        _captured.Signs.Clear();
+        _captured.Labels.Clear();
+        await labels.RenderAsync(new LabelRequest(LabelKind.Rack, [20], "3x8", Sign: false));
+        Assert.Empty(_captured.Signs);
+        Assert.Equal(4, _captured.Labels.Count);
+
+        await Assert.ThrowsAsync<DomainException>(() => labels.RenderAsync(new LabelRequest(LabelKind.Rack, [24], "3x8")));
+        await Assert.ThrowsAsync<DomainException>(() => labels.RenderAsync(new LabelRequest(LabelKind.Rack, [20], "3x8", Sign: false, Stickers: false)));
+    }
+
+    [Theory]
+    [InlineData("3x8")]
+    [InlineData("4x10")]
+    public async Task Стеллаж_в_PDF_табличка_A5_и_лист_наклеек(string layout)
+    {
+        AddRackC3();
+        var (pdf, _) = await _labels.RenderAsync(new LabelRequest(LabelKind.Rack, [20], layout));
+
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+        var text = System.Text.Encoding.Latin1.GetString(pdf);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"/Type\s*/Page[^s]").Count);
+    }
+
     [Theory]
     [InlineData("3x7")]
     [InlineData("4x10")]
@@ -242,10 +313,17 @@ public class ScanAndLabelTests
 internal class CapturingLabelRenderer : ILabelPdfRenderer
 {
     public List<LabelData> Labels { get; } = [];
+    public List<RackSignData> Signs { get; } = [];
 
     public byte[] Render(IReadOnlyList<LabelData> labels, LabelLayout layout, int skip)
     {
         Labels.AddRange(labels);
         return [1];
+    }
+
+    public byte[] Render(IReadOnlyList<RackSignData> signs, IReadOnlyList<LabelData> labels, LabelLayout layout, int skip)
+    {
+        Signs.AddRange(signs);
+        return Render(labels, layout, skip);
     }
 }

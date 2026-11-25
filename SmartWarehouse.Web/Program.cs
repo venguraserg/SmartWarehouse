@@ -144,7 +144,9 @@ app.MapGet("/labels.pdf", async (HttpContext context, ApiClient api, IConfigurat
             kind, ids, q["layout"],
             int.TryParse(q["skip"], out var skip) ? skip : 0,
             baseUrl,
-            int.TryParse(q["copies"], out var copies) ? copies : 1), ct);
+            int.TryParse(q["copies"], out var copies) ? copies : 1,
+            Sign: !bool.TryParse(q["sign"], out var sign) || sign,
+            Stickers: !bool.TryParse(q["stickers"], out var stickers) || stickers), ct);
         return Results.File(pdf, "application/pdf");
     }
     catch (ApiException ex)
