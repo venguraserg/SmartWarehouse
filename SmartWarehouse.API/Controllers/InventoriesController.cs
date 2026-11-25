@@ -19,6 +19,11 @@ public class InventoriesController(IInventoryService inventories) : ControllerBa
     [HttpGet]
     public Task<IReadOnlyList<InventorySummaryDto>> List(CancellationToken ct) => inventories.ListAsync(ct);
 
+    /// <summary>Идущие инвентаризации, в которые входит место (страница места по QR).</summary>
+    [HttpGet("open")]
+    public Task<IReadOnlyList<InventorySummaryDto>> Open([FromQuery] int locationId, CancellationToken ct) =>
+        inventories.FindOpenAsync(locationId, ct);
+
     [HttpPost]
     public Task<InventoryDto> Start(StartInventoryRequest request, CancellationToken ct) =>
         inventories.StartAsync(request, User.ToInventoryActor(), ct);

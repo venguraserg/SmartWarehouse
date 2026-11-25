@@ -25,6 +25,9 @@ public interface IInventoryService
     Task<InventoryPostResultDto> PostAsync(int id, InventoryActor actor, CancellationToken ct = default);
 
     Task<InventorySummaryDto> CancelAsync(int id, InventoryActor actor, CancellationToken ct = default);
+
+    /// <summary>Идущие инвентаризации, в которые входит это место (для страницы места по QR).</summary>
+    Task<IReadOnlyList<InventorySummaryDto>> FindOpenAsync(int locationId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -55,6 +58,20 @@ public class InventoryService(
             else
                 result.Add(Summary(inv, null));
         }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<InventorySummaryDto>> FindOpenAsync(int locationId, CancellationToken ct = default)
+    {
+        var location = await locations.GetLocationAsync(locationId, ct);
+        if (location is null)
+            return [];
+        var tree = LocationTree.Build(await locations.ListLocationsAsync(location.WarehouseId, ct));
+        var chain = tree.Chain(locationId).Select(n => n.Id).ToHashSet();
+        var result = new List<InventorySummaryDto>();
+        foreach (var open in await repo.ListOpenAsync(ct))
+            if (chain.Contains(open.RootLocationId))
+                result.Add(Summary(open, null) with { RootTitle = tree.Address(open.RootLocationId).GroupTitle });
         return result;
     }
 
@@ -219,7 +236,7 @@ public class InventoryService(
                 action == InventoryAction.Shortage ? ctx.ShortageValue(line.LocationId, line.ItemId, -rest) : null));
         }
 
-        var unchecked = ctx.Places.Where(p => !plan.Checked.Contains(p.Id)).Select(p => ctx.Title(p.Id)).ToList();
+        var notChecked = ctx.Places.Where(p => !plan.Checked.Contains(p.Id)).Select(p => ctx.Title(p.Id)).ToList();
         return new InventorySheetDto(
             Summary(inv, ctx),
             rows,
@@ -228,7 +245,7 @@ public class InventoryService(
             rows.Where(r => r.Value is not null).Sum(r => r.Value!.Value),
             rows.Count(r => r.Action == InventoryAction.Surplus),
             rows.Count(r => r.Moved > 0 && r.Delta < 0),
-            unchecked);
+            notChecked);
     }
 
     public async Task<InventoryPostResultDto> PostAsync(int id, InventoryActor actor, CancellationToken ct = default)
