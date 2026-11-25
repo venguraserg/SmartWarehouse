@@ -113,10 +113,14 @@ public class ItemNoteService(IItemNoteRepository repo, TimeProvider clock) : IIt
     }
 
     /// <summary>Отрывок текста вокруг найденного слова: «…подходит 6205-2Z — проверено на гомогенизаторе…».</summary>
-    public static string Snippet(string text, string search, int around = 40)
+    public static string Snippet(string text, string search, int around = 40) =>
+        Snippet(text, SearchWords.Split(search), around);
+
+    /// <summary>Отрывок вокруг первого найденного из слов.</summary>
+    public static string Snippet(string text, IReadOnlyList<string> words, int around = 40)
     {
         var flat = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var at = string.IsNullOrEmpty(search) ? -1 : flat.IndexOf(search, StringComparison.OrdinalIgnoreCase);
+        var (at, search) = SearchWords.FirstMatch(flat, words);
         if (at < 0)
             return flat.Length <= around * 2 ? flat : flat[..(around * 2)].TrimEnd() + "…";
 

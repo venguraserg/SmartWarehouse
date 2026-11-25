@@ -305,11 +305,7 @@ else
     private IDisposable? scanSubscription;
 
     private IEnumerable<PendingPlacementDto> VisiblePending => pending
-        .Where(p => string.IsNullOrWhiteSpace(filter)
-                    || p.Sku.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
-                    || p.ItemName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)
-                    || (p.Invoice?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
-                    || (p.Mol?.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase) ?? false));
+        .Where(p => SmartWarehouse.Application.Services.SearchWords.Matches(filter, p.Sku, p.ItemName, p.Invoice, p.Mol));
 
     private string PlacePath(int id) => placePaths.TryGetValue(id, out var path) ? path : id.ToString(CultureInfo.InvariantCulture);
 

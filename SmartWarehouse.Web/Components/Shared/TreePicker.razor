@@ -160,8 +160,7 @@
         visible = [];
         foreach (var n in Tree.All.Where(n => !excluded.Contains(n.Id)))
         {
-            if ((n.Code?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
-                || Tree.PathOf(n.Id).Contains(text, StringComparison.OrdinalIgnoreCase))
+            if (SmartWarehouse.Application.Services.SearchWords.Matches(text, n.Code, Tree.PathOf(n.Id)))
                 foreach (var p in Tree.PathIds(n.Id))
                     visible.Add(p);
         }

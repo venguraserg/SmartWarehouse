@@ -1,3 +1,4 @@
+using SmartWarehouse.Application.Services;
 using System.Globalization;
 using SmartWarehouse.Domain.Enums;
 using SmartWarehouse.Application.DTOs;
@@ -113,24 +114,21 @@ public static class Ui
         _ => "tag-neutral"
     };
 
-    /// <summary>Текст, разбитый на куски: найденное слово (без учёта регистра) — отдельно, для подсветки.</summary>
-    public static IEnumerable<(string Text, bool Match)> Highlight(string text, string? term)
+    /// <summary>Текст, разбитый на куски: найденные слова запроса (без учёта регистра) — отдельно, для подсветки.</summary>
+    public static IEnumerable<(string Text, bool Match)> Highlight(string text, string? query)
     {
-        if (string.IsNullOrEmpty(term))
-        {
-            yield return (text, false);
-            yield break;
-        }
+        var words = SearchWords.Split(query);
         var from = 0;
-        while (from < text.Length)
+        while (words.Count > 0 && from < text.Length)
         {
-            var at = text.IndexOf(term, from, StringComparison.OrdinalIgnoreCase);
+            var (at, word) = SearchWords.FirstMatch(text[from..], words);
             if (at < 0)
                 break;
+            at += from;
             if (at > from)
                 yield return (text[from..at], false);
-            yield return (text.Substring(at, term.Length), true);
-            from = at + term.Length;
+            yield return (text.Substring(at, word.Length), true);
+            from = at + word.Length;
         }
         if (from < text.Length)
             yield return (text[from..], false);

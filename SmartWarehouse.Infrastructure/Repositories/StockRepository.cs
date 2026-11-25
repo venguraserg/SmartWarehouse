@@ -325,12 +325,14 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
                 || b.Location.FullCode.Contains(middle));
         }
 
-        if (filter.Search is string search)
+        // По словам: каждое — в названии, артикуле или заметке сотрудника к позиции
+        // («гомогенизатор» найдёт подшипник, у которого так написано в заметке).
+        foreach (var word in SearchWords.Split(filter.Search))
         {
-            var pattern = $"%{search}%";
-            // И по заметкам сотрудников к позиции: «гомогенизатор» найдёт подшипник, у которого так написано в заметке.
-            query = query.Where(b => EF.Functions.ILike(b.Item.Name, pattern) || EF.Functions.ILike(b.Item.Sku, pattern)
-                || db.ItemNotes.Any(n => n.ItemId == b.ItemId && EF.Functions.ILike(n.Text, pattern)));
+            var pattern = SearchWords.LikePattern(word);
+            query = query.Where(b => EF.Functions.ILike(b.Item.Name, pattern, SearchWords.LikeEscape)
+                || EF.Functions.ILike(b.Item.Sku, pattern, SearchWords.LikeEscape)
+                || db.ItemNotes.Any(n => n.ItemId == b.ItemId && EF.Functions.ILike(n.Text, pattern, SearchWords.LikeEscape)));
         }
 
         if (filter.CategoryId is int categoryId)

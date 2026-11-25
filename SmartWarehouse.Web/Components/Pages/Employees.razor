@@ -174,8 +174,7 @@ else
             .Where(e => string.IsNullOrWhiteSpace(search) || Matches(e, search.Trim()));
 
     private static bool Matches(EmployeeDto e, string text) =>
-        new[] { e.FullName, e.PersonnelNumber, e.Position, e.Department, e.Phone }
-            .Any(v => v?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+        SmartWarehouse.Application.Services.SearchWords.Matches(text, e.FullName, e.PersonnelNumber, e.Position, e.Department, e.Phone);
 
     // ---------- Проверки ----------
 

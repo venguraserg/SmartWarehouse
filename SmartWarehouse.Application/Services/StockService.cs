@@ -666,18 +666,12 @@ public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRe
 
         // Позиции, найденные только по заметке (не по названию и не по артикулу), — с отрывком этой заметки.
         Dictionary<int, ItemNoteHitDto>? hits = null;
-        if (notes is not null && filter.Search is string search)
+        if (notes is not null && filter.Search is not null)
         {
-            var byNoteOnly = rows
-                .Where(r => !r.ItemName.Contains(search, StringComparison.OrdinalIgnoreCase)
-                    && !r.Sku.Contains(search, StringComparison.OrdinalIgnoreCase))
-                .Select(r => r.ItemId).Distinct().ToList();
-            if (byNoteOnly.Count > 0)
-            {
-                hits = [];
-                foreach (var note in await notes.FindAsync(byNoteOnly, search, ct))
-                    hits.TryAdd(note.ItemId, new ItemNoteHitDto(note.Kind, ItemNoteService.Snippet(note.Text, search)));
-            }
+            hits = await CatalogService.NoteHitsAsync(notes,
+                rows.Select(r => (r.ItemId, r.ItemName, r.Sku, (string?)null)), SearchWords.Split(filter.Search), ct);
+            if (hits.Count == 0)
+                hits = null;
         }
 
         return new StockSearchResult(rows, balances.Count > MaxStockRows, hits);

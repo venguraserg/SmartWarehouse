@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Domain.Enums;
 using SmartWarehouse.Infrastructure.Data;
@@ -15,16 +16,18 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
         if (!includeInactive)
             query = query.Where(x => x.IsActive);
 
-        if (search is not null)
+        // По словам: «петров слесарь», «сергей петров».
+        foreach (var word in SearchWords.Split(search))
         {
-            var pattern = $"%{search}%";
+            var pattern = SearchWords.LikePattern(word);
+            const string esc = SearchWords.LikeEscape;
             query = query.Where(x =>
-                EF.Functions.ILike(x.LastName, pattern)
-                || EF.Functions.ILike(x.FirstName, pattern)
-                || (x.MiddleName != null && EF.Functions.ILike(x.MiddleName, pattern))
-                || (x.PersonnelNumber != null && EF.Functions.ILike(x.PersonnelNumber, pattern))
-                || (x.Position != null && EF.Functions.ILike(x.Position, pattern))
-                || (x.Department != null && EF.Functions.ILike(x.Department, pattern)));
+                EF.Functions.ILike(x.LastName, pattern, esc)
+                || EF.Functions.ILike(x.FirstName, pattern, esc)
+                || (x.MiddleName != null && EF.Functions.ILike(x.MiddleName, pattern, esc))
+                || (x.PersonnelNumber != null && EF.Functions.ILike(x.PersonnelNumber, pattern, esc))
+                || (x.Position != null && EF.Functions.ILike(x.Position, pattern, esc))
+                || (x.Department != null && EF.Functions.ILike(x.Department, pattern, esc)));
         }
 
         return await query
@@ -78,14 +81,15 @@ public class EmployeeRepository(WarehouseDbContext db) : IEmployeeRepository
         }
         if (itemId is not null)
             query = query.Where(x => x.ItemId == itemId);
-        if (search is not null)
+        // По словам: «иванов подшипник» — подшипники у Иванова.
+        foreach (var word in SearchWords.Split(search))
         {
-            var pattern = $"%{search}%";
+            var pattern = SearchWords.LikePattern(word);
             query = query.Where(x =>
-                EF.Functions.ILike(x.Item.Name, pattern)
-                || EF.Functions.ILike(x.Item.Sku, pattern)
-                || EF.Functions.ILike(x.Employee.LastName, pattern)
-                || (x.Employee.PersonnelNumber != null && EF.Functions.ILike(x.Employee.PersonnelNumber, pattern)));
+                EF.Functions.ILike(x.Item.Name, pattern, SearchWords.LikeEscape)
+                || EF.Functions.ILike(x.Item.Sku, pattern, SearchWords.LikeEscape)
+                || EF.Functions.ILike(x.Employee.LastName, pattern, SearchWords.LikeEscape)
+                || (x.Employee.PersonnelNumber != null && EF.Functions.ILike(x.Employee.PersonnelNumber, pattern, SearchWords.LikeEscape)));
         }
 
         return await query.Take(5000).ToListAsync(ct);
