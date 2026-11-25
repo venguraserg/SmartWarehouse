@@ -420,6 +420,53 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("item_images", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.ItemNote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("AuthorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("Pinned")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorUserId");
+
+                    b.HasIndex("ItemId");
+
+                    b.ToTable("item_notes", (string)null);
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.ReceiptDiscrepancy", b =>
                 {
                     b.Property<int>("Id")
@@ -1058,6 +1105,24 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                         .HasForeignKey("SmartWarehouse.Domain.Entities.ItemImage", "ItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Item");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.ItemNote", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.UserAccount", "AuthorUser")
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuthorUser");
 
                     b.Navigation("Item");
                 });

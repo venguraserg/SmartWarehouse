@@ -70,7 +70,8 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
         {
             var pattern = $"%{search}%";
             query = query.Where(x => EF.Functions.ILike(x.Name, pattern) || EF.Functions.ILike(x.Sku, pattern)
-                || (x.Barcode != null && x.Barcode == search));
+                || (x.Barcode != null && x.Barcode == search)
+                || db.ItemNotes.Any(n => n.ItemId == x.Id && EF.Functions.ILike(n.Text, pattern)));
         }
 
         if (categoryId is not null)

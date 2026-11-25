@@ -94,6 +94,58 @@ public static class Ui
 
     public static string Date(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy HH:mm", Ru);
 
+    /// <summary>Вид заметки: «Аналог / замена», «Где стоит», «Совет», «Проблема».</summary>
+    public static string NoteKindName(NoteKind kind) => kind switch
+    {
+        NoteKind.Analog => "Аналог / замена",
+        NoteKind.Usage => "Где стоит",
+        NoteKind.Tip => "Совет",
+        NoteKind.Problem => "Проблема",
+        _ => kind.ToString()
+    };
+
+    public static string NoteKindClass(NoteKind kind) => kind switch
+    {
+        NoteKind.Analog => "tag-info",
+        NoteKind.Usage => "tag-ok",
+        NoteKind.Tip => "tag-warn",
+        NoteKind.Problem => "tag-danger",
+        _ => "tag-neutral"
+    };
+
+    /// <summary>Текст, разбитый на куски: найденное слово (без учёта регистра) — отдельно, для подсветки.</summary>
+    public static IEnumerable<(string Text, bool Match)> Highlight(string text, string? term)
+    {
+        if (string.IsNullOrEmpty(term))
+        {
+            yield return (text, false);
+            yield break;
+        }
+        var from = 0;
+        while (from < text.Length)
+        {
+            var at = text.IndexOf(term, from, StringComparison.OrdinalIgnoreCase);
+            if (at < 0)
+                break;
+            if (at > from)
+                yield return (text[from..at], false);
+            yield return (text.Substring(at, term.Length), true);
+            from = at + term.Length;
+        }
+        if (from < text.Length)
+            yield return (text[from..], false);
+    }
+
+    /// <summary>Подсказка к виду заметки — что в неё писать.</summary>
+    public static string NoteKindHint(NoteKind kind) => kind switch
+    {
+        NoteKind.Analog => "Чем можно заменить: «подходит 6205-2Z (FAG, NSK)»",
+        NoteKind.Usage => "На каком оборудовании стоит: «насос Г2-ОПБ, линия розлива №2, 2 шт»",
+        NoteKind.Tip => "Как ставить, хранить, проверять: «при посадке греть до 80 °C»",
+        NoteKind.Problem => "Что не так: «партия 10.2026 — люфт, перед выдачей проверять»",
+        _ => ""
+    };
+
     public static string Day(DateTimeOffset value) => value.ToLocalTime().ToString("dd.MM.yyyy", Ru);
 
     public static string Day(DateOnly value) => value.ToString("dd.MM.yyyy", Ru);

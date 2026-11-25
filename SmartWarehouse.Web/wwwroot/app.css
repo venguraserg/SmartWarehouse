@@ -717,3 +717,46 @@ button.chip:hover { border-color: var(--border-strong); }
 .mol-sources { width: 100%; margin-top: .4rem; }
 .mol-sources td { padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
 .tag-mol { background: var(--info-weak); color: var(--text); border: 1px dashed var(--border-strong); }
+
+/* ===== Заметки к номенклатуре ===== */
+.notes { margin-top: 1rem; }
+.notes-head { display: flex; align-items: baseline; gap: .5rem; }
+.notes-head h2 { margin: 1rem 0 .75rem; }
+.notes-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1rem; align-items: start; }
+.notes-list { display: flex; flex-direction: column; gap: .6rem; }
+.notes-empty { padding: 1rem; }
+button.chip.chip-on { background: var(--text); border-color: var(--text); color: var(--surface); }
+.note { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: .75rem 1rem; display: flex; flex-direction: column; gap: .45rem; }
+.note-pinned { border-color: var(--border-strong); box-shadow: inset 3px 0 0 var(--brand-accent); }
+.note-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem; font-size: .8125rem; }
+.note-flag { display: inline-flex; align-items: center; gap: .2rem; color: var(--text-muted); }
+.note-meta { margin-left: auto; color: var(--text-muted); }
+.note-actions { display: inline-flex; gap: .3rem; }
+.btn-icon { width: 32px; padding: 0; justify-content: center; color: var(--text-muted); }
+.btn-icon-danger { color: var(--danger-text); }
+.note-text { white-space: pre-line; line-height: 1.45; overflow-wrap: anywhere; }
+.note-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-top: .4rem; border-top: 1px solid var(--border); }
+.note-new h3 { margin: 0 0 .5rem; }
+.note-form { display: flex; flex-direction: column; gap: .5rem; }
+.note-form textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 6rem; }
+.note-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; border: 0; padding: 0; margin: 0; }
+.note-kinds legend { padding: 0; margin-bottom: .35rem; font-size: .8125rem; color: var(--text-muted); }
+.note-kind { position: relative; display: flex; align-items: center; justify-content: center; min-height: 40px; padding: .3rem .5rem; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: .8125rem; font-weight: 400; text-align: center; cursor: pointer; white-space: normal; }
+.note-kind input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.note-kind:not(.on) { background: var(--surface); color: var(--text); }
+.note-kind.on { font-weight: 600; border-width: 2px; border-color: currentColor; }
+.note-kind:focus-within { box-shadow: var(--focus-ring); }
+.note-form-foot { display: flex; align-items: center; gap: .5rem; }
+.note-count { font-size: .75rem; }
+.note-hit { display: flex; gap: .35rem; align-items: flex-start; margin-top: .2rem; font-size: .8125rem; color: var(--text-muted); }
+.note-hit .icon { flex: none; margin-top: .15rem; }
+.note-hit-kind { font-weight: 600; }
+mark.hl { background: #F1F8D8; color: inherit; padding: 0 .1em; border-radius: 2px; }
+.note-badge { display: inline-flex; align-items: center; gap: .2rem; color: var(--text-muted); font-size: .75rem; white-space: nowrap; }
+@media (max-width: 1024px) {
+    .notes-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    .btn-icon { width: 40px; }
+    .note-meta { margin-left: 0; width: 100%; order: 5; }
+}

@@ -245,6 +245,26 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         await EnsureSuccessAsync(response, ct);
     }
 
+    // ---------- Заметки к номенклатуре ----------
+
+    public Task<List<ItemNoteDto>> GetItemNotesAsync(int itemId, CancellationToken ct = default) =>
+        GetAsync<List<ItemNoteDto>>($"api/items/{itemId}/notes", ct);
+
+    public Task<ItemNoteDto> AddItemNoteAsync(int itemId, SaveItemNoteRequest request, CancellationToken ct = default) =>
+        SendAsync<ItemNoteDto>(HttpMethod.Post, $"api/items/{itemId}/notes", request, ct);
+
+    public Task<ItemNoteDto> UpdateItemNoteAsync(int noteId, SaveItemNoteRequest request, CancellationToken ct = default) =>
+        SendAsync<ItemNoteDto>(HttpMethod.Put, $"api/notes/{noteId}", request, ct);
+
+    public Task<ItemNoteDto> PinItemNoteAsync(int noteId, bool pinned, CancellationToken ct = default) =>
+        SendAsync<ItemNoteDto>(HttpMethod.Post, $"api/notes/{noteId}/pin", new PinItemNoteRequest(pinned), ct);
+
+    public async Task DeleteItemNoteAsync(int noteId, CancellationToken ct = default)
+    {
+        using var response = await SendRawAsync(HttpMethod.Delete, $"api/notes/{noteId}", ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     /// <summary>Фото позиции или null, если его нет.</summary>
     public async Task<ItemImageDto?> GetItemImageAsync(int itemId, CancellationToken ct = default)
     {

@@ -6,7 +6,7 @@ using SmartWarehouse.Domain.Exceptions;
 namespace SmartWarehouse.Application.Services;
 
 /// <summary>Справочники: категории, единицы измерения, номенклатура.</summary>
-public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICatalogService
+public class CatalogService(ICatalogRepository repo, TimeProvider clock, IItemNoteRepository? notes = null) : ICatalogService
 {
     // ---------- Категории ----------
 
@@ -102,9 +102,35 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock) : ICata
 
     public async Task<IReadOnlyList<ItemDto>> ListItemsAsync(string? search, int? categoryId, bool all = false, CancellationToken ct = default)
     {
-        var items = await repo.ListItemsAsync(search?.Trim(), categoryId, all ? null : ListLimit, ct);
-        return items.Select(ToDto).ToList();
+        search = search?.Trim();
+        var items = await repo.ListItemsAsync(search, categoryId, all ? null : ListLimit, ct);
+        var result = items.Select(ToDto).ToList();
+        if (notes is null || result.Count == 0)
+            return result;
+
+        // Заметки: сколько их у позиции; при поиске — отрывок заметки, если слово нашлось не в названии и не в артикуле.
+        var ids = result.Select(i => i.Id).ToList();
+        var counts = await notes.CountByItemAsync(ids, ct);
+        var hits = new Dictionary<int, ItemNoteHitDto>();
+        if (!string.IsNullOrEmpty(search))
+        {
+            var byNoteOnly = result.Where(i => !MatchesOwnFields(i, search)).Select(i => i.Id).ToList();
+            if (byNoteOnly.Count > 0)
+                foreach (var note in await notes.FindAsync(byNoteOnly, search, ct))
+                    hits.TryAdd(note.ItemId, new ItemNoteHitDto(note.Kind, ItemNoteService.Snippet(note.Text, search)));
+        }
+
+        result = result
+            .Select(i => i with { NoteCount = counts.GetValueOrDefault(i.Id), NoteHit = hits.GetValueOrDefault(i.Id) })
+            .ToList();
+        // Совпадение в названии или артикуле — выше, найденное только в заметках — ниже.
+        return string.IsNullOrEmpty(search) ? result : result.OrderBy(i => i.NoteHit is null ? 0 : 1).ToList();
     }
+
+    private static bool MatchesOwnFields(ItemDto i, string search) =>
+        i.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || i.Sku.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(i.Barcode, search, StringComparison.Ordinal);
 
     /// <summary>Общий префикс автоматических артикулов: SP — spare part (запчасть).</summary>
     public const string DefaultSkuPrefix = "SP";
