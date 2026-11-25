@@ -103,10 +103,11 @@ public class ReferenceAdminServiceTests
     }
 
     [Fact]
-    public async Task Без_описания_место_не_сохраняется()
+    public async Task Описание_места_можно_убрать()
     {
-        await Assert.ThrowsAsync<DomainException>(() =>
-            _service.UpdateLocationAsync(Cell1, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", " ")));
+        // Без описания место подписывается по типу и коду («Ячейка 01»).
+        await _service.UpdateLocationAsync(Cell1, new UpdateLocationRequest(ShelfA1, LocationType.Cell, "01", " "));
+        Assert.Null(_repo.Locations.Single(l => l.Id == Cell1).Name);
     }
 
     // ---------- Склады ----------

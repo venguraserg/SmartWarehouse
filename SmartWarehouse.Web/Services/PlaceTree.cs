@@ -46,9 +46,9 @@ public sealed class PlaceTree
         }
     }
 
-    /// <summary>Подпись места: описание, а без него — тип и код («стеллаж A»).</summary>
+    /// <summary>Подпись места: своё описание, а без него — по типу и коду («Стеллаж C3», «На полу», «1-й этаж»).</summary>
     public static string LabelOf(LocationNodeDto n) =>
-        string.IsNullOrWhiteSpace(n.Name) ? $"{Ui.LocType(n.Type).ToLowerInvariant()} {n.Code}" : n.Name.Trim();
+        PlaceAddress.CustomName(n) ?? SmartWarehouse.Application.Services.LocationService.AutoName(n.Type, n.Code);
 
     public string PathOf(int id, string? fallback = null) =>
         Paths.TryGetValue(id, out var path) ? path : fallback ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture);

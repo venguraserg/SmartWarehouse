@@ -106,13 +106,12 @@ public class LocationServiceTests
     }
 
     [Fact]
-    public async Task Описание_места_обязательно()
+    public async Task Описание_места_необязательно()
     {
         var wh = await WarehouseAsync();
 
-        var ex = await Assert.ThrowsAsync<DomainException>(() =>
-            _service.AddLocationAsync(wh, new CreateLocationRequest(null, LocationType.Rack, "A", "  ")));
-        Assert.Contains("описание", ex.Message);
+        var bare = await _service.AddLocationAsync(wh, new CreateLocationRequest(null, LocationType.Rack, "B", "  "));
+        Assert.Null(bare.Name);
 
         var rack = await _service.AddLocationAsync(wh, new CreateLocationRequest(null, LocationType.Rack, "A", " Подшипники "));
         Assert.Equal("Подшипники", rack.Name);

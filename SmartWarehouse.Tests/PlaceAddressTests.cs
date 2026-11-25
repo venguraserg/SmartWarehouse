@@ -74,6 +74,27 @@ public class PlaceAddressTests
     }
 
     [Fact]
+    public void Без_описаний_адрес_тот_же()
+    {
+        // После очистки автоимён у мест нет описаний — адрес и подписи строятся из типа и кода.
+        var cell = new LocationNodeDto(5, 4, LocationType.Cell, "1", "SK1-1-C3-1-1", null, []);
+        var floor = new LocationNodeDto(7, 3, LocationType.Shelf, "0", "SK1-1-C3-0", null, []);
+        var shelf = new LocationNodeDto(4, 3, LocationType.Shelf, "1", "SK1-1-C3-1", null, [cell]);
+        var rack = new LocationNodeDto(3, 2, LocationType.Rack, "C3", "SK1-1-C3", null, [floor, shelf]);
+        var zone = new LocationNodeDto(2, null, LocationType.Zone, "1", "SK1-1", null, [rack]);
+        var tree = new PlaceTree().AddGroup(null, [zone]);
+
+        var a = tree.AddressOf(5);
+        Assert.Equal("1-й этаж", a.Area);
+        Assert.Equal("Стеллаж C3 · полка 1 · ячейка 1", a.Full);
+        Assert.Null(a.Note);
+        Assert.Equal("1-й этаж › Стеллаж C3 › Полка 1 › Ячейка 1", tree.PathOf(5));
+        Assert.Equal("1-й этаж › Стеллаж C3 › На полу", tree.PathOf(7));
+        Assert.Equal("Подшипники", PlaceTree.LabelOf(cell with { Name = " Подшипники " }));
+        Assert.Equal("Ячейка 1", PlaceTree.LabelOf(cell with { Name = "Ячейка 1" }));
+    }
+
+    [Fact]
     public void Без_дерева_показывается_шифр()
     {
         var a = new PlaceTree().AddressOf(99, "SK1-1-A1-0-1", "Ячейка 1");

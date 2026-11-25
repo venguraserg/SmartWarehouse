@@ -140,7 +140,7 @@
                         {
                             <h2 style="margin-top: 0" class="mono">@selected.FullCode</h2>
                             <p class="muted">
-                                @Ui.LocType(selected.Type)@(string.IsNullOrEmpty(selected.Name) ? "" : $" · {selected.Name}")
+                                @Ui.LocType(selected.Type)@(PlaceAddress.CustomName(selected) is string note ? $" · {note}" : "")
                                 · <a href="/stock?location=@Uri.EscapeDataString(selected.FullCode)">что лежит здесь и внутри</a>
                                 · <a href="/labels.pdf?kind=Location&ids=@selected.Id&layout=3x8" target="_blank" rel="noopener">наклейка QR</a>
                             </p>
@@ -166,14 +166,14 @@
                                     </div>
                                 </div>
                                 <div class="field">
-                                    <label for="loc-name">Описание <span class="req">*</span></label>
+                                    <label for="loc-name">Описание <span class="muted">(необязательно)</span></label>
                                     <input id="loc-name" type="text" @bind="newName" @bind:event="oninput" maxlength="128" placeholder="@Ui.LocationDescriptionHint(newType)" />
                                     <div class="field-hint">
-                                        Что это за место и что в нём хранится. В приходе и выдаче место выбирают по описаниям всех уровней:
-                                        «Склад запчастей › Стеллаж у ворот › Подшипники». Код — для наклейки и сканера.
+                                        Что здесь лежит — показывается рядом с адресом в остатках и в карточке позиции.
+                                        Без описания место подписывается по типу и коду: «Стеллаж C3 · полка 1». Код — для наклейки и сканера.
                                     </div>
                                 </div>
-                                <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || string.IsNullOrWhiteSpace(newName) || busy)">
+                                <button class="btn btn-primary" type="submit" disabled="@(LocationCodeError is not null || busy)">
                                     Добавить @(selected is null ? "" : "внутрь")
                                 </button>
                                 <p class="muted" style="margin-bottom: 0">
@@ -417,7 +417,7 @@
         var all = Flatten(tree).ToList();
         var found = all.FirstOrDefault(n => string.Equals(n.FullCode, code, StringComparison.OrdinalIgnoreCase))
                     ?? all.FirstOrDefault(n => n.FullCode.StartsWith(code, StringComparison.OrdinalIgnoreCase))
-                    ?? all.FirstOrDefault(n => n.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true);
+                    ?? all.FirstOrDefault(n => PlaceTree.LabelOf(n).Contains(text, StringComparison.OrdinalIgnoreCase));
         if (found is null)
         {
             error = $"Место «{text}» не найдено.";
@@ -466,7 +466,7 @@
 
     private async Task AddLocationAsync()
     {
-        if (warehouse is null || LocationCodeError is not null || string.IsNullOrWhiteSpace(newName)) return;
+        if (warehouse is null || LocationCodeError is not null) return;
         error = success = null;
         busy = true;
         try

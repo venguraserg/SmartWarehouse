@@ -28,7 +28,7 @@
             <CodeInput Id="ed-code" @bind-Value="code" Invalid="@(Error is not null)" />
         </div>
         <div class="field">
-            <label for="ed-name">Описание <span class="req">*</span></label>
+            <label for="ed-name">Описание <span class="muted">(необязательно)</span></label>
             <input id="ed-name" type="text" @bind="name" @bind:event="oninput" maxlength="128" placeholder="@Ui.LocationDescriptionHint(type)" />
         </div>
     </div>
@@ -48,7 +48,7 @@
     </p>
 
     <div class="actions">
-        <button class="btn btn-primary" type="button" disabled="@(busy || Error is not null || !Changed || string.IsNullOrWhiteSpace(name))" @onclick="SaveAsync">Сохранить</button>
+        <button class="btn btn-primary" type="button" disabled="@(busy || Error is not null || !Changed)" @onclick="SaveAsync">Сохранить</button>
         @if (Node.Children.Count == 0)
         {
             if (confirmDelete)

@@ -3,22 +3,32 @@
 
 @* Сюда ведёт QR-наклейка ячейки: что лежит в месте хранения. Страница рассчитана на телефон. *@
 
-<PageTitle>@(location?.FullCode ?? Code) — Склад ОЭТО</PageTitle>
+<PageTitle>@(location is null ? Code : placeTree.AddressOf(location.Id, location.FullCode).Full) — Склад ОЭТО</PageTitle>
 
 <Alert Error="@error" />
 
 @if (location is not null)
 {
+    var place = placeTree.AddressOf(location.Id, location.FullCode, location.Name);
     <div class="page-head">
-        <h1 class="mono">@location.FullCode</h1>
-        <span class="tag tag-neutral">@Ui.LocType(location.Type)</span>
+        <h1>@place.Full</h1>
         <span class="spacer"></span>
         <a class="btn" href="/scan"><Icon Name="scan" Size="18" /> Ещё</a>
     </div>
-    @if (!string.IsNullOrEmpty(location.Name))
-    {
-        <p class="muted" style="margin-top: -.5rem">@location.Name</p>
-    }
+    <div class="place-cell" style="margin: -.5rem 0 1rem">
+        <RackScheme Tree="placeTree" LocationId="location.Id" />
+        <div>
+            @if (place.Area is not null && place.Area != place.Full)
+            {
+                <span class="place-area">@place.Area</span>
+            }
+            <span class="mono muted">@location.FullCode</span>
+            @if (place.Note is not null)
+            {
+                <div>@place.Note</div>
+            }
+        </div>
+    </div>
 
     @if (content is null)
     {
@@ -65,6 +75,8 @@ else
     [Parameter] public string Code { get; set; } = "";
 
     private LocationDto? location;
+    private PlaceTree placeTree = new();
+    private bool placesLoaded;
     private List<LocationContentDto>? content;
     private string? error;
 
@@ -77,6 +89,12 @@ else
         {
             location = await Api.GetLocationByCodeAsync(Code);
             content = await Api.GetLocationContentAsync(location.Id);
+            if (!placesLoaded)
+            {
+                // Без дерева мест адрес показывается шифром — страница всё равно работает.
+                try { placeTree = await Api.GetPlacesAsync(); placesLoaded = true; }
+                catch (Exception ex) when (ex is ApiException or HttpRequestException) { }
+            }
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {

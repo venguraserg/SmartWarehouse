@@ -220,7 +220,8 @@ public class OpeningImportService(
             var parts = address.Split('.');
             int? parentId = parts.Length == 1 ? null : existingByCode[FullCode(warehouse.Code, string.Join('.', parts[..^1]))].Id;
             var type = TypeOf(parts.Length);
-            var description = PlaceName(type, parts[^1]);
+            // Описание не пишем: подпись «Стеллаж C3 · полка 1» строится из типа и кода, описание — для своего текста.
+            string? description = null;
             if (failed.Any(f => address.StartsWith(f + ".", StringComparison.Ordinal)))
                 continue;
             try
