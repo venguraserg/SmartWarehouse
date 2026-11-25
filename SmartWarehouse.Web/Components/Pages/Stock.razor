@@ -87,6 +87,13 @@ else
             <button type="button" class="@(byItem ? "active" : null)" @onclick="() => SetViewAsync(true)">По позициям</button>
         </div>
         <BookFilter Value="offBook" ValueChanged="SetBookAsync" />
+        @if (!byItem && result.Rows.Count > 0)
+        {
+            <span class="hide-phone">
+                <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всё"><Icon Name="expand" Size="16" /> всё</button>
+                <button class="btn btn-sm" type="button" @onclick="CollapseAll" title="Свернуть всё"><Icon Name="collapse" Size="16" /> всё</button>
+            </span>
+        }
         <span class="spacer"></span>
         <span class="muted">
             Позиций: <strong>@result.Rows.Select(r => r.ItemId).Distinct().Count()</strong> ·
@@ -140,33 +147,66 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var group in result.Rows.GroupBy(r => r.LocationId))
+                    @foreach (var rack in RackGroups)
                     {
-                        var first = group.First();
+                        var open = !collapsed.Contains(rack.Key);
+                        var places = rack.ToList();
+                        var head = places[0].Address;
+                        var single = places.Count == 1 && head.Rest is null;
+                        var positions = places.Sum(pl => pl.Rows.Count);
                         <tr class="group-row">
                             <td colspan="@(ShowValue ? 7 : 6)">
-                                <a class="mono" href="@StockUrl(location: first.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(first.LocationCode)">@first.LocationCode</a>
-                                @if (!string.IsNullOrEmpty(first.LocationName))
-                                {
-                                    <span class="muted"> · @first.LocationName</span>
-                                }
-                                <span class="muted"> — @group.Count() @Plural(group.Count(), "позиция", "позиции", "позиций")</span>
+                                <span class="place-head">
+                                    <button type="button" class="tree-toggle" aria-expanded="@(open ? "true" : "false")"
+                                            aria-label="@(open ? "Свернуть" : "Развернуть")" @onclick="() => Toggle(rack.Key)">
+                                        <Icon Name="@(open ? "collapse" : "expand")" Size="14" />
+                                    </button>
+                                    <span class="place-title">@head.GroupTitle</span>
+                                    @if (single && head.Note is not null)
+                                    {
+                                        <span class="place-note">@head.Note</span>
+                                    }
+                                    <a class="mono place-code" href="@StockUrl(location: GroupCode(rack.Key, head))" title="Показать только это место"
+                                       @onclick:preventDefault @onclick="() => FilterByLocationAsync(GroupCode(rack.Key, head))">@GroupCode(rack.Key, head)</a>
+                                    <span class="place-count">@positions @Plural(positions, "позиция", "позиции", "позиций")</span>
+                                </span>
                             </td>
                         </tr>
-                        @foreach (var row in group)
+                        @if (open)
                         {
-                            <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
-                                <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
-                                <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                                <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /> <MolTags Mols="row.Mols" /></td>
-                                <td>@row.CategoryName</td>
-                                <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
-                                @if (ShowValue)
+                            foreach (var place in places)
+                            {
+                                var a = place.Address;
+                                if (!single)
                                 {
-                                    <td class="num">@Ui.Value(row.Value, row.ValueIncomplete)</td>
+                                    <tr class="place-row">
+                                        <td colspan="@(ShowValue ? 7 : 6)">
+                                            <span class="place-sub">@(a.Rest ?? HereLabel(a))</span>
+                                            @if (a.Note is not null)
+                                            {
+                                                <span class="place-note">@a.Note</span>
+                                            }
+                                            <a class="mono place-code" href="@StockUrl(location: a.Code)" title="Показать только это место"
+                                               @onclick:preventDefault @onclick="() => FilterByLocationAsync(a.Code)">@a.Code</a>
+                                        </td>
+                                    </tr>
                                 }
-                                <td class="col-request"><RequestAddButton ItemId="row.ItemId" Compact="true" /></td>
-                            </tr>
+                                foreach (var row in place.Rows)
+                                {
+                                    <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
+                                        <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
+                                        <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
+                                        <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /> <MolTags Mols="row.Mols" /></td>
+                                        <td>@row.CategoryName</td>
+                                        <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
+                                        @if (ShowValue)
+                                        {
+                                            <td class="num">@Ui.Value(row.Value, row.ValueIncomplete)</td>
+                                        }
+                                        <td class="col-request"><RequestAddButton ItemId="row.ItemId" Compact="true" /></td>
+                                    </tr>
+                                }
+                            }
                         }
                     }
                 </tbody>
@@ -218,8 +258,9 @@ else
                                 <div class="chips">
                                     @foreach (var row in group)
                                     {
-                                        <a class="chip" href="@StockUrl(location: row.LocationCode)" @onclick:preventDefault @onclick="() => FilterByLocationAsync(row.LocationCode)">
-                                            <span class="mono">@row.LocationCode</span> <strong>@Ui.Qty(row.Quantity)</strong>@(row.OffBookQuantity > 0 ? (row.OffBookQuantity >= row.Quantity ? " б/у" : $" (б/у {Ui.Qty(row.OffBookQuantity)})") : "")
+                                        var a = Address(row);
+                                        <a class="chip" href="@StockUrl(location: row.LocationCode)" title="@a.Title" @onclick:preventDefault @onclick="() => FilterByLocationAsync(row.LocationCode)">
+                                            <span>@a.Short</span> <strong>@Ui.Qty(row.Quantity)</strong>@(row.OffBookQuantity > 0 ? (row.OffBookQuantity >= row.Quantity ? " б/у" : $" (б/у {Ui.Qty(row.OffBookQuantity)})") : "")
                                         </a>
                                     }
                                 </div>
@@ -248,7 +289,7 @@ else
                         <span class="card-qty @(low ? "qty-warn" : null)">@Ui.Qty(total) @first.UnitCode</span>
                     </span>
                     <span class="card-bottom">
-                        <span class="card-meta"><span class="mono">@first.Sku</span> · @string.Join(", ", group.Select(r => r.LocationCode).Take(3))@(group.Count() > 3 ? $" +{group.Count() - 3}" : "")</span>
+                        <span class="card-meta"><span class="mono">@first.Sku</span> · @string.Join(", ", group.Select(r => Address(r).Short).Take(3))@(group.Count() > 3 ? $" +{group.Count() - 3}" : "")</span>
                         @if (totalOffBook > 0)
                         {
                             <OffBookTag Quantity="totalOffBook" Total="total" />
@@ -394,6 +435,47 @@ else
 
     private static string Plural(int n, string one, string few, string many) => Ui.Plural(n, one, few, many);
 
+    // ---------- Адреса словами и группировка «по местам»: этаж/зона → стеллаж → полка, ячейка ----------
+
+    /// <summary>Свёрнутые группы (стеллажи) в виде «По местам».</summary>
+    private readonly HashSet<int> collapsed = [];
+
+    private sealed record PlaceRows(PlaceAddress Address, List<StockRowDto> Rows);
+
+    private PlaceAddress Address(StockRowDto row) => placeTree.AddressOf(row.LocationId, row.LocationCode, row.LocationName);
+
+    /// <summary>Места, сгруппированные по стеллажу (или зоне), в порядке дерева мест.</summary>
+    private IEnumerable<IGrouping<int, PlaceRows>> RackGroups =>
+        (result?.Rows ?? [])
+            .GroupBy(r => r.LocationId)
+            .Select(g => new PlaceRows(Address(g.First()), g.ToList()))
+            .OrderBy(p => placeTree.OrderOf(p.Address.GroupId))
+            .ThenBy(p => placeTree.OrderOf(p.Rows[0].LocationId))
+            .ThenBy(p => p.Address.Code, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(p => p.Address.GroupId);
+
+    private string GroupCode(int groupId, PlaceAddress head) =>
+        placeTree.ById.TryGetValue(groupId, out var node) ? node.FullCode : head.Code;
+
+    /// <summary>Товар лежит прямо на стеллаже (или в зоне), без полки.</summary>
+    private string HereLabel(PlaceAddress a) =>
+        placeTree.ById.TryGetValue(a.GroupId, out var node) && node.Type == SmartWarehouse.Domain.Enums.LocationType.Rack
+            ? "на стеллаже, без полки" : "без стеллажа";
+
+    private void Toggle(int groupId)
+    {
+        if (!collapsed.Remove(groupId))
+            collapsed.Add(groupId);
+    }
+
+    private void ExpandAll() => collapsed.Clear();
+
+    private void CollapseAll()
+    {
+        foreach (var g in RackGroups)
+            collapsed.Add(g.Key);
+    }
+
     private static IReadOnlyList<string>? MolsOf(IEnumerable<StockRowDto> rows)
     {
         var names = rows.SelectMany(r => r.Mols ?? []).Distinct().OrderBy(n => n).ToList();
@@ -421,11 +503,12 @@ else
         {
             var ru = CultureInfo.GetCultureInfo("ru-RU");
             var sb = new StringBuilder("﻿"); // BOM — чтобы Excel понял кодировку
-            sb.AppendLine("Склад;Место;Название места;Артикул;Наименование;Категория;Количество;Ед.;Стоимость;Из них вне учёта");
+            sb.AppendLine("Склад;Место;Этаж / зона;Адрес;Описание места;Артикул;Наименование;Категория;Количество;Ед.;Стоимость;Из них вне учёта");
             foreach (var r in result?.Rows ?? Array.Empty<StockRowDto>())
             {
+                var a = Address(r);
                 sb.AppendLine(string.Join(';',
-                    Csv(r.WarehouseCode), Csv(r.LocationCode), Csv(r.LocationName), Csv(r.Sku), Csv(r.ItemName),
+                    Csv(r.WarehouseCode), Csv(r.LocationCode), Csv(a.Area), Csv(a.Full), Csv(a.Note), Csv(r.Sku), Csv(r.ItemName),
                     Csv(r.CategoryName), r.Quantity.ToString("0.###", ru), Csv(r.UnitCode),
                     r.Value is decimal v ? v.ToString("0.00", ru) : "",
                     r.OffBookQuantity > 0 ? r.OffBookQuantity.ToString("0.###", ru) : ""));

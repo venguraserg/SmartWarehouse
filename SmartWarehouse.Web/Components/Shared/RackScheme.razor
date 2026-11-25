@@ -1,0 +1,72 @@
+@* Схема стеллажа: полки сверху вниз (нижняя «пол» — под стеллажом), нужная полка и ячейка подсвечены.
+   Без стеллажа в пути (зона, сортировка) ничего не рисует. *@
+@using SmartWarehouse.Domain.Enums
+
+@if (rack is not null)
+{
+    <div class="rack @(shelfId is null ? "whole" : null)" role="img" aria-label="@Label">
+        <span class="rack-title">@rack.Code</span>
+        @foreach (var shelf in shelves)
+        {
+            var on = shelf.Id == shelfId;
+            var floor = PlaceAddress.IsFloor(shelf);
+            var cells = on ? Sorted(shelf.Children.Where(c => c.Type == LocationType.Cell)) : new List<LocationNodeDto>();
+            <span class="rack-shelf @(on ? "on" : null) @(floor ? "floor" : null)">
+                @if (cells.Count > 0 && cells.Count <= 8)
+                {
+                    foreach (var cell in cells)
+                    {
+                        <span class="rack-cell @(cell.Id == cellId ? "on" : null)">@cell.Code</span>
+                    }
+                }
+                else
+                {
+                    @(floor ? "пол" : shelf.Code)
+                }
+            </span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public PlaceTree Tree { get; set; } = null!;
+    [Parameter] public int LocationId { get; set; }
+
+    private LocationNodeDto? rack;
+    private int? shelfId;
+    private int? cellId;
+    private List<LocationNodeDto> shelves = [];
+
+    private string Label => shelfId is null
+        ? $"Стеллаж {rack?.Code}"
+        : $"Стеллаж {rack?.Code}: {Tree.AddressOf(LocationId).Full}";
+
+    protected override void OnParametersSet()
+    {
+        rack = null;
+        shelfId = cellId = null;
+        shelves = [];
+        var chain = Tree.PathIds(LocationId).Select(id => Tree.ById[id]).ToList();
+        var rackIndex = chain.FindIndex(n => n.Type == LocationType.Rack);
+        if (rackIndex < 0)
+            return;
+        rack = chain[rackIndex];
+        shelfId = chain.Skip(rackIndex + 1).FirstOrDefault(n => n.Type == LocationType.Shelf)?.Id;
+        cellId = chain.Skip(rackIndex + 1).FirstOrDefault(n => n.Type == LocationType.Cell)?.Id;
+        // Сверху — старшая полка, внизу — 0 (пол).
+        shelves = Sorted(rack.Children.Where(c => c.Type == LocationType.Shelf));
+        shelves.Reverse();
+        if (shelves.Count > 10 && shelfId is int s)
+        {
+            // Слишком высокий стеллаж — показываем соседей нужной полки.
+            var i = shelves.FindIndex(x => x.Id == s);
+            shelves = shelves.Skip(Math.Max(0, i - 4)).Take(9).ToList();
+        }
+    }
+
+    /// <summary>По номеру, если код — число («2» раньше «10»), иначе по алфавиту.</summary>
+    private static List<LocationNodeDto> Sorted(IEnumerable<LocationNodeDto> nodes) =>
+        nodes.OrderBy(n => int.TryParse(n.Code, out var x) ? x : int.MaxValue)
+             .ThenBy(n => n.Code, StringComparer.OrdinalIgnoreCase)
+             .ToList();
+}
