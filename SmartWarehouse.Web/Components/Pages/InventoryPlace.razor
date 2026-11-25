@@ -1,0 +1,321 @@
+@page "/inventory/{Id:int}/place/{LocationId:int}"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@implements IDisposable
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ScannerHub Scanner
+@inject IJSRuntime JS
+
+@* Подсчёт в месте: что числится — «Сходится», ввести факт или «Нет»; найденное лишнее — сканом или поиском. *@
+
+<PageTitle>@(place?.Title ?? "Место") — инвентаризация</PageTitle>
+
+<div class="page-head">
+    <a class="btn btn-icon" href="/inventory/@Id" aria-label="К списку мест"><Icon Name="back" Size="18" /></a>
+    <h1>@(place?.Title ?? "…")</h1>
+    @if (place?.Checked == true)
+    {
+        <span class="tag tag-ok">проверено</span>
+    }
+</div>
+
+@if (place is not null)
+{
+    <p class="muted" style="margin-top: -.75rem">
+        @(place.Area is null ? "" : $"{place.Area} · ")@place.Full · <span class="mono">@place.FullCode</span> · @place.Number
+    </p>
+}
+
+<Alert Error="@error" />
+@if (info is not null)
+{
+    <div class="alert alert-success" role="status">@info</div>
+}
+
+@if (place is not null)
+{
+    @if (place.Items.Count == 0)
+    {
+        <div class="panel empty">По учёту здесь пусто. Если что-то лежит — «Нашёл лишнее».</div>
+    }
+
+    <div class="inv-items">
+        @foreach (var it in place.Items)
+        {
+            var counted = it.Counted;
+            var diff = counted is decimal c ? c - (it.Expected ?? it.Book) : (decimal?)null;
+            <div class="inv-item @(diff is > 0 or < 0 ? "inv-item-diff" : counted is not null ? "inv-item-ok" : null) @(it.Book == 0 ? "inv-item-extra" : null)">
+                <div class="inv-item-top">
+                    <a href="/items/@it.ItemId" class="inv-item-name">@it.Name</a>
+                    <span class="muted">учёт @Ui.Qty(it.Expected ?? it.Book) @it.Unit</span>
+                </div>
+                @if (it.Elsewhere is not null)
+                {
+                    <div class="inv-item-hint">Лишнее здесь. По учёту: @it.Elsewhere — при проведении будет предложено перемещение.</div>
+                }
+                else if (it.Book == 0 && counted is not null)
+                {
+                    <div class="inv-item-hint">Лишнее: по учёту нигде нет — при проведении оприходуется вне учёта.</div>
+                }
+
+                @if (!place.Open)
+                {
+                    <div class="muted">Факт: @(counted is decimal v ? $"{Ui.Qty(v)} {it.Unit}" : "не считали")</div>
+                }
+                else if (editing == it.ItemId || (counted is not null && counted != (it.Expected ?? it.Book)))
+                {
+                    <div class="inv-qty">
+                        <button type="button" class="btn inv-step" aria-label="Меньше" disabled="@busy" @onclick="() => StepAsync(it, -1)">−</button>
+                        <label class="visually-hidden" for="@($"q{it.ItemId}")">Факт</label>
+                        <input id="@($"q{it.ItemId}")" class="inv-qty-input" type="number" inputmode="decimal" min="0" step="@(it.Fractional ? "0.001" : "1")"
+                               value="@(Text(counted ?? it.Book))" @onchange="e => SetAsync(it, e.Value?.ToString())" />
+                        <button type="button" class="btn inv-step" aria-label="Больше" disabled="@busy" @onclick="() => StepAsync(it, 1)">+</button>
+                        @if (diff is decimal d && d != 0)
+                        {
+                            <strong class="@(d < 0 ? "text-danger" : "text-warn")">@(d > 0 ? "+" : "")@Ui.Qty(d)</strong>
+                        }
+                        <button type="button" class="btn btn-sm" style="margin-left: auto" disabled="@busy" @onclick="() => UndoAsync(it)">Сбросить</button>
+                    </div>
+                }
+                else if (counted is not null)
+                {
+                    <div class="inv-qty">
+                        <span class="inv-ok-text"><Icon Name="check" Size="16" /> Сходится — @Ui.Qty(counted.Value) @it.Unit</span>
+                        <button type="button" class="btn btn-sm" style="margin-left: auto" @onclick="() => editing = it.ItemId">Изменить</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="inv-actions">
+                        <button type="button" class="btn inv-yes" disabled="@busy" @onclick="() => CountAsync(it, it.Book)"><Icon Name="check" Size="18" /> Сходится</button>
+                        <button type="button" class="btn" disabled="@busy" @onclick="() => editing = it.ItemId">Ввести факт</button>
+                        <button type="button" class="btn inv-no" disabled="@busy" @onclick="() => CountAsync(it, 0)">Нет</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (place.Open)
+    {
+        <div class="panel inv-extra">
+            <form class="input-with-btn" @onsubmit="FindAsync" @onsubmit:preventDefault>
+                <label class="visually-hidden" for="inv-find">Нашёл лишнее</label>
+                <input id="inv-find" type="search" @bind="search" placeholder="Нашёл лишнее: артикул, название или скан" autocomplete="off" />
+                <button class="btn" type="submit" disabled="@busy">Найти</button>
+            </form>
+            @if (found is not null)
+            {
+                @if (found.Count == 0)
+                {
+                    <p class="muted" style="margin: .5rem 0 0">Не найдено.</p>
+                }
+                <ul class="inv-found">
+                    @foreach (var f in found.Take(8))
+                    {
+                        <li>
+                            <button type="button" class="inv-found-item" disabled="@busy" @onclick="() => AddExtraAsync(f.Id)">
+                                <span>@f.Name</span><span class="muted mono">@f.Sku</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="inv-bottom">
+            @if (isNativeApp)
+            {
+                <button class="btn btn-big" type="button" onclick="swApp.scan()" aria-label="Сканировать"><Icon Name="scan" Size="22" /></button>
+            }
+            else
+            {
+                <a class="btn btn-big" href="/scan?inv=@Id&place=@LocationId" aria-label="Сканировать"><Icon Name="scan" Size="22" /></a>
+            }
+            @if (place.Checked)
+            {
+                <button class="btn btn-big" type="button" disabled="@busy" @onclick="() => CheckAsync(false)">Снять отметку</button>
+                <button class="btn btn-primary btn-big" type="button" @onclick="GoNext">@(place.NextLocationId is null ? "К списку мест" : "Следующее место →")</button>
+            }
+            else
+            {
+                <button class="btn btn-primary btn-big" type="button" disabled="@(busy || !AllCounted)" @onclick="() => CheckAsync(true)">Место проверено →</button>
+            }
+        </div>
+        @if (!place.Checked && !AllCounted)
+        {
+            <p class="muted" style="text-align: center">Отметить можно, когда все позиции посчитаны.</p>
+        }
+    }
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Parameter] public int LocationId { get; set; }
+
+    /// <summary>Позиция, отсканированная на странице сканера, — добавить сюда (+1).</summary>
+    [SupplyParameterFromQuery(Name = "add")] public int? AddItemId { get; set; }
+
+    private InventoryPlaceDto? place;
+    private int? editing;
+    private string? search;
+    private List<ItemDto>? found;
+    private string? error;
+    private string? info;
+    private bool busy;
+    private bool isNativeApp;
+    private int loadedFor;
+    private IDisposable? scanSubscription;
+
+    private bool AllCounted => place is not null && place.Items.Where(i => i.Book > 0).All(i => i.Counted is not null);
+
+    protected override void OnInitialized() => scanSubscription = Scanner.Subscribe(OnScanAsync);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == LocationId && place is not null)
+            return;
+        loadedFor = LocationId;
+        editing = null;
+        found = null;
+        search = info = error = null;
+        try
+        {
+            place = await Api.GetInventoryPlaceAsync(Id, LocationId);
+            if (AddItemId is int add)
+            {
+                await AddOneAsync(add);
+                Nav.NavigateTo($"/inventory/{Id}/place/{LocationId}", replace: true);
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            isNativeApp = await JS.InvokeAsync<bool>("swApp.isNative");
+            if (isNativeApp)
+                StateHasChanged();
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public void Dispose() => scanSubscription?.Dispose();
+
+    private static string Text(decimal value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private Task CountAsync(InventoryItemDto it, decimal? value) => RunAsync(async () =>
+    {
+        place = await Api.CountInventoryAsync(Id, LocationId, new InventoryCountRequest(it.ItemId, value));
+        if (editing == it.ItemId && value == (it.Expected ?? it.Book))
+            editing = null;
+    });
+
+    private Task StepAsync(InventoryItemDto it, decimal step) =>
+        CountAsync(it, Math.Max(0, (it.Counted ?? it.Book) + step));
+
+    private Task SetAsync(InventoryItemDto it, string? raw)
+    {
+        var text = raw?.Replace(',', '.');
+        if (!decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            error = "Введите число.";
+            return Task.CompletedTask;
+        }
+        return CountAsync(it, value);
+    }
+
+    private Task UndoAsync(InventoryItemDto it) => RunAsync(async () =>
+    {
+        place = await Api.CountInventoryAsync(Id, LocationId, new InventoryCountRequest(it.ItemId, null));
+        editing = null;
+    });
+
+    private Task CheckAsync(bool isChecked) => RunAsync(async () =>
+    {
+        place = await Api.CheckInventoryPlaceAsync(Id, LocationId, isChecked);
+        if (isChecked)
+            GoNext();
+    });
+
+    private void GoNext() =>
+        Nav.NavigateTo(place?.NextLocationId is int next ? $"/inventory/{Id}/place/{next}" : $"/inventory/{Id}");
+
+    private Task FindAsync() => RunAsync(async () =>
+    {
+        found = string.IsNullOrWhiteSpace(search) ? null : (await Api.GetItemsAsync(search)).Where(i => i.IsActive).ToList();
+    });
+
+    private Task AddExtraAsync(int itemId) => RunAsync(async () =>
+    {
+        await AddOneAsync(itemId);
+        found = null;
+        search = null;
+    });
+
+    /// <summary>Скан позиции: +1 к факту (нет в списке — «лишнее», 1 шт).</summary>
+    private async Task AddOneAsync(int itemId)
+    {
+        var existing = place?.Items.FirstOrDefault(i => i.ItemId == itemId);
+        var value = existing is null ? 1 : (existing.Counted ?? 0) + 1;
+        place = await Api.CountInventoryAsync(Id, LocationId, new InventoryCountRequest(itemId, value));
+        var item = place.Items.FirstOrDefault(i => i.ItemId == itemId);
+        if (item is not null)
+        {
+            editing = itemId;
+            info = $"{item.Name}: {Ui.Qty(value)} {item.Unit}";
+        }
+    }
+
+    /// <summary>Ручной сканер или камера приложения: место — перейти к нему; позиция — +1.</summary>
+    private async Task<bool> OnScanAsync(string code)
+    {
+        await InvokeAsync(async () =>
+        {
+            await RunAsync(async () =>
+            {
+                var hit = await Api.ScanAsync(code);
+                if (hit.Kind == ScanKind.Location)
+                {
+                    if (hit.Id != LocationId)
+                        Nav.NavigateTo($"/inventory/{Id}/place/{hit.Id}");
+                }
+                else
+                    await AddOneAsync(hit.Id);
+            });
+            StateHasChanged();
+        });
+        return true;
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        error = info = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

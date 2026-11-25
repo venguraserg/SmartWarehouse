@@ -74,6 +74,7 @@
                     <NavLink href="/equipment"><Icon Name="equipment" Size="18" /> Оборудование</NavLink>
                     <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
                         <NavLink href="/warehouses"><Icon Name="shelves" Size="18" /> Склады и места</NavLink>
+                        <NavLink href="/inventory"><Icon Name="check" Size="18" /> Инвентаризация</NavLink>
                     </AuthorizeView>
                     <AuthorizeView Roles="@($"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")" Context="staff">
                         <NavLink href="/employees"><Icon Name="users" Size="18" /> Сотрудники</NavLink>

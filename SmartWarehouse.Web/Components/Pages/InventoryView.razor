@@ -1,0 +1,225 @@
+@page "/inventory/{Id:int}"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@implements IDisposable
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject ScannerHub Scanner
+@inject IJSRuntime JS
+
+@* Инвентаризация: места стеллажа сверху вниз — проверено, есть расхождения, не проверено. Рассчитано на телефон. *@
+
+<PageTitle>@(inv?.Header.Number ?? "Инвентаризация") — Склад ОЭТО</PageTitle>
+
+<Alert Error="@error" />
+
+@if (inv is not null)
+{
+    var h = inv.Header;
+    <div class="page-head">
+        <h1>@h.RootTitle</h1>
+        <span class="muted">@h.Number</span>
+        <span class="spacer"></span>
+        <a class="btn" href="/inventory/@Id/sheet"><Icon Name="report" Size="18" /> Ведомость</a>
+    </div>
+
+    <div class="panel inv-head">
+        <div class="inv-head-row">
+            <span>Проверено <strong>@h.CheckedPlaces</strong> из @h.Places</span>
+            @if (h.Differences > 0)
+            {
+                <span>Расхождений: <strong class="text-danger">@h.Differences</strong></span>
+            }
+            <span class="muted">Начата @Ui.Day(h.StartedAt) · @h.StartedBy</span>
+        </div>
+        <span class="inv-progress" aria-hidden="true"><span style="width: @Percent"></span></span>
+        @if (h.Status != InventoryStatus.Open)
+        {
+            <div class="alert @(h.Status == InventoryStatus.Posted ? "alert-success" : "alert-warn")" style="margin: .5rem 0 0">
+                Инвентаризация @(h.Status == InventoryStatus.Posted ? "проведена" : "отменена") @(h.FinishedAt is { } f ? Ui.Day(f) : "") · @h.FinishedBy
+            </div>
+        }
+    </div>
+
+    @if (Open)
+    {
+        <form class="toolbar" @onsubmit="ScanTypedAsync" @onsubmit:preventDefault>
+            <input type="search" @bind="code" placeholder="Код места с наклейки или ручной сканер" autocomplete="off" data-latin style="flex: 1; min-width: 200px" />
+            <button class="btn" type="submit">Открыть</button>
+        </form>
+    }
+
+    @foreach (var group in inv.Places.GroupBy(p => p.Shelf ?? ""))
+    {
+        @if (group.Key.Length > 0)
+        {
+            <div class="inv-group">@group.Key</div>
+        }
+        <div class="inv-places">
+            @foreach (var p in group)
+            {
+                <a class="inv-place @(p.LocationId == nextId ? "inv-next" : null)" href="/inventory/@Id/place/@p.LocationId">
+                    @if (p.Checked && p.Differences == 0)
+                    {
+                        <span class="inv-mark inv-ok" title="Проверено, сходится"><Icon Name="check" Size="16" /></span>
+                    }
+                    else if (p.Differences > 0)
+                    {
+                        <span class="inv-mark inv-bad" title="Есть расхождения">!</span>
+                    }
+                    else
+                    {
+                        <span class="inv-mark inv-todo" title="Не проверено"></span>
+                    }
+                    <span class="inv-place-text">
+                        <strong>@p.Title</strong>
+                        <span class="muted">@Describe(p)</span>
+                    </span>
+                </a>
+            }
+        </div>
+    }
+
+    @if (Open)
+    {
+        <div class="inv-bottom">
+            @if (isNativeApp)
+            {
+                <button class="btn btn-primary btn-big" type="button" onclick="swApp.scan()"><Icon Name="scan" Size="22" /> Сканировать ячейку</button>
+            }
+            else
+            {
+                <a class="btn btn-primary btn-big" href="/scan?inv=@Id"><Icon Name="scan" Size="22" /> Сканировать ячейку</a>
+            }
+        </div>
+
+        <div class="actions" style="margin-top: 1.5rem">
+            @if (confirmCancel)
+            {
+                <span>Отменить инвентаризацию? Подсчёт не сохранится в остатках.</span>
+                <button class="btn btn-danger" type="button" disabled="@busy" @onclick="CancelAsync">Отменить</button>
+                <button class="btn" type="button" @onclick="() => confirmCancel = false">Нет</button>
+            }
+            else
+            {
+                <button class="btn" type="button" @onclick="() => confirmCancel = true">Отменить инвентаризацию</button>
+            }
+        </div>
+    }
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private InventoryDto? inv;
+    private string? code;
+    private string? error;
+    private bool busy;
+    private bool confirmCancel;
+    private bool isNativeApp;
+    private IDisposable? scanSubscription;
+
+    private bool Open => inv?.Header.Status == InventoryStatus.Open;
+
+    /// <summary>Первое непроверенное место — подсвечено как «следующее».</summary>
+    private int? nextId => inv?.Places.FirstOrDefault(p => !p.Checked)?.LocationId;
+
+    private string Percent => inv is null || inv.Header.Places == 0 ? "0%"
+        : (inv.Header.CheckedPlaces * 100 / inv.Header.Places).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    protected override async Task OnInitializedAsync()
+    {
+        scanSubscription = Scanner.Subscribe(OnScanAsync);
+        try
+        {
+            inv = await Api.GetInventoryAsync(Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            isNativeApp = await JS.InvokeAsync<bool>("swApp.isNative");
+            if (isNativeApp)
+                StateHasChanged();
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public void Dispose() => scanSubscription?.Dispose();
+
+    private static string Describe(InventoryPlaceSummaryDto p)
+    {
+        if (p.Checked)
+            return p.Differences > 0 ? $"{p.Differences} {Ui.Plural(p.Differences, "расхождение", "расхождения", "расхождений")}"
+                : p.CountedPositions == 0 ? "пусто · проверено" : $"{p.CountedPositions} {Ui.Plural(p.CountedPositions, "позиция", "позиции", "позиций")} · сходится";
+        if (p.CountedPositions > 0)
+            return $"посчитано {p.CountedPositions} из {Math.Max(p.BookPositions, p.CountedPositions)}" + (p.Differences > 0 ? $" · расхождений {p.Differences}" : "");
+        return p.BookPositions == 0 ? "пусто по учёту" : $"по учёту {p.BookPositions} {Ui.Plural(p.BookPositions, "позиция", "позиции", "позиций")}";
+    }
+
+    private Task ScanTypedAsync() => OpenCodeAsync(code);
+
+    /// <summary>Скан ячейки (камера в приложении, ручной сканер) — сразу к подсчёту этого места.</summary>
+    private async Task<bool> OnScanAsync(string scanned)
+    {
+        await InvokeAsync(async () =>
+        {
+            await OpenCodeAsync(scanned);
+            StateHasChanged();
+        });
+        return true;
+    }
+
+    private async Task OpenCodeAsync(string? value)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(value) || inv is null)
+            return;
+        try
+        {
+            var found = await Api.ScanAsync(value);
+            if (found.Kind != ScanKind.Location)
+                error = "Это позиция, а не место. Сначала отсканируйте наклейку ячейки.";
+            else if (inv.Places.All(p => p.LocationId != found.Id))
+                error = $"Место {found.Code} не входит в эту инвентаризацию.";
+            else
+                Nav.NavigateTo($"/inventory/{Id}/place/{found.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        busy = true;
+        try
+        {
+            await Api.CancelInventoryAsync(Id);
+            inv = await Api.GetInventoryAsync(Id);
+            confirmCancel = false;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}
