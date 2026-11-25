@@ -208,6 +208,39 @@ public interface ICatalogRepository
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 
+/// <summary>Инвентаризации.</summary>
+public interface IInventoryRepository
+{
+    /// <summary>Инвентаризация для изменения: строки (с позицией и единицей), проверенные места, корневое место.</summary>
+    Task<InventoryCount?> GetAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Последние инвентаризации (новые первыми) со строками и местами — только чтение.</summary>
+    Task<IReadOnlyList<InventoryCount>> ListAsync(int take, CancellationToken ct = default);
+
+    /// <summary>Незавершённые инвентаризации (с корневым местом).</summary>
+    Task<IReadOnlyList<InventoryCount>> ListOpenAsync(CancellationToken ct = default);
+
+    /// <summary>Остатки по партиям в этих местах (с позицией, единицей, партией).</summary>
+    Task<IReadOnlyList<StockBalance>> ListStockAsync(IReadOnlyCollection<int> locationIds, CancellationToken ct = default);
+
+    /// <summary>Где ещё числятся позиции: место → количество (для подсказки «лежит на C3 · п.2»).</summary>
+    Task<IReadOnlyList<(int ItemId, int LocationId, decimal Quantity)>> ListItemPlacesAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
+
+    /// <summary>Отметить места проверенными (дата последней инвентаризации).</summary>
+    Task SetCheckedAsync(IReadOnlyCollection<int> locationIds, DateTimeOffset at, CancellationToken ct = default);
+
+    void Add(InventoryCount inventory);
+
+    void Remove(InventoryLine line);
+
+    void Remove(InventoryPlace place);
+
+    Task SaveChangesAsync(CancellationToken ct = default);
+
+    /// <summary>Всё действие — одной транзакцией базы (проведение из нескольких документов).</summary>
+    Task InTransactionAsync(Func<Task> action, CancellationToken ct = default);
+}
+
 /// <summary>Заметки сотрудников к позициям номенклатуры.</summary>
 public interface IItemNoteRepository
 {
