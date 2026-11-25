@@ -1,0 +1,28 @@
+@* Отрывок заметки, по которой нашлась позиция: «Аналог / замена: …проверено на гомогенизаторе…», слово подсвечено. *@
+@if (Hit is not null)
+{
+    <div class="note-hit">
+        <Icon Name="note" Size="14" />
+        <span>
+            <span class="note-hit-kind">@Ui.NoteKindName(Hit.Kind):</span>
+            @foreach (var (part, match) in Ui.Highlight(Hit.Snippet, Term))
+            {
+                if (match)
+                {
+                    <mark class="hl">@part</mark>
+                }
+                else
+                {
+                    @part
+                }
+            }
+        </span>
+    </div>
+}
+
+@code {
+    [Parameter] public ItemNoteHitDto? Hit { get; set; }
+
+    /// <summary>Что искали — это слово подсвечивается.</summary>
+    [Parameter] public string? Term { get; set; }
+}

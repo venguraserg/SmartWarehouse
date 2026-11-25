@@ -362,7 +362,8 @@ public record StockRowDto(
     IReadOnlyList<string>? Mols = null);
 
 /// <param name="Truncated">Строк больше лимита — уточните фильтры.</param>
-public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated);
+/// <param name="NoteHits">Позиции, найденные только по заметке: вид заметки и отрывок вокруг слова (ключ — позиция).</param>
+public record StockSearchResult(IReadOnlyList<StockRowDto> Rows, bool Truncated, IReadOnlyDictionary<int, ItemNoteHitDto>? NoteHits = null);
 
 /// <param name="LocationName">Описание места («Подшипники») — по нему место узнают в списках.</param>
 /// <param name="OffBookQuantity">Сколько из количества — вне учёта (б/у, неучтённое; в 1С не числится).</param>
