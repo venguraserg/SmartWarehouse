@@ -53,6 +53,34 @@ public sealed class PlaceTree
     public string PathOf(int id, string? fallback = null) =>
         Paths.TryGetValue(id, out var path) ? path : fallback ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    private readonly Dictionary<int, PlaceAddress> addresses = [];
+
+    /// <summary>Адрес места словами («Стеллаж C3 · полка 1 · ячейка 1»); без дерева — шифр как есть.</summary>
+    public PlaceAddress AddressOf(int id, string? code = null, string? name = null)
+    {
+        if (addresses.TryGetValue(id, out var cached))
+            return cached;
+        if (!ById.ContainsKey(id))
+            return PlaceAddress.OfCode(code ?? id.ToString(System.Globalization.CultureInfo.InvariantCulture), name, id);
+        var address = PlaceAddress.Build(PathIds(id).Select(i => ById[i]).ToList());
+        addresses[id] = address;
+        return address;
+    }
+
+    /// <summary>Порядковый номер места в дереве — чтобы показывать места в том порядке, как они стоят на складе.</summary>
+    public int OrderOf(int id)
+    {
+        if (order.Count != All.Count)
+        {
+            order.Clear();
+            for (var i = 0; i < All.Count; i++)
+                order[All[i].Id] = i;
+        }
+        return order.TryGetValue(id, out var n) ? n : int.MaxValue;
+    }
+
+    private readonly Dictionary<int, int> order = [];
+
     /// <summary>Само место и все вложенные в него.</summary>
     public IEnumerable<int> SubtreeOf(int id)
     {

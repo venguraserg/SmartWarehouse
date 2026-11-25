@@ -100,12 +100,23 @@
                         @foreach (var b in balances)
                         {
                             <tr class="@(b.OffBookQuantity >= b.Quantity ? "row-offbook" : null)">
+                                @{ var place = placeTree.AddressOf(b.LocationId, b.LocationCode, b.LocationName); }
                                 <td>
-                                    <a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)">@(b.LocationName ?? b.LocationCode)</a>
-                                    @if (b.LocationName is not null)
-                                    {
-                                        <div class="line-hint mono">@b.LocationCode</div>
-                                    }
+                                    <div class="place-cell">
+                                        <RackScheme Tree="placeTree" LocationId="b.LocationId" />
+                                        <div>
+                                            @if (place.Area is not null && place.Area != place.Full)
+                                            {
+                                                <span class="place-area">@place.Area</span>
+                                            }
+                                            <a href="/stock?location=@Uri.EscapeDataString(b.LocationCode)" title="@place.Title">@place.Full</a>
+                                            @if (place.Note is not null)
+                                            {
+                                                <div>@place.Note</div>
+                                            }
+                                            <div class="line-hint mono">@b.LocationCode</div>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td class="num">
                                     @Ui.Qty(b.Quantity) @item.UnitCode
@@ -299,6 +310,9 @@ else if (error is null)
         }
     }
 
+    private PlaceTree placeTree = new();
+    private bool placesLoaded;
+
     protected override async Task OnParametersSetAsync()
     {
         try
@@ -308,6 +322,12 @@ else if (error is null)
                 var user = (await AuthState).User;
                 seesPrices = user.SeesPrices();
                 isAdmin = user.IsInRole(AppRoles.Admin);
+            }
+            if (!placesLoaded)
+            {
+                // Без дерева мест адреса показываются шифром — карточка не должна из-за этого падать.
+                try { placeTree = await Api.GetPlacesAsync(); placesLoaded = true; }
+                catch (Exception ex) when (ex is ApiException or HttpRequestException) { }
             }
             item = await Api.GetItemAsync(Id);
             balances = await Api.GetBalancesAsync(Id);

@@ -134,7 +134,8 @@ else
                                 <div class="chips">
                                     @foreach (var p in l.Places)
                                     {
-                                        <span class="chip" title="@p.LocationName"><span class="mono">@p.LocationCode</span> @Ui.Qty(p.Quantity)</span>
+                                        var a = placeTree.AddressOf(p.LocationId, p.LocationCode, p.LocationName);
+                                        <span class="chip" title="@a.Title">@a.Short <strong>@Ui.Qty(p.Quantity)</strong></span>
                                     }
                                 </div>
                             </td>
@@ -156,6 +157,9 @@ else
     private string? reason;
     private string? error;
 
+    private PlaceTree placeTree = new();
+    private bool placesLoaded;
+
     private bool Open => request?.Status == IssueRequestStatus.Open;
 
     /// <summary>«Где лежит» — тем, кто собирает заказ.</summary>
@@ -166,6 +170,11 @@ else
         try
         {
             request = await Api.GetIssueRequestAsync(Id);
+            if (ShowPlaces && !placesLoaded)
+            {
+                try { placeTree = await Api.GetPlacesAsync(); placesLoaded = true; }
+                catch (Exception ex) when (ex is ApiException or HttpRequestException) { } // без дерева — шифры
+            }
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

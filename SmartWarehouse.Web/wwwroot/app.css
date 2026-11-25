@@ -277,6 +277,28 @@ tr.row-offbook > td { background: repeating-linear-gradient(-45deg, transparent 
 .segmented button:hover { background: var(--surface-alt); }
 .segmented button.active { background: var(--brand-primary); color: #fff; }
 tr.group-row td { background: var(--brand-light); color: var(--brand-dark); font-weight: 600; padding-top: .45rem; padding-bottom: .45rem; }
+/* Остатки по местам: адрес словами, шифр мелко для сверки с QR-меткой */
+.place-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.place-title { font-size: .95rem; }
+.place-code { font-size: .75rem; font-weight: 400; color: var(--text-muted); }
+a.place-code:hover { color: var(--brand-primary); }
+.place-note { font-weight: 400; color: var(--text); }
+.place-count { margin-left: auto; font-weight: 400; color: var(--text-muted); font-size: .8125rem; }
+tr.place-row td { background: var(--surface-alt); padding-top: .3rem; padding-bottom: .3rem; padding-left: 2.6rem; }
+.place-sub { font-weight: 600; margin-right: .6rem; }
+.place-row .place-note { margin-right: .6rem; }
+/* Схема стеллажа в карточке позиции: полки сверху вниз, нижняя — пол; нужная полка и ячейка подсвечены */
+.rack { display: inline-flex; flex-direction: column; gap: 2px; width: 84px; padding: 3px; border: 2px solid var(--border-strong); border-radius: 4px; background: var(--surface); font-size: .6875rem; line-height: 1.2; vertical-align: middle; }
+.rack.whole { border-color: var(--brand-primary); background: var(--brand-light); }
+.rack-title { text-align: center; font-weight: 700; color: var(--text-muted); }
+.rack-shelf { display: flex; gap: 2px; justify-content: center; min-height: 13px; padding: 1px 2px; background: var(--surface-alt); border-bottom: 2px solid var(--border-strong); color: var(--text-muted); }
+.rack-shelf.floor { border-bottom: 0; border-top: 1px dashed var(--border-strong); background: none; }
+.rack-shelf.on { background: var(--brand-light); border-bottom-color: var(--brand-primary); color: var(--brand-dark); font-weight: 700; }
+.rack-shelf.floor.on { border-top-color: var(--brand-primary); }
+.rack-cell { flex: 1; min-width: 0; text-align: center; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); font-weight: 400; color: var(--text-muted); }
+.rack-cell.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; font-weight: 700; }
+.place-cell { display: flex; gap: .75rem; align-items: center; }
+.place-area { display: inline-block; margin-right: .35rem; padding: 0 .45rem; border-radius: 999px; background: var(--brand-light); color: var(--brand-dark); font-size: .75rem; font-weight: 600; }
 .chips { display: flex; flex-wrap: wrap; gap: .3rem; }
 .chip { display: inline-flex; gap: .35rem; align-items: center; padding: .2rem .6rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: .8125rem; color: var(--text); }
 .chip:hover { border-color: var(--brand-primary); color: var(--brand-primary); text-decoration: none; }
