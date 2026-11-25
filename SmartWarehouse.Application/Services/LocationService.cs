@@ -88,7 +88,7 @@ public class LocationService(ILocationRepository repo) : ILocationService
         IReadOnlyList<LocationNodeDto> Build(int? parentId) =>
             byParent[parentId]
                 .OrderBy(l => l.Code)
-                .Select(l => new LocationNodeDto(l.Id, l.ParentId, l.Type, l.Code, l.FullCode, l.Name, Build(l.Id)))
+                .Select(l => new LocationNodeDto(l.Id, l.ParentId, l.Type, l.Code, l.FullCode, l.Name, Build(l.Id), l.CheckedAt))
                 .ToList();
 
         return Build(null);

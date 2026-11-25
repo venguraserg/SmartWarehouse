@@ -22,6 +22,10 @@
             {
                 <span class="muted">на полу</span>
             }
+            @if (Node.CheckedAt is { } checkedAt)
+            {
+                <span class="tag tag-ok" title="Проверено инвентаризацией">@Ui.Day(checkedAt)</span>
+            }
             @if (Node.Children.Count > 0 && !IsOpen)
             {
                 <span class="tree-count" title="Вложенных мест">@Node.Children.Count</span>

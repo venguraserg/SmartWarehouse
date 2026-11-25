@@ -66,6 +66,48 @@ internal class ItemImageConfiguration : IEntityTypeConfiguration<ItemImage>
     }
 }
 
+internal class InventoryCountConfiguration : IEntityTypeConfiguration<InventoryCount>
+{
+    public void Configure(EntityTypeBuilder<InventoryCount> b)
+    {
+        b.ToTable("inventories");
+        b.Ignore(x => x.Number);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.StartedBy).HasMaxLength(128).IsRequired();
+        b.Property(x => x.FinishedBy).HasMaxLength(128);
+        b.Property(x => x.Comment).HasMaxLength(500);
+        b.HasOne(x => x.RootLocation).WithMany().HasForeignKey(x => x.RootLocationId).OnDelete(DeleteBehavior.Restrict);
+        b.HasMany(x => x.Lines).WithOne(x => x.Inventory).HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(x => x.Places).WithOne(x => x.Inventory).HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => x.Status);
+    }
+}
+
+internal class InventoryLineConfiguration : IEntityTypeConfiguration<InventoryLine>
+{
+    public void Configure(EntityTypeBuilder<InventoryLine> b)
+    {
+        b.ToTable("inventory_lines");
+        b.Property(x => x.Expected).HasPrecision(Precision.Total, Precision.Scale);
+        b.Property(x => x.Counted).HasPrecision(Precision.Total, Precision.Scale);
+        b.Property(x => x.CountedBy).HasMaxLength(128).IsRequired();
+        b.HasOne(x => x.Location).WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => new { x.InventoryId, x.LocationId, x.ItemId }).IsUnique();
+    }
+}
+
+internal class InventoryPlaceConfiguration : IEntityTypeConfiguration<InventoryPlace>
+{
+    public void Configure(EntityTypeBuilder<InventoryPlace> b)
+    {
+        b.ToTable("inventory_places");
+        b.Property(x => x.CheckedBy).HasMaxLength(128).IsRequired();
+        b.HasOne(x => x.Location).WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => new { x.InventoryId, x.LocationId }).IsUnique();
+    }
+}
+
 internal class ItemNoteConfiguration : IEntityTypeConfiguration<ItemNote>
 {
     public void Configure(EntityTypeBuilder<ItemNote> b)

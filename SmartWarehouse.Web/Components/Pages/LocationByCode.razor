@@ -15,6 +15,12 @@
         <span class="spacer"></span>
         <a class="btn" href="/scan"><Icon Name="scan" Size="18" /> Ещё</a>
     </div>
+    @foreach (var inv in inventories)
+    {
+        <a class="btn btn-primary btn-big" style="margin-bottom: 1rem" href="/inventory/@inv.Id/place/@location.Id">
+            <Icon Name="check" Size="20" /> Посчитать для инвентаризации @inv.Number
+        </a>
+    }
     <div class="place-cell" style="margin: -.5rem 0 1rem">
         <RackScheme Tree="placeTree" LocationId="location.Id" />
         <div>
@@ -76,6 +82,11 @@ else
 
     private LocationDto? location;
     private PlaceTree placeTree = new();
+
+    /// <summary>Идущие инвентаризации, куда входит это место (только кладовщику и администратору).</summary>
+    private List<InventorySummaryDto> inventories = [];
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private bool placesLoaded;
     private List<LocationContentDto>? content;
     private string? error;
@@ -89,6 +100,12 @@ else
         {
             location = await Api.GetLocationByCodeAsync(Code);
             content = await Api.GetLocationContentAsync(location.Id);
+            if (AuthState is not null && (await AuthState).User is var user
+                && (user.IsInRole(AppRoles.Storekeeper) || user.IsInRole(AppRoles.Admin)))
+            {
+                try { inventories = await Api.GetOpenInventoriesAsync(location.Id); }
+                catch (Exception ex) when (ex is ApiException or HttpRequestException) { }
+            }
             if (!placesLoaded)
             {
                 // Без дерева мест адрес показывается шифром — страница всё равно работает.

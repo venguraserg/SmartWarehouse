@@ -7,6 +7,10 @@
 <PageTitle>Сканирование — Склад ОЭТО</PageTitle>
 
 <h1>Сканирование</h1>
+@if (InventoryId is int invId)
+{
+    <p class="alert alert-warn" role="status">Инвентаризация: отсканируйте наклейку ячейки@(PlaceId is null ? "" : " или позицию") — откроется подсчёт. <a href="@InventoryBack(invId)">Назад</a></p>
+}
 <p class="muted" style="margin-top: -.5rem">
     QR-наклейка ячейки или позиции, заводской штрих-код на упаковке, код места или артикул.
 </p>
@@ -50,6 +54,13 @@
 </div>
 
 @code {
+    /// <summary>Сканирование для инвентаризации: место — к подсчёту этого места, позиция — +1 в месте PlaceId.</summary>
+    [SupplyParameterFromQuery(Name = "inv")] public int? InventoryId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "place")] public int? PlaceId { get; set; }
+
+    private string InventoryBack(int inv) => PlaceId is int p ? $"/inventory/{inv}/place/{p}" : $"/inventory/{inv}";
+
     private ElementReference input;
     private IJSObjectReference? module;
     private DotNetObjectReference<Scan>? self;
@@ -159,6 +170,16 @@
         try
         {
             var found = await Api.ScanAsync(value);
+            if (InventoryId is int inv)
+            {
+                if (found.Kind == ScanKind.Location)
+                    Nav.NavigateTo($"/inventory/{inv}/place/{found.Id}");
+                else if (PlaceId is int place)
+                    Nav.NavigateTo($"/inventory/{inv}/place/{place}?add={found.Id}");
+                else
+                    error = "Это позиция. Сначала отсканируйте наклейку ячейки.";
+                return;
+            }
             Nav.NavigateTo(found.Kind == ScanKind.Location
                 ? $"/l/{Uri.EscapeDataString(found.Code)}"
                 : $"/items/{found.Id}");

@@ -245,6 +245,38 @@ public class ApiClient(HttpClient http, IServiceProvider services)
         await EnsureSuccessAsync(response, ct);
     }
 
+    // ---------- Инвентаризация ----------
+
+    public Task<List<InventorySummaryDto>> GetInventoriesAsync(CancellationToken ct = default) =>
+        GetAsync<List<InventorySummaryDto>>("api/inventories", ct);
+
+    public Task<List<InventorySummaryDto>> GetOpenInventoriesAsync(int locationId, CancellationToken ct = default) =>
+        GetAsync<List<InventorySummaryDto>>($"api/inventories/open?locationId={locationId}", ct);
+
+    public Task<InventoryDto> StartInventoryAsync(StartInventoryRequest request, CancellationToken ct = default) =>
+        SendAsync<InventoryDto>(HttpMethod.Post, "api/inventories", request, ct);
+
+    public Task<InventoryDto> GetInventoryAsync(int id, CancellationToken ct = default) =>
+        GetAsync<InventoryDto>($"api/inventories/{id}", ct);
+
+    public Task<InventoryPlaceDto> GetInventoryPlaceAsync(int id, int locationId, CancellationToken ct = default) =>
+        GetAsync<InventoryPlaceDto>($"api/inventories/{id}/places/{locationId}", ct);
+
+    public Task<InventoryPlaceDto> CountInventoryAsync(int id, int locationId, InventoryCountRequest request, CancellationToken ct = default) =>
+        SendAsync<InventoryPlaceDto>(HttpMethod.Put, $"api/inventories/{id}/places/{locationId}/count", request, ct);
+
+    public Task<InventoryPlaceDto> CheckInventoryPlaceAsync(int id, int locationId, bool isChecked, CancellationToken ct = default) =>
+        SendAsync<InventoryPlaceDto>(HttpMethod.Put, $"api/inventories/{id}/places/{locationId}/check", new InventoryCheckRequest(isChecked), ct);
+
+    public Task<InventorySheetDto> GetInventorySheetAsync(int id, CancellationToken ct = default) =>
+        GetAsync<InventorySheetDto>($"api/inventories/{id}/sheet", ct);
+
+    public Task<InventoryPostResultDto> PostInventoryAsync(int id, CancellationToken ct = default) =>
+        SendAsync<InventoryPostResultDto>(HttpMethod.Post, $"api/inventories/{id}/post", new { }, ct);
+
+    public Task<InventorySummaryDto> CancelInventoryAsync(int id, CancellationToken ct = default) =>
+        SendAsync<InventorySummaryDto>(HttpMethod.Post, $"api/inventories/{id}/cancel", new { }, ct);
+
     // ---------- Заметки к номенклатуре ----------
 
     public Task<List<ItemNoteDto>> GetItemNotesAsync(int itemId, CancellationToken ct = default) =>

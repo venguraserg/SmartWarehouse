@@ -1,0 +1,151 @@
+@page "/inventory"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+@* Инвентаризация: начать по стеллажу (или любому месту), идущие и завершённые. *@
+
+<PageTitle>Инвентаризация — Склад ОЭТО</PageTitle>
+
+<h1>Инвентаризация</h1>
+<p class="muted" style="margin-top: -.5rem">
+    Стеллаж за стеллажом: сканируете ячейку, сверяете, что лежит, отмечаете место проверенным.
+    Расхождения проводятся одной кнопкой: пересорт — перемещением, недостача — корректировкой, излишек — вне учёта.
+</p>
+
+<Alert Error="@error" />
+
+<form class="panel" style="margin-bottom: 1rem" @onsubmit="StartAsync" @onsubmit:preventDefault>
+    <div class="field">
+        <label>Что проверяем</label>
+        <PlacePicker Tree="places" @bind-Value="rootId" Title="Стеллаж или место" Placeholder="— выберите стеллаж —" />
+        <div class="field-hint">Обычно — один стеллаж: каждая инвентаризация — своя ведомость.</div>
+    </div>
+    <div class="field">
+        <label for="inv-comment">Комментарий <span class="muted">(необязательно)</span></label>
+        <input id="inv-comment" type="text" maxlength="500" @bind="comment" placeholder="Например: годовая, перед сверкой с 1С" />
+    </div>
+    <button class="btn btn-primary" type="submit" disabled="@(rootId is null || busy)"><Icon Name="check" Size="18" /> Начать</button>
+</form>
+
+@if (list is null)
+{
+    @if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    var open = list.Where(i => i.Status == InventoryStatus.Open).ToList();
+    var done = list.Where(i => i.Status != InventoryStatus.Open).ToList();
+
+    @if (open.Count > 0)
+    {
+        <h2>Идут</h2>
+        <div class="inv-cards">
+            @foreach (var i in open)
+            {
+                <a class="inv-card" href="/inventory/@i.Id">
+                    <span class="inv-card-top">
+                        <strong>@i.RootTitle</strong>
+                        <span class="muted">@i.Number</span>
+                    </span>
+                    <span class="inv-progress" aria-hidden="true"><span style="width: @Percent(i)"></span></span>
+                    <span class="inv-card-meta">
+                        Проверено @i.CheckedPlaces из @i.Places @Ui.Plural(i.Places, "места", "мест", "мест")
+                        @if (i.Differences > 0)
+                        {
+                            <span class="tag tag-danger">расхождений: @i.Differences</span>
+                        }
+                    </span>
+                    <span class="muted inv-card-meta">Начата @Ui.Day(i.StartedAt) · @i.StartedBy</span>
+                </a>
+            }
+        </div>
+    }
+
+    <h2>Завершённые</h2>
+    @if (done.Count == 0)
+    {
+        <div class="panel empty">Пока не было.</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Номер</th><th>Что проверяли</th><th>Статус</th><th class="num">Мест</th><th class="num">Расхождений</th><th>Когда, кто</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in done)
+                    {
+                        <tr>
+                            <td><a href="/inventory/@i.Id/sheet">@i.Number</a></td>
+                            <td>@i.RootTitle</td>
+                            <td>
+                                @if (i.Status == InventoryStatus.Posted)
+                                {
+                                    <span class="tag tag-ok">проведена</span>
+                                }
+                                else
+                                {
+                                    <span class="tag tag-neutral">отменена</span>
+                                }
+                            </td>
+                            <td class="num">@i.CheckedPlaces</td>
+                            <td class="num">@i.Differences</td>
+                            <td>@(i.FinishedAt is { } f ? Ui.Day(f) : "") · @i.FinishedBy</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<InventorySummaryDto>? list;
+    private PlaceTree places = new();
+    private int? rootId;
+    private string? comment;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            places = await Api.GetPlacesAsync();
+            list = await Api.GetInventoriesAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        if (rootId is not int id)
+            return;
+        busy = true;
+        error = null;
+        try
+        {
+            var inv = await Api.StartInventoryAsync(new StartInventoryRequest(id, comment));
+            Nav.NavigateTo($"/inventory/{inv.Header.Id}");
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string Percent(InventorySummaryDto i) =>
+        (i.Places == 0 ? 0 : i.CheckedPlaces * 100 / i.Places).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+}

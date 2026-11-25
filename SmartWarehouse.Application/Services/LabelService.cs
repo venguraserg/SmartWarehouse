@@ -105,12 +105,12 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         var stickers = new List<LabelData>();
         foreach (var id in ids)
         {
-            var rack = tree[id];
+            var rack = tree.ById[id];
             if (rack.Type != LocationType.Rack)
                 throw new DomainException($"{rack.FullCode} — не стеллаж. Для отдельных мест — вкладка «Места».");
 
-            var address = Address(tree, rack.Id);
-            var shelves = Ordered(rack.Children.Where(c => c.Type == LocationType.Shelf)).AsEnumerable().Reverse().ToList();
+            var address = tree.Address(rack.Id);
+            var shelves = LocationTree.Ordered(rack.Children.Where(c => c.Type == LocationType.Shelf)).AsEnumerable().Reverse().ToList();
             if (request.Sign)
                 signs.Add(new RackSignData(
                     payload?.Location(rack.FullCode) ?? rack.FullCode, rack.FullCode, rack.Code, address.Area,
@@ -122,10 +122,10 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
             var places = new List<LocationNodeDto>();
             foreach (var shelf in shelves)
             {
-                var cells = Ordered(shelf.Children);
+                var cells = LocationTree.Ordered(shelf.Children);
                 places.AddRange(cells.Count > 0 ? cells : new List<LocationNodeDto> { shelf });
             }
-            places.AddRange(Ordered(rack.Children.Where(c => c.Type != LocationType.Shelf)));
+            places.AddRange(LocationTree.Ordered(rack.Children.Where(c => c.Type != LocationType.Shelf)));
             if (places.Count == 0)
                 places.Add(rack);
             stickers.AddRange(places.Select(p => PlaceLabel(tree, p, payload)));
@@ -134,7 +134,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         if ((long)stickers.Count * request.Copies > MaxLabels)
             throw new DomainException($"За один раз — не больше {MaxLabels} наклеек.");
         var copies = stickers.SelectMany(l => Enumerable.Repeat(l, request.Copies)).ToList();
-        var name = ids.Count == 1 ? $"Стеллаж_{tree[ids[0]].Code}" : "Стеллажи";
+        var name = ids.Count == 1 ? $"Стеллаж_{tree.ById[ids[0]].Code}" : "Стеллажи";
         return (renderer.Render(signs, copies, layout, request.Skip), $"{name}.pdf");
     }
 
@@ -143,21 +143,15 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
     {
         if (PlaceAddress.CustomName(shelf) is string custom)
             return custom;
-        var cells = Ordered(shelf.Children.Where(c => c.Type == LocationType.Cell));
+        var cells = LocationTree.Ordered(shelf.Children.Where(c => c.Type == LocationType.Cell));
         if (cells.Count > 0)
             return cells.Count == 1 ? $"яч. {cells[0].Code}" : $"яч. {cells[0].Code}–{cells[^1].Code}";
         return PlaceAddress.IsFloor(shelf) ? "под стеллажом" : null;
     }
 
-    /// <summary>По номеру, если код — число («2» раньше «10»), иначе по алфавиту.</summary>
-    private static List<LocationNodeDto> Ordered(IEnumerable<LocationNodeDto> nodes) =>
-        nodes.OrderBy(n => int.TryParse(n.Code, out var x) ? x : int.MaxValue)
-             .ThenBy(n => n.Code, StringComparer.OrdinalIgnoreCase)
-             .ToList();
-
-    private static LabelData PlaceLabel(IReadOnlyDictionary<int, LocationNodeDto> tree, LocationNodeDto place, Payloads? payload)
+    private static LabelData PlaceLabel(LocationTree tree, LocationNodeDto place, Payloads? payload)
     {
-        var a = Address(tree, place.Id);
+        var a = tree.Address(place.Id);
         return new LabelData(
             payload?.Location(place.FullCode) ?? place.FullCode,
             place.FullCode,
@@ -167,16 +161,8 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
             Area: a.Area is not null && a.Area != a.Full ? a.Area : null);
     }
 
-    private static PlaceAddress Address(IReadOnlyDictionary<int, LocationNodeDto> tree, int id)
-    {
-        var chain = new List<LocationNodeDto>();
-        for (int? at = id; at is int i && tree.TryGetValue(i, out var node); at = node.ParentId)
-            chain.Insert(0, node);
-        return PlaceAddress.Build(chain);
-    }
-
     /// <summary>Все места складов, где лежат эти места, — деревом (нужны родители для адреса и дети для стеллажа).</summary>
-    private async Task<Dictionary<int, LocationNodeDto>> TreeAsync(List<int> ids, CancellationToken ct)
+    private async Task<LocationTree> TreeAsync(List<int> ids, CancellationToken ct)
     {
         var found = (await locations.GetLocationsAsync(ids, ct)).ToDictionary(l => l.Id);
         var missing = ids.Where(id => !found.ContainsKey(id)).ToList();
@@ -186,22 +172,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         var all = new List<StorageLocation>();
         foreach (var warehouseId in found.Values.Select(l => l.WarehouseId).Distinct())
             all.AddRange(await locations.ListLocationsAsync(warehouseId, ct));
-        var byParent = all.ToLookup(l => l.ParentId);
-        var tree = new Dictionary<int, LocationNodeDto>();
-        foreach (var root in byParent[null])
-            Build(root);
-        // Места, чей родитель не загрузился (не должно быть), — без родителя.
-        foreach (var l in all.Where(l => !tree.ContainsKey(l.Id)))
-            Build(l);
-        return tree;
-
-        LocationNodeDto Build(StorageLocation l)
-        {
-            var node = new LocationNodeDto(l.Id, l.ParentId, l.Type, l.Code, l.FullCode, l.Name,
-                byParent[l.Id].Select(Build).ToList());
-            tree[l.Id] = node;
-            return node;
-        }
+        return LocationTree.Build(all);
     }
 
     /// <summary>Как строить ссылку для QR; null — сам код.</summary>
@@ -212,7 +183,7 @@ public class LabelService(ILocationRepository locations, IStockRepository stock,
         var tree = await TreeAsync(ids, ct);
         // Порядок — по коду: так наклейки удобно клеить подряд по стеллажу.
         return ids
-            .Select(id => tree[id])
+            .Select(id => tree.ById[id])
             .OrderBy(l => l.FullCode, StringComparer.Ordinal)
             .Select(l => PlaceLabel(tree, l, payload))
             .ToList();

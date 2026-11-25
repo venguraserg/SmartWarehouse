@@ -248,6 +248,130 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.ToTable("equipment", (string)null);
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryCount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FinishedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("RootLocationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StartedBy")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("StartedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RootLocationId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("inventories", (string)null);
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Counted")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<DateTimeOffset>("CountedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CountedBy")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<decimal>("Expected")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("InventoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LocationId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("LocationId");
+
+                    b.HasIndex("InventoryId", "LocationId", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("inventory_lines", (string)null);
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryPlace", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CheckedBy")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("InventoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LocationId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocationId");
+
+                    b.HasIndex("InventoryId", "LocationId")
+                        .IsUnique();
+
+                    b.ToTable("inventory_places", (string)null);
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -676,6 +800,9 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1043,6 +1170,63 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryCount", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.StorageLocation", "RootLocation")
+                        .WithMany()
+                        .HasForeignKey("RootLocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RootLocation");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryLine", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.InventoryCount", "Inventory")
+                        .WithMany("Lines")
+                        .HasForeignKey("InventoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.StorageLocation", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Inventory");
+
+                    b.Navigation("Item");
+
+                    b.Navigation("Location");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryPlace", b =>
+                {
+                    b.HasOne("SmartWarehouse.Domain.Entities.InventoryCount", "Inventory")
+                        .WithMany("Places")
+                        .HasForeignKey("InventoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartWarehouse.Domain.Entities.StorageLocation", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Inventory");
+
+                    b.Navigation("Location");
+                });
+
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>
                 {
                     b.HasOne("SmartWarehouse.Domain.Entities.StockDocument", "Document")
@@ -1347,6 +1531,13 @@ namespace SmartWarehouse.Infrastructure.Data.Migrations
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.Equipment", b =>
                 {
                     b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("SmartWarehouse.Domain.Entities.InventoryCount", b =>
+                {
+                    b.Navigation("Lines");
+
+                    b.Navigation("Places");
                 });
 
             modelBuilder.Entity("SmartWarehouse.Domain.Entities.IssueRequest", b =>

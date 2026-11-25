@@ -1,0 +1,214 @@
+@page "/inventory/{Id:int}/sheet"
+@attribute [Authorize(Roles = AppRoles.Warehouse)]
+@inject ApiClient Api
+@using System.Globalization
+@using System.Text
+
+@* Ведомость расхождений и проведение: пересорт — перемещение, недостача — корректировка «−», излишек — «+» вне учёта. *@
+
+<PageTitle>Ведомость @(sheet?.Header.Number) — Склад ОЭТО</PageTitle>
+
+<Alert Error="@error" />
+
+@if (sheet is not null)
+{
+    var h = sheet.Header;
+    <div class="page-head">
+        <a class="btn btn-icon hide-print" href="/inventory/@Id" aria-label="К местам"><Icon Name="back" Size="18" /></a>
+        <h1>Инвентаризация @h.Number · @h.RootTitle</h1>
+        @if (h.Status == InventoryStatus.Open)
+        {
+            <span class="tag tag-warn">идёт подсчёт · @h.CheckedPlaces из @h.Places мест</span>
+        }
+        else if (h.Status == InventoryStatus.Posted)
+        {
+            <span class="tag tag-ok">проведена @(h.FinishedAt is { } f ? Ui.Day(f) : "") · @h.FinishedBy</span>
+        }
+        else
+        {
+            <span class="tag tag-neutral">отменена</span>
+        }
+        <span class="spacer"></span>
+        <span class="hide-print" style="display: flex; gap: .5rem; flex-wrap: wrap">
+            <button class="btn" type="button" onclick="window.print()">Печать / PDF</button>
+            <a class="btn" href="@CsvHref" download="@CsvFileName">Excel</a>
+        </span>
+    </div>
+    <p class="muted" style="margin-top: -.5rem">Начата @Ui.Day(h.StartedAt) · @h.StartedBy@(h.Comment is null ? "" : $" · {h.Comment}")</p>
+
+    <div class="stats" style="margin-bottom: 1rem">
+        <div class="stat"><div class="stat-label">Проверено позиций</div><div class="stat-value">@sheet.CountedPositions</div></div>
+        <div class="stat @(sheet.ShortagePositions > 0 ? "warn" : null)"><div class="stat-label">Недостача</div><div class="stat-value">@sheet.ShortagePositions поз.@(sheet.ShortageValue > 0 ? $" · {Ui.Money(sheet.ShortageValue)}" : "")</div></div>
+        <div class="stat"><div class="stat-label">Излишек (вне учёта)</div><div class="stat-value">@sheet.SurplusPositions поз.</div></div>
+        <div class="stat"><div class="stat-label">Пересорт → перемещение</div><div class="stat-value">@sheet.MovePositions поз.</div></div>
+    </div>
+
+    @if (sheet.Rows.Count == 0)
+    {
+        <div class="panel empty">Расхождений нет@(sheet.CountedPositions == 0 ? " — ещё ничего не посчитано" : " — всё сходится").</div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Место</th><th>Позиция</th><th class="num">Учёт</th><th class="num">Факт</th><th class="num">±</th><th class="num">Сумма</th><th>При проведении</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in sheet.Rows)
+                    {
+                        <tr class="@(r.PlaceChecked ? null : "row-muted")">
+                            <td>@r.Place</td>
+                            <td class="col-name"><a href="/items/@r.ItemId">@r.Name</a> <span class="muted mono">@r.Sku</span></td>
+                            <td class="num">@Ui.Qty(r.Expected)</td>
+                            <td class="num">@Ui.Qty(r.Counted)</td>
+                            <td class="num"><strong class="@(r.Delta < 0 ? "text-danger" : "text-warn")">@(r.Delta > 0 ? "+" : "")@Ui.Qty(r.Delta)</strong> @r.Unit</td>
+                            <td class="num">@(r.Value is decimal v ? Ui.Money(v) : r.Action == InventoryAction.Surplus ? "вне учёта" : "")</td>
+                            <td>
+                                @if (!r.PlaceChecked)
+                                {
+                                    <span class="muted">место не проверено — не проводится</span>
+                                }
+                                else
+                                {
+                                    @if (r.MoveText is not null)
+                                    {
+                                        <span class="tag tag-info">переместить</span> <span class="muted">@r.MoveText</span>
+                                    }
+                                    @if (r.Action == InventoryAction.Shortage)
+                                    {
+                                        <span class="tag tag-danger">списать @Ui.Qty(-r.Delta - r.Moved)</span>
+                                    }
+                                    else if (r.Action == InventoryAction.Surplus)
+                                    {
+                                        <span class="tag tag-warn">оприходовать @Ui.Qty(r.Delta - r.Moved) вне учёта</span>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (sheet.UncheckedPlaces.Count > 0 && h.Status == InventoryStatus.Open)
+    {
+        <p class="muted">Не проверено (при проведении не трогается): @string.Join(", ", sheet.UncheckedPlaces.Take(20))@(sheet.UncheckedPlaces.Count > 20 ? $" и ещё {sheet.UncheckedPlaces.Count - 20}" : "").</p>
+    }
+
+    @if (posted is not null && posted.Documents.Count > 0)
+    {
+        <div class="alert alert-success" role="status">
+            Проведено. Документы:
+            @foreach (var d in posted.Documents)
+            {
+                <a href="/documents/@d.Id" style="margin-left: .5rem">@d.Number</a>
+            }
+        </div>
+    }
+
+    @if (h.Status == InventoryStatus.Open)
+    {
+        <div class="panel hide-print" style="margin-top: 1rem">
+            <p style="margin-top: 0">
+                Проведение создаст документы: перемещение для пересорта, корректировку «−» для недостачи
+                (партии старые первыми), корректировку «+» вне учёта для излишка. Проверенные места получат отметку с датой.
+            </p>
+            @if (confirmPost)
+            {
+                <div class="actions">
+                    <span>Провести инвентаризацию @h.Number? Отменить проведение потом нельзя.</span>
+                    <button class="btn btn-primary" type="button" disabled="@busy" @onclick="PostAsync">Провести</button>
+                    <button class="btn" type="button" @onclick="() => confirmPost = false">Нет</button>
+                </div>
+            }
+            else
+            {
+                <button class="btn btn-primary" type="button" disabled="@(h.CheckedPlaces == 0)" @onclick="() => confirmPost = true">Провести…</button>
+                @if (h.CheckedPlaces == 0)
+                {
+                    <span class="muted" style="margin-left: .5rem">Нет проверенных мест.</span>
+                }
+            }
+        </div>
+    }
+}
+else if (error is null)
+{
+    <p class="loading">Загрузка…</p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private InventorySheetDto? sheet;
+    private InventoryPostResultDto? posted;
+    private string? error;
+    private bool busy;
+    private bool confirmPost;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            sheet = await Api.GetInventorySheetAsync(Id);
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task PostAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            posted = await Api.PostInventoryAsync(Id);
+            sheet = await Api.GetInventorySheetAsync(Id);
+            confirmPost = false;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private string CsvFileName => $"инвентаризация_{sheet?.Header.Number}_{DateTime.Now:yyyy-MM-dd}.csv";
+
+    private string CsvHref
+    {
+        get
+        {
+            var ru = CultureInfo.GetCultureInfo("ru-RU");
+            var sb = new StringBuilder("﻿"); // BOM — чтобы Excel понял кодировку
+            sb.AppendLine("Место;Артикул;Наименование;Ед.;Учёт;Факт;Разница;Сумма недостачи;Перемещение;При проведении;Место проверено");
+            foreach (var r in sheet?.Rows ?? [])
+            {
+                var action = r.Action switch
+                {
+                    InventoryAction.Shortage => $"списать {(-r.Delta - r.Moved).ToString("0.###", ru)}",
+                    InventoryAction.Surplus => $"оприходовать вне учёта {(r.Delta - r.Moved).ToString("0.###", ru)}",
+                    _ => ""
+                };
+                sb.AppendLine(string.Join(';',
+                    Csv(r.Place), Csv(r.Sku), Csv(r.Name), Csv(r.Unit),
+                    r.Expected.ToString("0.###", ru), r.Counted.ToString("0.###", ru), r.Delta.ToString("0.###", ru),
+                    r.Value is decimal v ? v.ToString("0.00", ru) : "",
+                    Csv(r.MoveText), Csv(action), r.PlaceChecked ? "да" : "нет"));
+            }
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
+        }
+    }
+
+    private static string Csv(string? value) =>
+        string.IsNullOrEmpty(value) ? "" : $"\"{value.Replace("\"", "\"\"")}\"";
+}

@@ -213,7 +213,7 @@ public record LocationDto(
     string FullCode,
     string? Name);
 
-/// <summary>Узел дерева мест хранения.</summary>
+/// <summary>Узел дерева мест хранения. CheckedAt — когда место проверено проведённой инвентаризацией.</summary>
 public record LocationNodeDto(
     int Id,
     int? ParentId,
@@ -221,7 +221,8 @@ public record LocationNodeDto(
     string Code,
     string FullCode,
     string? Name,
-    IReadOnlyList<LocationNodeDto> Children);
+    IReadOnlyList<LocationNodeDto> Children,
+    DateTimeOffset? CheckedAt = null);
 
 /// <summary>Что лежит в месте хранения (например, после сканирования QR ячейки).</summary>
 public record LocationContentDto(int ItemId, string Sku, string Name, string UnitCode, decimal Quantity, long? ImageVersion = null, decimal? Value = null, bool ValueIncomplete = false);
@@ -458,6 +459,116 @@ public record SetExternalNumberRequest(string? ExternalNumber);
 
 /// <summary>Ссылка на складской документ.</summary>
 public record DocumentRefDto(long Id, string Number);
+
+// ---------- Инвентаризация ----------
+
+/// <summary>Начать инвентаризацию места (обычно стеллажа) со всем вложенным.</summary>
+public record StartInventoryRequest(int LocationId, string? Comment = null);
+
+/// <summary>Кто работает с инвентаризацией: сотрудник (может не быть) и подпись.</summary>
+public record InventoryActor(int? EmployeeId, string Name);
+
+public record InventorySummaryDto(
+    int Id,
+    string Number,
+    int RootLocationId,
+    string RootCode,
+    string RootTitle,
+    InventoryStatus Status,
+    DateTimeOffset StartedAt,
+    string StartedBy,
+    DateTimeOffset? FinishedAt,
+    string? FinishedBy,
+    string? Comment,
+    int Places,
+    int CheckedPlaces,
+    int Differences);
+
+/// <summary>Место в списке инвентаризации. Shelf — подзаголовок группы («Полка 1», «Под стеллажом»).</summary>
+public record InventoryPlaceSummaryDto(
+    int LocationId,
+    string FullCode,
+    string Title,
+    string? Shelf,
+    bool Checked,
+    int BookPositions,
+    int CountedPositions,
+    int Differences);
+
+public record InventoryDto(InventorySummaryDto Header, IReadOnlyList<InventoryPlaceSummaryDto> Places);
+
+/// <summary>
+/// Позиция в месте: Book — числится сейчас; Expected — числилось в момент подсчёта (null — не считали);
+/// Counted — факт; Elsewhere — где ещё она лежит по учёту (для «лишнего»).
+/// </summary>
+public record InventoryItemDto(
+    int ItemId,
+    string Sku,
+    string Name,
+    string Unit,
+    bool Fractional,
+    decimal Book,
+    decimal? Expected,
+    decimal? Counted,
+    string? Elsewhere);
+
+public record InventoryPlaceDto(
+    int InventoryId,
+    string Number,
+    bool Open,
+    int LocationId,
+    string FullCode,
+    string Title,
+    string Full,
+    string? Area,
+    bool Checked,
+    IReadOnlyList<InventoryItemDto> Items,
+    int? NextLocationId);
+
+/// <summary>Факт по позиции в месте; Counted = null — отменить подсчёт.</summary>
+public record InventoryCountRequest(int ItemId, decimal? Counted);
+
+public record InventoryCheckRequest(bool Checked);
+
+/// <summary>Что будет с остатком расхождения при проведении (после перемещений).</summary>
+public enum InventoryAction
+{
+    None,
+    Shortage,
+    Surplus
+}
+
+/// <summary>
+/// Строка ведомости расхождений. Moved/MoveText — сколько уйдёт перемещением (пересорт между местами);
+/// Action — что с остатком разницы: списать недостачу или оприходовать излишек вне учёта.
+/// </summary>
+public record InventorySheetRowDto(
+    int LocationId,
+    string Place,
+    bool PlaceChecked,
+    int ItemId,
+    string Sku,
+    string Name,
+    string Unit,
+    decimal Expected,
+    decimal Counted,
+    decimal Delta,
+    decimal Moved,
+    string? MoveText,
+    InventoryAction Action,
+    decimal? Value);
+
+public record InventorySheetDto(
+    InventorySummaryDto Header,
+    IReadOnlyList<InventorySheetRowDto> Rows,
+    int CountedPositions,
+    int ShortagePositions,
+    decimal ShortageValue,
+    int SurplusPositions,
+    int MovePositions,
+    IReadOnlyList<string> UncheckedPlaces);
+
+public record InventoryPostResultDto(InventorySummaryDto Header, IReadOnlyList<DocumentRefDto> Documents);
 
 /// <summary>Что текущий пользователь может сделать с актом.</summary>
 public record ActPermissions(bool Edit, bool Submit, bool Recall, bool Decide);

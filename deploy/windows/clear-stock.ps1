@@ -4,7 +4,7 @@
     Пользователи (логины, пароли, роли), сотрудники, склады, единицы, категории и настройки сохраняются.
 
     Удаляются: номенклатура, фото и заметки, партии и остатки, выданное «в работу», документы и движения,
-    акты и отчёты, запросы на выдачу, расхождения приёмки, места хранения и оборудование.
+    акты и отчёты, инвентаризации, запросы на выдачу, расхождения приёмки, места хранения и оборудование.
     Нумерация документов начинается заново.
 
     Перед очисткой делается резервная копия базы (backup.ps1). Восстановление — см. начало backup.ps1.
@@ -47,7 +47,7 @@ $cleared = @(
     "item_images", "item_notes", "items", "batches", "stock_balances", "employee_balances",
     "stock_documents", "stock_movements", "receipt_discrepancies",
     "write_off_act_lines", "write_off_acts", "issue_request_lines", "issue_requests",
-    "storage_locations", "equipment"
+    "inventory_lines", "inventory_places", "inventories", "storage_locations", "equipment"
 )
 
 $env:PGPASSWORD = $parts["password"]
