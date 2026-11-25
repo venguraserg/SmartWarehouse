@@ -619,7 +619,7 @@ html[data-theme="sage"] {
 .card-qty.qty-warn { color: var(--warn-text); }
 .card-qty.qty-out { color: var(--danger-text); }
 .card-meta { font-size: .8125rem; color: var(--text-muted); overflow-wrap: anywhere; }
-.card-group-head { font-weight: 600; margin: 1rem 0 .4rem; }
+.card-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-weight: 600; margin: 1rem 0 .4rem; }
 
 /* ===== Нижняя панель (телефон, ТСД) ===== */
 .bottom-nav { display: none; }
