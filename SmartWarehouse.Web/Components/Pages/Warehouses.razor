@@ -143,6 +143,10 @@
                                 @Ui.LocType(selected.Type)@(PlaceAddress.CustomName(selected) is string note ? $" · {note}" : "")
                                 · <a href="/stock?location=@Uri.EscapeDataString(selected.FullCode)">что лежит здесь и внутри</a>
                                 · <a href="/labels.pdf?kind=Location&ids=@selected.Id&layout=3x8" target="_blank" rel="noopener">наклейка QR</a>
+                                @if (selected.Type == LocationType.Rack)
+                                {
+                                    <text> · </text><a href="/labels.pdf?kind=Rack&ids=@selected.Id&layout=3x8" target="_blank" rel="noopener">табличка и наклейки стеллажа</a>
+                                }
                             </p>
                         }
 

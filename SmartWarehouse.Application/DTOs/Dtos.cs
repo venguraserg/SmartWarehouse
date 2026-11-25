@@ -541,14 +541,20 @@ public record ScanResultDto(ScanKind Kind, string Code, int Id, string Title, st
 public enum LabelKind
 {
     Location,
-    Item
+    Item,
+
+    /// <summary>Всё для стеллажа: табличка A5 и наклейки его полок и ячеек (сверху вниз).</summary>
+    Rack
 }
 
 /// <summary>Наклейки с QR-кодами на лист A4.</summary>
 /// <param name="Layout">Раскладка листа (см. GET api/labels/layouts), например «3x8».</param>
 /// <param name="Skip">Сколько наклеек пропустить в начале листа (лист уже частично использован).</param>
 /// <param name="BaseUrl">Адрес веб-приложения: QR-код содержит ссылку, которую открывает камера телефона.</param>
-public record LabelRequest(LabelKind Kind, IReadOnlyList<int> Ids, string? Layout, int Skip = 0, string? BaseUrl = null, int Copies = 1);
+/// <param name="Sign">Для стеллажа: печатать табличку A5.</param>
+/// <param name="Stickers">Для стеллажа: печатать наклейки полок и ячеек.</param>
+public record LabelRequest(LabelKind Kind, IReadOnlyList<int> Ids, string? Layout, int Skip = 0, string? BaseUrl = null, int Copies = 1,
+    bool Sign = true, bool Stickers = true);
 
 public record LabelLayoutDto(string Id, string Title, int Columns, int Rows, double WidthMm, double HeightMm);
 

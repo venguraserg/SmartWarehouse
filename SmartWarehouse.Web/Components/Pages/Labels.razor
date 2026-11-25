@@ -36,6 +36,7 @@ else if (qr is not null && LinkBase is { } shown)
 
 <div class="toolbar">
     <div class="segmented">
+        <button type="button" class="@(kind == LabelKind.Rack ? "active" : null)" @onclick="() => SetKindAsync(LabelKind.Rack)">По стеллажу</button>
         <button type="button" class="@(kind == LabelKind.Location ? "active" : null)" @onclick="() => SetKindAsync(LabelKind.Location)">Места хранения</button>
         <button type="button" class="@(kind == LabelKind.Item ? "active" : null)" @onclick="() => SetKindAsync(LabelKind.Item)">Номенклатура</button>
     </div>
@@ -62,9 +63,20 @@ else if (qr is not null && LinkBase is { } shown)
             <input id="copies" type="number" min="1" max="50" @bind="copies" />
         </div>
     </div>
+    @if (kind == LabelKind.Rack)
+    {
+        <div class="toolbar" style="margin: .5rem 0 0">
+            <label class="checkbox"><input type="checkbox" @bind="rackSign" /> Табличка стеллажа (лист A5)</label>
+            <label class="checkbox"><input type="checkbox" @bind="rackStickers" /> Наклейки полок и ячеек</label>
+        </div>
+        <div class="field-hint">
+            Порядок — как клеить: полки сверху вниз, пол — последним, внутри полки — ячейки по номеру.
+            У полки с ячейками печатаются наклейки только ячеек. Таблички идут отдельными листами A5 перед листами наклеек.
+        </div>
+    }
 </div>
 
-@if (kind == LabelKind.Location)
+@if (kind is LabelKind.Location or LabelKind.Rack)
 {
     <div class="toolbar">
         <select @bind="warehouseId" @bind:after="LoadLocationsAsync" style="max-width: 260px">
@@ -73,12 +85,18 @@ else if (qr is not null && LinkBase is { } shown)
                 <option value="@w.Id">@w.Code — @w.Name</option>
             }
         </select>
-        <div style="min-width: 280px; flex: 1; max-width: 520px">
-            <PlacePicker Tree="branchTree" @bind-Value="branchId" Title="Наклейки для места и всего, что в нём"
-                         AllowClear="true" ClearText="Весь склад" Placeholder="Весь склад — или выберите стеллаж, полку" />
-        </div>
-        <input type="search" placeholder="Фильтр по коду: A-01" @bind="filter" @bind:event="oninput" style="max-width: 220px" />
-        <label class="checkbox"><input type="checkbox" @bind="onlyLeaves" /> только конечные места (без вложенных)</label>
+        @if (kind == LabelKind.Location)
+        {
+            <div style="min-width: 280px; flex: 1; max-width: 520px">
+                <PlacePicker Tree="branchTree" @bind-Value="branchId" Title="Наклейки для места и всего, что в нём"
+                             AllowClear="true" ClearText="Весь склад" Placeholder="Весь склад — или выберите стеллаж, полку" />
+            </div>
+        }
+        <input type="search" placeholder="@(kind == LabelKind.Rack ? "Фильтр: C3, ворота" : "Фильтр: C3 1")" @bind="filter" @bind:event="oninput" style="max-width: 220px" />
+        @if (kind == LabelKind.Location)
+        {
+            <label class="checkbox"><input type="checkbox" @bind="onlyLeaves" /> только конечные места (без вложенных)</label>
+        }
     </div>
 }
 else
@@ -102,8 +120,8 @@ else
         <button class="btn btn-sm" type="button" @onclick="SelectAllVisible" disabled="@(Visible.Count == 0)">Выбрать все показанные (@Visible.Count)</button>
         <button class="btn btn-sm" type="button" @onclick="() => chosen.Clear()" disabled="@(chosen.Count == 0)">Снять выбор</button>
         <span class="spacer"></span>
-        <span class="muted">Выбрано: @chosen.Count · наклеек: @(chosen.Count * Math.Max(1, copies)) · листов: @Sheets</span>
-        @if (chosen.Count > 0)
+        <span class="muted">Выбрано: @chosen.Count · наклеек: @(StickerCount * Math.Max(1, copies)) · листов: @Sheets@(kind == LabelKind.Rack && rackSign ? $" + табличек A5: {chosen.Count}" : "")</span>
+        @if (chosen.Count > 0 && (kind != LabelKind.Rack || rackSign || rackStickers))
         {
             <a class="btn btn-primary" href="@PdfUrl" target="_blank" rel="noopener">Сформировать PDF</a>
         }
@@ -116,7 +134,7 @@ else
                     <th style="width: 40px"></th>
                     <th>Код</th>
                     <th>Наименование</th>
-                    <th>@(kind == LabelKind.Location ? "Тип" : "Штрих-код")</th>
+                    <th>@(kind switch { LabelKind.Location => "Тип", LabelKind.Rack => "Наклеек", _ => "Штрих-код" })</th>
                 </tr>
             </thead>
             <tbody>
@@ -133,7 +151,12 @@ else
         </table>
         @if (Visible.Count == 0)
         {
-            <div class="empty">@(kind == LabelKind.Location ? "Мест хранения нет — создайте их в разделе «Склады и места»." : "Ничего не найдено.")</div>
+            <div class="empty">@(kind switch
+            {
+                LabelKind.Location => "Мест хранения нет — создайте их в разделе «Склады и места».",
+                LabelKind.Rack => "Стеллажей нет — создайте их в разделе «Склады и места».",
+                _ => "Ничего не найдено."
+            })</div>
         }
     </div>
 }
@@ -141,7 +164,9 @@ else
 @code {
     [SupplyParameterFromQuery(Name = "warehouse")] public int? WarehouseParam { get; set; }
 
-    private LabelKind kind = LabelKind.Location;
+    private LabelKind kind = LabelKind.Rack;
+    private bool rackSign = true;
+    private bool rackStickers = true;
     private List<LabelLayoutDto> layouts = [];
     private string layout = "3x8";
     private int skip;
@@ -174,14 +199,21 @@ else
 
     private int PerSheet => layouts.FirstOrDefault(l => l.Id == layout) is { } l ? l.Columns * l.Rows : 24;
 
-    private int Sheets => chosen.Count == 0 ? 0 : (Math.Clamp(skip, 0, PerSheet - 1) + chosen.Count * Math.Max(1, copies) + PerSheet - 1) / PerSheet;
+    /// <summary>Сколько наклеек выйдет: для стеллажей — сумма по выбранным (полки без ячеек и ячейки).</summary>
+    private int StickerCount => kind != LabelKind.Rack ? chosen.Count
+        : !rackStickers ? 0
+        : chosen.Sum(id => rackStickerCounts.GetValueOrDefault(id, 1));
+
+    private readonly Dictionary<int, int> rackStickerCounts = [];
+
+    private int Sheets => StickerCount == 0 ? 0 : (Math.Clamp(skip, 0, PerSheet - 1) + StickerCount * Math.Max(1, copies) + PerSheet - 1) / PerSheet;
 
     private List<Row> Visible =>
         (rows ?? new List<Row>())
             .Where(r => kind != LabelKind.Location || !onlyLeaves || r.IsLeaf)
             .Where(r => kind != LabelKind.Location || branchId is not int b || InBranch(b, r.Id))
-            .Where(r => kind != LabelKind.Location || string.IsNullOrWhiteSpace(filter)
-                        || r.Code.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(r => kind == LabelKind.Item
+                        || SmartWarehouse.Application.Services.SearchWords.Matches(filter, r.Code, r.Name))
             .ToList();
 
     private HashSet<int>? branchIds;
@@ -199,7 +231,8 @@ else
 
     private string PdfUrl =>
         $"/labels.pdf?kind={kind}&layout={Uri.EscapeDataString(layout)}&skip={Math.Clamp(skip, 0, PerSheet - 1)}" +
-        $"&copies={Math.Clamp(copies, 1, 50)}&ids={string.Join(',', chosen.OrderBy(x => x))}";
+        $"&copies={Math.Clamp(copies, 1, 50)}&ids={string.Join(',', kind == LabelKind.Rack ? chosen.OrderBy(branchTree.OrderOf) : chosen.OrderBy(x => x))}" +
+        (kind == LabelKind.Rack ? $"&sign={(rackSign ? "true" : "false")}&stickers={(rackStickers ? "true" : "false")}" : "");
 
     protected override async Task OnInitializedAsync()
     {
@@ -225,10 +258,10 @@ else
         chosen.Clear();
         filter = null;
         rows = null;
-        if (kind == LabelKind.Location)
-            await LoadLocationsAsync();
-        else
+        if (kind == LabelKind.Item)
             await LoadItemsAsync();
+        else
+            await LoadLocationsAsync();
     }
 
     private async Task LoadLocationsAsync()
@@ -244,8 +277,9 @@ else
             var result = new List<Row>();
             var roots = await Api.GetLocationTreeAsync(id);
             Flatten(roots, 0, result);
-            rows = result;
             branchTree = new PlaceTree().AddGroup(null, roots);
+            // Наименование места — адрес словами и описание (а не «Ячейка 1»).
+            rows = kind == LabelKind.Rack ? RackRows() : result.Select(r => r with { Name = Describe(r.Id) }).ToList();
             branchId = null;
             branchIdsFor = null;
             error = null;
@@ -279,6 +313,30 @@ else
         {
             error = ex.Message;
         }
+    }
+
+    private string Describe(int id)
+    {
+        var a = branchTree.AddressOf(id);
+        return a.Note is null ? a.Full : $"{a.Full} — {a.Note}";
+    }
+
+    /// <summary>Стеллажи склада в порядке дерева и сколько наклеек выйдет на каждый.</summary>
+    private List<Row> RackRows()
+    {
+        rackStickerCounts.Clear();
+        var racks = new List<Row>();
+        foreach (var rack in branchTree.All.Where(n => n.Type == LocationType.Rack))
+        {
+            var count = 0;
+            foreach (var child in rack.Children)
+                count += child.Type == LocationType.Shelf ? Math.Max(1, child.Children.Count) : 1;
+            rackStickerCounts[rack.Id] = Math.Max(1, count);
+            var a = branchTree.AddressOf(rack.Id);
+            racks.Add(new Row(rack.Id, rack.FullCode, a.Note is null ? a.GroupTitle : $"{a.GroupTitle} — {a.Note}",
+                rackStickerCounts[rack.Id].ToString(System.Globalization.CultureInfo.InvariantCulture), 0, true));
+        }
+        return racks;
     }
 
     private void Toggle(int id)
