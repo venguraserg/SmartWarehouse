@@ -26,6 +26,12 @@
     <input type="search" placeholder="Сотрудник, табельный номер, артикул или наименование" @bind="search" style="max-width: 420px" />
     <button class="btn" type="submit">Найти</button>
     <BookFilter Value="book" ValueChanged="v => { book = v; }" />
+    @if (Visible.Count > 0)
+    {
+        <span class="spacer"></span>
+        <button class="btn btn-sm" type="button" @onclick="ExpandAll" title="Развернуть всех"><Icon Name="expand" Size="16" /> всё</button>
+        <button class="btn btn-sm" type="button" @onclick="CollapseAll" title="Свернуть всех"><Icon Name="collapse" Size="16" /> всё</button>
+    }
 </form>
 
 <Alert Error="@error" />
@@ -62,9 +68,14 @@ else
                 @foreach (var group in Visible.GroupBy(r => r.EmployeeId))
                 {
                     var first = group.First();
+                    var open = !collapsed.Contains(group.Key);
                     <tr class="group-row">
                         <td colspan="@(ShowValue ? 6 : 5)">
                             <div class="toolbar" style="margin: 0">
+                                <button type="button" class="tree-toggle" aria-expanded="@(open ? "true" : "false")"
+                                        aria-label="@(open ? "Свернуть" : "Развернуть") @first.EmployeeName" @onclick="() => Toggle(group.Key)">
+                                    <Icon Name="@(open ? "collapse" : "expand")" Size="14" />
+                                </button>
                                 <a href="/employees/@first.EmployeeId">@first.EmployeeName</a>
                                 @if (!string.IsNullOrEmpty(first.Position))
                                 {
@@ -78,6 +89,7 @@ else
                                 {
                                     <span class="tag tag-neutral">не работает</span>
                                 }
+                                <span class="muted" style="font-weight: 400">· @group.Count() @Ui.Plural(group.Count(), "позиция", "позиции", "позиций")</span>
                                 <span class="spacer"></span>
                                 <AuthorizeView Roles="@AppRoles.Warehouse">
                                     <a class="btn btn-sm" href="/documents/new/Return?employee=@first.EmployeeId">Вернуть</a>
@@ -92,7 +104,7 @@ else
                             </div>
                         </td>
                     </tr>
-                    @foreach (var r in group)
+                    @foreach (var r in open ? group : Enumerable.Empty<CustodyRowDto>())
                     {
                         var qty = QtyOf(r);
                         <tr class="@(book == true || r.OffBookQuantity >= r.Quantity ? "row-offbook" : null)">
@@ -134,12 +146,18 @@ else
         @foreach (var group in Visible.GroupBy(r => r.EmployeeId))
         {
             var first = group.First();
+            var open = !collapsed.Contains(group.Key);
             <div class="card-group-head">
+                <button type="button" class="tree-toggle" aria-expanded="@(open ? "true" : "false")"
+                        aria-label="@(open ? "Свернуть" : "Развернуть") @first.EmployeeName" @onclick="() => Toggle(group.Key)">
+                    <Icon Name="@(open ? "collapse" : "expand")" Size="14" />
+                </button>
                 <a href="/employees/@first.EmployeeId">@first.EmployeeName</a>
                 @if (!string.IsNullOrEmpty(first.Position))
                 {
                     <span class="muted">· @first.Position</span>
                 }
+                <span class="muted">· @group.Count()</span>
             </div>
             <div class="actions" style="margin-bottom: .5rem">
                 <AuthorizeView Roles="@AppRoles.Warehouse">
@@ -154,7 +172,7 @@ else
                 }
             </div>
             <div class="cards">
-                @foreach (var r in group)
+                @foreach (var r in open ? group : Enumerable.Empty<CustodyRowDto>())
                 {
                     var qty = QtyOf(r);
                     <a class="card @(book == true || r.OffBookQuantity >= r.Quantity ? "row-offbook" : null)" href="/items/@r.ItemId">
@@ -205,6 +223,19 @@ else
     private string? search;
     private string? error;
 
+    /// <summary>Сотрудники, у которых позиции свёрнуты.</summary>
+    private readonly HashSet<int> collapsed = [];
+
+    private void Toggle(int employeeId)
+    {
+        if (!collapsed.Remove(employeeId))
+            collapsed.Add(employeeId);
+    }
+
+    private void ExpandAll() => collapsed.Clear();
+
+    private void CollapseAll() => collapsed.UnionWith(Visible.Select(r => r.EmployeeId));
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -222,6 +253,12 @@ else
         {
             rows = await Api.GetCustodyAsync(search: search);
             error = null;
+            // Много сотрудников и без поиска — сначала общий список, позиции раскрываются по щелчку.
+            // При поиске — всё раскрыто, чтобы сразу видеть найденное.
+            collapsed.Clear();
+            var employees = Visible.Select(r => r.EmployeeId).Distinct().ToList();
+            if (string.IsNullOrWhiteSpace(search) && employees.Count > 3)
+                collapsed.UnionWith(employees);
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
