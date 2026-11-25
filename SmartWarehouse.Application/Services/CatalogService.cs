@@ -111,26 +111,51 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock, IItemNo
         // Заметки: сколько их у позиции; при поиске — отрывок заметки, если слово нашлось не в названии и не в артикуле.
         var ids = result.Select(i => i.Id).ToList();
         var counts = await notes.CountByItemAsync(ids, ct);
-        var hits = new Dictionary<int, ItemNoteHitDto>();
-        if (!string.IsNullOrEmpty(search))
-        {
-            var byNoteOnly = result.Where(i => !MatchesOwnFields(i, search)).Select(i => i.Id).ToList();
-            if (byNoteOnly.Count > 0)
-                foreach (var note in await notes.FindAsync(byNoteOnly, search, ct))
-                    hits.TryAdd(note.ItemId, new ItemNoteHitDto(note.Kind, ItemNoteService.Snippet(note.Text, search)));
-        }
+        var words = SearchWords.Split(search);
+        var hits = await NoteHitsAsync(notes, result.Select(i => (i.Id, i.Name, i.Sku, i.Barcode)), words, ct);
 
         result = result
             .Select(i => i with { NoteCount = counts.GetValueOrDefault(i.Id), NoteHit = hits.GetValueOrDefault(i.Id) })
             .ToList();
         // Совпадение в названии или артикуле — выше, найденное только в заметках — ниже.
-        return string.IsNullOrEmpty(search) ? result : result.OrderBy(i => i.NoteHit is null ? 0 : 1).ToList();
+        return words.Count == 0 ? result : result.OrderBy(i => i.NoteHit is null ? 0 : 1).ToList();
     }
 
-    private static bool MatchesOwnFields(ItemDto i, string search) =>
-        i.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || i.Sku.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(i.Barcode, search, StringComparison.Ordinal);
+    /// <summary>
+    /// Позиции, у которых часть слов нашлась только в заметке (не в названии, артикуле, штрихкоде), —
+    /// вид заметки и отрывок вокруг такого слова. Общая для номенклатуры и остатков.
+    /// </summary>
+    internal static async Task<Dictionary<int, ItemNoteHitDto>> NoteHitsAsync(
+        IItemNoteRepository notes, IEnumerable<(int Id, string Name, string Sku, string? Barcode)> items,
+        IReadOnlyList<string> words, CancellationToken ct)
+    {
+        var hits = new Dictionary<int, ItemNoteHitDto>();
+        if (words.Count == 0)
+            return hits;
+
+        // Для каждой позиции — слова, которых нет в её собственных полях.
+        var missing = new Dictionary<int, List<string>>();
+        foreach (var (id, name, sku, barcode) in items)
+        {
+            if (missing.ContainsKey(id))
+                continue;
+            var rest = words.Where(w => !name.Contains(w, StringComparison.OrdinalIgnoreCase)
+                && !sku.Contains(w, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(barcode, w, StringComparison.Ordinal)).ToList();
+            if (rest.Count > 0)
+                missing[id] = rest;
+        }
+        if (missing.Count == 0)
+            return hits;
+
+        foreach (var note in await notes.FindAsync(missing.Keys.ToList(), words, ct))
+        {
+            var rest = missing[note.ItemId];
+            if (!hits.ContainsKey(note.ItemId) && SearchWords.FirstMatch(note.Text, rest).Index >= 0)
+                hits[note.ItemId] = new ItemNoteHitDto(note.Kind, ItemNoteService.Snippet(note.Text, rest));
+        }
+        return hits;
+    }
 
     /// <summary>Общий префикс автоматических артикулов: SP — spare part (запчасть).</summary>
     public const string DefaultSkuPrefix = "SP";

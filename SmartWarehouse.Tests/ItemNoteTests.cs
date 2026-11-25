@@ -86,6 +86,47 @@ public class ItemNoteTests
     }
 
     [Fact]
+    public void Слова_запроса()
+    {
+        Assert.Equal(["подшипник", "6205-2RS"], SearchWords.Split("  подшипник,  6205-2RS  ПОДШИПНИК "));
+        Assert.Empty(SearchWords.Split("   "));
+        Assert.Equal(SearchWords.MaxWords, SearchWords.Split("а б в г д е ж з и к л").Count);
+
+        Assert.True(SearchWords.Matches("6205 подшипник", "Подшипник шариковый 6205-2RS", "BRG-1"));
+        Assert.True(SearchWords.Matches("brg шариковый", "Подшипник шариковый 6205-2RS", "BRG-1"));
+        Assert.False(SearchWords.Matches("подшипник 6206", "Подшипник шариковый 6205-2RS", "BRG-1"));
+        Assert.True(SearchWords.Matches(null, "что угодно"));
+
+        // «%», «_» и «\» ищутся как обычные символы.
+        Assert.Equal(@"%50\%\_\\%", SearchWords.LikePattern(@"50%_\"));
+    }
+
+    [Fact]
+    public void Подсветка_нескольких_слов()
+    {
+        var parts = Ui.Highlight("Подшипник шариковый 6205-2RS", "6205 подшипник").ToList();
+        Assert.Equal([("Подшипник", true), (" шариковый ", false), ("6205", true), ("-2RS", false)], parts);
+    }
+
+    [Fact]
+    public async Task Слова_из_названия_и_из_заметки_вместе()
+    {
+        var catalog = new FakeCatalogRepository();
+        var unit = new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" };
+        catalog.Units.Add(unit);
+        catalog.Items.Add(new Item { Id = 1, Sku = "BRG-1", Name = "Подшипник 6205-2RS", UnitId = 1, Unit = unit, IsActive = true });
+        await _service.AddAsync(1, new SaveItemNoteRequest(NoteKind.Usage, "Стоит на гомогенизаторе А1-ОГМ"), Ivanov);
+
+        var service = new CatalogService(catalog, new FixedTimeProvider(Now), _repo);
+        var found = Assert.Single(await service.ListItemsAsync("подшипник гомогенизатор", null));
+
+        // «подшипник» — в названии, «гомогенизатор» — только в заметке: показываем отрывок заметки.
+        Assert.NotNull(found.NoteHit);
+        Assert.Contains("гомогенизаторе", found.NoteHit!.Snippet);
+        Assert.Null(Assert.Single(await service.ListItemsAsync("подшипник 6205", null)).NoteHit);
+    }
+
+    [Fact]
     public void Подсветка_найденного_без_учёта_регистра()
     {
         var parts = Ui.Highlight("на Гомогенизаторе и гомогенизатор", "гомогенизатор").ToList();
@@ -138,9 +179,9 @@ internal class FakeItemNoteRepository : IItemNoteRepository
         Task.FromResult<IReadOnlyDictionary<int, int>>(Notes.Where(n => itemIds.Contains(n.ItemId))
             .GroupBy(n => n.ItemId).ToDictionary(g => g.Key, g => g.Count()));
 
-    public Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, string text, CancellationToken ct = default) =>
+    public Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, IReadOnlyList<string> words, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ItemNote>>(Notes
-            .Where(n => itemIds.Contains(n.ItemId) && n.Text.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .Where(n => itemIds.Contains(n.ItemId) && SearchWords.FirstMatch(n.Text, words).Index >= 0)
             .OrderByDescending(n => n.Pinned).ThenByDescending(n => n.CreatedAt).ToList());
 
     public void Add(ItemNote note)

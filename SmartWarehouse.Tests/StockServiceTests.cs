@@ -368,6 +368,10 @@ public class StockServiceTests
 
         Assert.Equal(new[] { "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Search: "кабель")));
         Assert.Equal(new[] { "СК1-A-01-01:BRG-6205" }, await FindAsync(new StockQuery(Search: "brg")));
+        // По словам, в любом порядке.
+        Assert.Equal(new[] { "СК1-A-01-01:BRG-6205" }, await FindAsync(new StockQuery(Search: "6205 подшипник")));
+        Assert.Equal(new[] { "СК1-A-01-02:CBL-3X1.5" }, await FindAsync(new StockQuery(Search: "ввг кабель")));
+        Assert.Empty(await FindAsync(new StockQuery(Search: "кабель 6205")));
         Assert.Equal(2, (await FindAsync(new StockQuery(WarehouseId: 1))).Count);
         Assert.Empty(await FindAsync(new StockQuery(WarehouseId: 2)));
     }

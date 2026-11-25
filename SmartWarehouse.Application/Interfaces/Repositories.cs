@@ -222,8 +222,8 @@ public interface IItemNoteRepository
     /// <summary>Сколько заметок у каждой из позиций (позиции без заметок не попадают).</summary>
     Task<IReadOnlyDictionary<int, int>> CountByItemAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
 
-    /// <summary>Заметки этих позиций, где есть текст (без учёта регистра); закреплённые первыми.</summary>
-    Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, string text, CancellationToken ct = default);
+    /// <summary>Заметки этих позиций, где есть хотя бы одно из слов (без учёта регистра); закреплённые первыми.</summary>
+    Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, IReadOnlyList<string> words, CancellationToken ct = default);
 
     void Add(ItemNote note);
 

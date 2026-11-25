@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Infrastructure.Data;
 
@@ -26,13 +27,16 @@ public class ItemNoteRepository(WarehouseDbContext db) : IItemNoteRepository
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
-    public async Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, string text, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, IReadOnlyList<string> words, CancellationToken ct = default)
     {
-        var pattern = $"%{text}%";
-        return await db.ItemNotes.AsNoTracking()
-            .Where(x => itemIds.Contains(x.ItemId) && EF.Functions.ILike(x.Text, pattern))
+        if (itemIds.Count == 0 || words.Count == 0)
+            return [];
+        // Заметок у найденных позиций немного — слова проверяем уже в памяти (любое из слов).
+        var notes = await db.ItemNotes.AsNoTracking()
+            .Where(x => itemIds.Contains(x.ItemId))
             .OrderByDescending(x => x.Pinned).ThenByDescending(x => x.CreatedAt)
             .ToListAsync(ct);
+        return notes.Where(n => SearchWords.FirstMatch(n.Text, words).Index >= 0).ToList();
     }
 
     public void Add(ItemNote note) => db.ItemNotes.Add(note);

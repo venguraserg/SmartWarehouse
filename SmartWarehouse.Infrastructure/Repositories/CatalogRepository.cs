@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartWarehouse.Application.Interfaces;
+using SmartWarehouse.Application.Services;
 using SmartWarehouse.Domain.Entities;
 using SmartWarehouse.Infrastructure.Data;
 
@@ -66,12 +67,14 @@ public class CatalogRepository(WarehouseDbContext db) : ICatalogRepository
     {
         var query = db.Items.AsNoTracking().Include(x => x.Category).Include(x => x.Unit).AsQueryable();
 
-        if (!string.IsNullOrEmpty(search))
+        // Каждое слово — в названии, артикуле, штрихкоде (целиком) или в заметке; все слова обязательны, порядок любой.
+        foreach (var word in SearchWords.Split(search))
         {
-            var pattern = $"%{search}%";
-            query = query.Where(x => EF.Functions.ILike(x.Name, pattern) || EF.Functions.ILike(x.Sku, pattern)
-                || (x.Barcode != null && x.Barcode == search)
-                || db.ItemNotes.Any(n => n.ItemId == x.Id && EF.Functions.ILike(n.Text, pattern)));
+            var pattern = SearchWords.LikePattern(word);
+            query = query.Where(x => EF.Functions.ILike(x.Name, pattern, SearchWords.LikeEscape)
+                || EF.Functions.ILike(x.Sku, pattern, SearchWords.LikeEscape)
+                || (x.Barcode != null && x.Barcode == word)
+                || db.ItemNotes.Any(n => n.ItemId == x.Id && EF.Functions.ILike(n.Text, pattern, SearchWords.LikeEscape)));
         }
 
         if (categoryId is not null)

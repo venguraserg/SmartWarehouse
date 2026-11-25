@@ -227,9 +227,10 @@ internal class FakeStockRepository : IStockRepository
             query = query.Where(b => b.Location.WarehouseId == w);
         if (filter.LocationCode is string code)
             query = query.Where(b => LocationCodeMatch.Matches(b.Location.FullCode, code));
-        if (filter.Search is string s)
-            query = query.Where(b => b.Item.Name.Contains(s, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(s, StringComparison.OrdinalIgnoreCase)
-                || NoteTexts.Any(n => n.ItemId == b.ItemId && n.Text.Contains(s, StringComparison.OrdinalIgnoreCase)));
+        // Как в БД: каждое слово — в названии, артикуле или заметке; все слова обязательны.
+        foreach (var word in SearchWords.Split(filter.Search))
+            query = query.Where(b => b.Item.Name.Contains(word, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(word, StringComparison.OrdinalIgnoreCase)
+                || NoteTexts.Any(n => n.ItemId == b.ItemId && n.Text.Contains(word, StringComparison.OrdinalIgnoreCase)));
         if (filter.CategoryId is int c)
             query = query.Where(b => b.Item.CategoryId == c);
         if (filter.OffBook is bool offBook)

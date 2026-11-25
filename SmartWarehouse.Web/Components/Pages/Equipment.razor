@@ -276,8 +276,7 @@ else
             return;
         }
         var matches = byId.Values
-            .Where(n => n.Item.Code.Contains(text, StringComparison.OrdinalIgnoreCase)
-                        || n.Item.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .Where(n => SmartWarehouse.Application.Services.SearchWords.Matches(text, n.Item.Code, n.Item.Name))
             .OrderBy(n => n.Item.Code, StringComparer.OrdinalIgnoreCase)
             .ToList();
         found = matches.Select(n => n.Id).ToHashSet();
