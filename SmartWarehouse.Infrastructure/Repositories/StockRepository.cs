@@ -328,7 +328,9 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
         if (filter.Search is string search)
         {
             var pattern = $"%{search}%";
-            query = query.Where(b => EF.Functions.ILike(b.Item.Name, pattern) || EF.Functions.ILike(b.Item.Sku, pattern));
+            // И по заметкам сотрудников к позиции: «гомогенизатор» найдёт подшипник, у которого так написано в заметке.
+            query = query.Where(b => EF.Functions.ILike(b.Item.Name, pattern) || EF.Functions.ILike(b.Item.Sku, pattern)
+                || db.ItemNotes.Any(n => n.ItemId == b.ItemId && EF.Functions.ILike(n.Text, pattern)));
         }
 
         if (filter.CategoryId is int categoryId)

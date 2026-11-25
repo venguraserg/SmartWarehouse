@@ -1,0 +1,50 @@
+@* Форма заметки: вид, текст (до 1000 символов), «закрепить». Для новой заметки и для изменения своей. *@
+
+<form class="note-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+    <fieldset class="note-kinds">
+        <legend>Вид</legend>
+        @foreach (var kind in Kinds)
+        {
+            <label class="note-kind @(Kind == kind ? "on" : null) @Ui.NoteKindClass(kind)">
+                <input type="radio" name="@($"{IdPrefix}-kind")" checked="@(Kind == kind)" @onchange="() => KindChanged.InvokeAsync(kind)" />
+                @Ui.NoteKindName(kind)
+            </label>
+        }
+    </fieldset>
+    <label for="@($"{IdPrefix}-text")">Текст</label>
+    <textarea id="@($"{IdPrefix}-text")" rows="4" maxlength="@MaxLength" placeholder="@Ui.NoteKindHint(Kind)"
+              value="@(Text ?? "")" @oninput="e => TextChanged.InvokeAsync(e.Value?.ToString())"></textarea>
+    <div class="note-form-foot">
+        <label class="checkbox"><input type="checkbox" checked="@Pinned" @onchange="e => PinnedChanged.InvokeAsync(e.Value is true)" /> Закрепить сверху</label>
+        <span class="spacer"></span>
+        <span class="muted note-count">@(Text?.Length ?? 0) / @MaxLength</span>
+    </div>
+    <div class="actions">
+        <button class="btn btn-primary" type="submit" disabled="@(Busy || string.IsNullOrWhiteSpace(Text))">@SubmitText</button>
+        @if (OnCancel.HasDelegate)
+        {
+            <button class="btn" type="button" @onclick="OnCancel">Отмена</button>
+        }
+    </div>
+</form>
+
+@code {
+    private const int MaxLength = 1000;
+    private static readonly NoteKind[] Kinds = [NoteKind.Analog, NoteKind.Usage, NoteKind.Tip, NoteKind.Problem];
+
+    [Parameter] public NoteKind Kind { get; set; }
+    [Parameter] public EventCallback<NoteKind> KindChanged { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public EventCallback<string?> TextChanged { get; set; }
+    [Parameter] public bool Pinned { get; set; }
+    [Parameter] public EventCallback<bool> PinnedChanged { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string SubmitText { get; set; } = "Сохранить";
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>Начало id полей — чтобы несколько форм на странице не путались.</summary>
+    [Parameter] public string IdPrefix { get; set; } = "note";
+
+    private Task SubmitAsync() => Busy || string.IsNullOrWhiteSpace(Text) ? Task.CompletedTask : OnSubmit.InvokeAsync();
+}

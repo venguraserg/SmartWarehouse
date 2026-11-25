@@ -1,0 +1,215 @@
+@* Заметки сотрудников к позиции: аналог / замена, где стоит, совет, проблема.
+   Пишет любой вошедший; менять — автор; удалять и закреплять — автор, кладовщик, администратор (решает API). *@
+@inject ApiClient Api
+
+<section class="notes" id="notes" aria-labelledby="notes-title">
+    <div class="notes-head">
+        <h2 id="notes-title">Заметки</h2>
+        @if (notes.Count > 0)
+        {
+            <span class="muted">@notes.Count</span>
+        }
+    </div>
+
+    <Alert Error="@error" />
+
+    <div class="notes-layout">
+        <div class="notes-list">
+            @if (notes.Count > 1)
+            {
+                <div class="chips" role="group" aria-label="Вид заметок">
+                    <button type="button" class="chip @(filter is null ? "chip-on" : null)" @onclick="() => filter = null">Все @notes.Count</button>
+                    @foreach (var kind in Kinds.Where(k => notes.Any(n => n.Kind == k)))
+                    {
+                        <button type="button" class="chip @(filter == kind ? "chip-on" : null)" @onclick="() => filter = kind">
+                            @Ui.NoteKindName(kind) @notes.Count(n => n.Kind == kind)
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (!loaded)
+            {
+                <p class="loading">Загрузка…</p>
+            }
+            else if (notes.Count == 0)
+            {
+                <div class="panel empty notes-empty">
+                    Заметок пока нет. Напишите, чем можно заменить, где стоит или как правильно ставить — это найдётся поиском.
+                </div>
+            }
+
+            @foreach (var n in Visible)
+            {
+                <article class="note @(n.Pinned ? "note-pinned" : null)">
+                    <div class="note-head">
+                        <span class="tag @Ui.NoteKindClass(n.Kind)">@Ui.NoteKindName(n.Kind)</span>
+                        @if (n.Pinned)
+                        {
+                            <span class="note-flag"><Icon Name="pin" Size="14" /> закреплено</span>
+                        }
+                        <span class="note-meta">
+                            @(n.Mine ? $"{n.AuthorName} (вы)" : n.AuthorName) · @Ui.Day(n.CreatedAt)@(n.UpdatedAt is not null ? " · изменено" : "")
+                        </span>
+                        @if (editId != n.Id && deleteId != n.Id)
+                        {
+                            <span class="note-actions">
+                                @if (n.CanPin)
+                                {
+                                    <button type="button" class="btn btn-sm btn-icon" title="@(n.Pinned ? "Открепить" : "Закрепить сверху")"
+                                            aria-label="@(n.Pinned ? "Открепить" : "Закрепить сверху")" disabled="@busy" @onclick="() => PinAsync(n)">
+                                        <Icon Name="pin" Size="16" />
+                                    </button>
+                                }
+                                @if (n.CanEdit)
+                                {
+                                    <button type="button" class="btn btn-sm btn-icon" title="Изменить" aria-label="Изменить" disabled="@busy" @onclick="() => StartEdit(n)">
+                                        <Icon Name="edit" Size="16" />
+                                    </button>
+                                }
+                                @if (n.CanDelete)
+                                {
+                                    <button type="button" class="btn btn-sm btn-icon btn-icon-danger" title="Удалить" aria-label="Удалить" disabled="@busy" @onclick="() => deleteId = n.Id">
+                                        <Icon Name="trash" Size="16" />
+                                    </button>
+                                }
+                            </span>
+                        }
+                    </div>
+
+                    @if (editId == n.Id)
+                    {
+                        <NoteForm Kind="editKind" KindChanged="k => editKind = k" Text="@editText" TextChanged="t => editText = t"
+                                  Pinned="editPinned" PinnedChanged="p => editPinned = p" Busy="busy"
+                                  SubmitText="Сохранить" OnSubmit="SaveEditAsync" OnCancel="() => editId = null" IdPrefix="@($"note-{n.Id}")" />
+                    }
+                    else
+                    {
+                        <div class="note-text">@n.Text</div>
+                    }
+
+                    @if (deleteId == n.Id)
+                    {
+                        <div class="note-confirm">
+                            <span>Удалить заметку@(n.Mine ? "" : $" {n.AuthorName}")?</span>
+                            <button type="button" class="btn btn-sm btn-danger" disabled="@busy" @onclick="() => DeleteAsync(n)">Удалить</button>
+                            <button type="button" class="btn btn-sm" @onclick="() => deleteId = null">Нет</button>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+
+        <div class="panel note-new">
+            <h3>Новая заметка</h3>
+            <NoteForm Kind="newKind" KindChanged="k => newKind = k" Text="@newText" TextChanged="t => newText = t"
+                      Pinned="newPinned" PinnedChanged="p => newPinned = p" Busy="busy"
+                      SubmitText="Добавить" OnSubmit="AddAsync" IdPrefix="note-new" />
+            <p class="field-hint">Свои заметки можно менять и удалять. Кладовщик и администратор могут удалить и закрепить любую.</p>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int ItemId { get; set; }
+
+    /// <summary>Сколько заметок — для заголовка страницы или счётчика.</summary>
+    [Parameter] public EventCallback<int> CountChanged { get; set; }
+
+    private static readonly NoteKind[] Kinds = [NoteKind.Analog, NoteKind.Usage, NoteKind.Tip, NoteKind.Problem];
+
+    private List<ItemNoteDto> notes = [];
+    private bool loaded;
+    private bool busy;
+    private string? error;
+    private NoteKind? filter;
+    private int loadedFor;
+
+    private NoteKind newKind = NoteKind.Analog;
+    private string? newText;
+    private bool newPinned;
+
+    private int? editId;
+    private NoteKind editKind;
+    private string? editText;
+    private bool editPinned;
+
+    private int? deleteId;
+
+    private IEnumerable<ItemNoteDto> Visible => filter is NoteKind k ? notes.Where(n => n.Kind == k) : notes;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == ItemId && loaded)
+            return;
+        loadedFor = ItemId;
+        filter = null;
+        editId = deleteId = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            notes = await Api.GetItemNotesAsync(ItemId);
+            error = null;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = $"Не удалось загрузить заметки: {ex.Message}";
+        }
+        loaded = true;
+        await CountChanged.InvokeAsync(notes.Count);
+    }
+
+    private Task AddAsync() => RunAsync(async () =>
+    {
+        await Api.AddItemNoteAsync(ItemId, new SaveItemNoteRequest(newKind, newText ?? "", newPinned));
+        newText = null;
+        newPinned = false;
+        filter = null;
+    });
+
+    private void StartEdit(ItemNoteDto n)
+    {
+        deleteId = null;
+        editId = n.Id;
+        editKind = n.Kind;
+        editText = n.Text;
+        editPinned = n.Pinned;
+    }
+
+    private Task SaveEditAsync() => RunAsync(async () =>
+    {
+        if (editId is int id)
+            await Api.UpdateItemNoteAsync(id, new SaveItemNoteRequest(editKind, editText ?? "", editPinned));
+        editId = null;
+    });
+
+    private Task PinAsync(ItemNoteDto n) => RunAsync(() => Api.PinItemNoteAsync(n.Id, !n.Pinned));
+
+    private Task DeleteAsync(ItemNoteDto n) => RunAsync(async () =>
+    {
+        await Api.DeleteItemNoteAsync(n.Id);
+        deleteId = null;
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

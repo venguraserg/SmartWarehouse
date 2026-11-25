@@ -38,7 +38,36 @@ public record ItemDto(
     string? Description,
     bool IsActive,
     long? ImageVersion,
-    string? Barcode = null);
+    string? Barcode = null,
+    int NoteCount = 0,
+    ItemNoteHitDto? NoteHit = null);
+
+/// <summary>Заметка, в которой нашлось слово поиска: вид и отрывок текста вокруг совпадения.</summary>
+public record ItemNoteHitDto(NoteKind Kind, string Snippet);
+
+/// <summary>Заметка к позиции. CanEdit — автор; CanDelete — автор, кладовщик, администратор.</summary>
+public record ItemNoteDto(
+    int Id,
+    int ItemId,
+    NoteKind Kind,
+    string Text,
+    bool Pinned,
+    string AuthorName,
+    bool Mine,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
+    bool CanEdit,
+    bool CanDelete,
+    bool CanPin);
+
+/// <summary>Новая заметка или изменение своей.</summary>
+public record SaveItemNoteRequest(NoteKind Kind, string Text, bool Pinned = false);
+
+/// <summary>Закрепить или открепить заметку.</summary>
+public record PinItemNoteRequest(bool Pinned);
+
+/// <summary>Кто работает с заметками: учётная запись, имя для подписи, складские права (кладовщик, администратор).</summary>
+public record NoteActor(int UserId, string Name, bool IsStaff);
 
 /// <summary>Изменение позиции. Артикул не меняется; единицу можно сменить, только пока по позиции не было движений.</summary>
 public record UpdateItemRequest(

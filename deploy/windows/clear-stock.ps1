@@ -3,7 +3,7 @@
     Очистка складских данных перед повторной загрузкой начальных остатков.
     Пользователи (логины, пароли, роли), сотрудники, склады, единицы, категории и настройки сохраняются.
 
-    Удаляются: номенклатура и фото, партии и остатки, выданное «в работу», документы и движения,
+    Удаляются: номенклатура, фото и заметки, партии и остатки, выданное «в работу», документы и движения,
     акты и отчёты, запросы на выдачу, расхождения приёмки, места хранения и оборудование.
     Нумерация документов начинается заново.
 
@@ -44,7 +44,7 @@ function Sql([string]$query) {
 
 # Что удаляется — и что остаётся.
 $cleared = @(
-    "item_images", "items", "batches", "stock_balances", "employee_balances",
+    "item_images", "item_notes", "items", "batches", "stock_balances", "employee_balances",
     "stock_documents", "stock_movements", "receipt_discrepancies",
     "write_off_act_lines", "write_off_acts", "issue_request_lines", "issue_requests",
     "storage_locations", "equipment"

@@ -66,6 +66,21 @@ internal class ItemImageConfiguration : IEntityTypeConfiguration<ItemImage>
     }
 }
 
+internal class ItemNoteConfiguration : IEntityTypeConfiguration<ItemNote>
+{
+    public void Configure(EntityTypeBuilder<ItemNote> b)
+    {
+        b.ToTable("item_notes");
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.Text).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.AuthorName).HasMaxLength(128).IsRequired();
+        b.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.AuthorUser).WithMany().HasForeignKey(x => x.AuthorUserId).OnDelete(DeleteBehavior.SetNull);
+        b.HasIndex(x => x.ItemId);
+        b.HasIndex(x => x.AuthorUserId);
+    }
+}
+
 internal class AppSettingConfiguration : IEntityTypeConfiguration<AppSetting>
 {
     public void Configure(EntityTypeBuilder<AppSetting> b)

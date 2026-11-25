@@ -10,7 +10,7 @@
 </div>
 
 <form class="toolbar" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-    <input type="search" placeholder="Артикул, наименование или штрих-код" @bind="search" style="max-width: 360px" />
+    <input type="search" placeholder="Артикул, наименование, штрих-код или текст заметки" @bind="search" style="max-width: 420px" />
     <select @bind="categoryId" @bind:after="LoadAsync" style="max-width: 240px">
         <option value="">Все категории</option>
         @foreach (var c in categories)
@@ -70,6 +70,30 @@ else
                             {
                                 <span class="tag tag-neutral">неактивна</span>
                             }
+                            @if (item.NoteCount > 0)
+                            {
+                                <a class="note-badge" href="/items/@item.Id#notes" title="Заметки сотрудников"><Icon Name="note" Size="14" /> @item.NoteCount</a>
+                            }
+                            @if (item.NoteHit is { } hit)
+                            {
+                                <div class="note-hit">
+                                    <Icon Name="note" Size="14" />
+                                    <span>
+                                        <span class="note-hit-kind">@Ui.NoteKindName(hit.Kind):</span>
+                                        @foreach (var (part, match) in Ui.Highlight(hit.Snippet, searched))
+                                        {
+                                            if (match)
+                                            {
+                                                <mark class="hl">@part</mark>
+                                            }
+                                            else
+                                            {
+                                                @part
+                                            }
+                                        }
+                                    </span>
+                                </div>
+                            }
                         </td>
                         <td>@item.CategoryName</td>
                         <td>@item.UnitCode</td>
@@ -100,6 +124,9 @@ else
     private const int ListLimit = 500;
     private List<CategoryDto> categories = [];
     private string? search;
+
+    /// <summary>Что искали при последней загрузке — для подсветки в отрывке заметки.</summary>
+    private string? searched;
     private int? categoryId;
     private bool showInactive;
     private string? error;
@@ -122,6 +149,7 @@ else
         try
         {
             items = await Api.GetItemsAsync(search, categoryId);
+            searched = search?.Trim();
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

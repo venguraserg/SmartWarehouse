@@ -208,6 +208,30 @@ public interface ICatalogRepository
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 
+/// <summary>Заметки сотрудников к позициям номенклатуры.</summary>
+public interface IItemNoteRepository
+{
+    Task<bool> ItemExistsAsync(int itemId, CancellationToken ct = default);
+
+    /// <summary>Заметки позиции: закреплённые первыми, затем новые.</summary>
+    Task<IReadOnlyList<ItemNote>> ListAsync(int itemId, CancellationToken ct = default);
+
+    /// <summary>Заметка для изменения (отслеживаемая сущность).</summary>
+    Task<ItemNote?> GetAsync(int id, CancellationToken ct = default);
+
+    /// <summary>Сколько заметок у каждой из позиций (позиции без заметок не попадают).</summary>
+    Task<IReadOnlyDictionary<int, int>> CountByItemAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
+
+    /// <summary>Заметки этих позиций, где есть текст (без учёта регистра); закреплённые первыми.</summary>
+    Task<IReadOnlyList<ItemNote>> FindAsync(IReadOnlyCollection<int> itemIds, string text, CancellationToken ct = default);
+
+    void Add(ItemNote note);
+
+    void Remove(ItemNote note);
+
+    Task SaveChangesAsync(CancellationToken ct = default);
+}
+
 /// <summary>Доступ к данным справочника сотрудников.</summary>
 public interface IEmployeeRepository
 {
