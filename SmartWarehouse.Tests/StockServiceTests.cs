@@ -382,6 +382,29 @@ public class StockServiceTests
     }
 
     [Fact]
+    public async Task Поиск_остатков_по_заметке_даёт_отрывок_заметки()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB, item: Cable));
+        var notes = new FakeItemNoteRepository();
+        notes.ItemIds.UnionWith([Bearing, Cable]);
+        var noteService = new ItemNoteService(notes, new FixedTimeProvider(Now));
+        await noteService.AddAsync(Bearing, new SaveItemNoteRequest(NoteKind.Usage, "Стоит на гомогенизаторе А1-ОГМ"), new NoteActor(1, "Иванов И.П.", false));
+        _repo.NoteTexts.AddRange(notes.Notes.Select(n => (n.ItemId, n.Text)));
+        var service = new StockService(_repo, new FixedTimeProvider(Now), notes);
+
+        var byNote = await service.SearchStockAsync(new StockQuery(Search: "гомогенизатор"));
+        Assert.Equal("BRG-6205", Assert.Single(byNote.Rows).Sku);
+        var hit = byNote.NoteHits![Bearing];
+        Assert.Equal(NoteKind.Usage, hit.Kind);
+        Assert.Contains("гомогенизаторе", hit.Snippet);
+
+        // Нашлось по названию — отрывок заметки не нужен.
+        var byName = await service.SearchStockAsync(new StockQuery(Search: "подшипник"));
+        Assert.Single(byName.Rows);
+        Assert.Null(byName.NoteHits);
+    }
+
+    [Fact]
     public async Task Строка_остатка_содержит_место_склад_и_единицу()
     {
         await Post(MovementType.Receipt, Line(4.5m, to: CellB, item: Cable));

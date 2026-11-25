@@ -213,6 +213,9 @@ internal class FakeStockRepository : IStockRepository
         Task.FromResult<IReadOnlyList<StockMovement>>(
             Documents.SelectMany(d => d.Lines).Where(x => x.ItemId == itemId).OrderByDescending(x => x.Id).Take(take).ToList());
 
+    /// <summary>Тексты заметок к позициям — в БД поиск остатков ищет и по ним.</summary>
+    public List<(int ItemId, string Text)> NoteTexts { get; } = [];
+
     public Task<IReadOnlyList<StockBalance>> SearchBalancesAsync(StockFilter filter, int take, CancellationToken ct = default)
     {
         IEnumerable<StockBalance> query = Balances.Where(b => b.Quantity > 0);
@@ -225,7 +228,8 @@ internal class FakeStockRepository : IStockRepository
         if (filter.LocationCode is string code)
             query = query.Where(b => LocationCodeMatch.Matches(b.Location.FullCode, code));
         if (filter.Search is string s)
-            query = query.Where(b => b.Item.Name.Contains(s, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(s, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(b => b.Item.Name.Contains(s, StringComparison.OrdinalIgnoreCase) || b.Item.Sku.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || NoteTexts.Any(n => n.ItemId == b.ItemId && n.Text.Contains(s, StringComparison.OrdinalIgnoreCase)));
         if (filter.CategoryId is int c)
             query = query.Where(b => b.Item.CategoryId == c);
         if (filter.OffBook is bool offBook)

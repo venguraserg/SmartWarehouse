@@ -10,7 +10,7 @@ namespace SmartWarehouse.Application.Services;
 /// Ядро учёта. Остаток меняется только проведением документа, напрямую его изменить нельзя.
 /// Документ проводится целиком или не проводится вовсе; уход в минус запрещён.
 /// </summary>
-public class StockService(IStockRepository repo, TimeProvider clock) : IStockService
+public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRepository? notes = null) : IStockService
 {
     public const int MaxLines = 500;
 
@@ -664,7 +664,23 @@ public class StockService(IStockRepository repo, TimeProvider clock) : IStockSer
             })
             .ToList();
 
-        return new StockSearchResult(rows, balances.Count > MaxStockRows);
+        // Позиции, найденные только по заметке (не по названию и не по артикулу), — с отрывком этой заметки.
+        Dictionary<int, ItemNoteHitDto>? hits = null;
+        if (notes is not null && filter.Search is string search)
+        {
+            var byNoteOnly = rows
+                .Where(r => !r.ItemName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                    && !r.Sku.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .Select(r => r.ItemId).Distinct().ToList();
+            if (byNoteOnly.Count > 0)
+            {
+                hits = [];
+                foreach (var note in await notes.FindAsync(byNoteOnly, search, ct))
+                    hits.TryAdd(note.ItemId, new ItemNoteHitDto(note.Kind, ItemNoteService.Snippet(note.Text, search)));
+            }
+        }
+
+        return new StockSearchResult(rows, balances.Count > MaxStockRows, hits);
     }
 
     public async Task<IReadOnlyList<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default)

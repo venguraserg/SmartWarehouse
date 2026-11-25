@@ -74,26 +74,7 @@ else
                             {
                                 <a class="note-badge" href="/items/@item.Id#notes" title="Заметки сотрудников"><Icon Name="note" Size="14" /> @item.NoteCount</a>
                             }
-                            @if (item.NoteHit is { } hit)
-                            {
-                                <div class="note-hit">
-                                    <Icon Name="note" Size="14" />
-                                    <span>
-                                        <span class="note-hit-kind">@Ui.NoteKindName(hit.Kind):</span>
-                                        @foreach (var (part, match) in Ui.Highlight(hit.Snippet, searched))
-                                        {
-                                            if (match)
-                                            {
-                                                <mark class="hl">@part</mark>
-                                            }
-                                            else
-                                            {
-                                                @part
-                                            }
-                                        }
-                                    </span>
-                                </div>
-                            }
+                            <NoteHit Hit="item.NoteHit" Term="@searched" />
                         </td>
                         <td>@item.CategoryName</td>
                         <td>@item.UnitCode</td>

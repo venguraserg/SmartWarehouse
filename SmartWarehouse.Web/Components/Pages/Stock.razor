@@ -18,7 +18,7 @@
 <form class="panel filters" @onsubmit="ApplyAsync" @onsubmit:preventDefault>
     <div class="field-row">
         <div class="field">
-            <label for="f-search">Наименование или артикул</label>
+            <label for="f-search">Наименование, артикул или текст заметки</label>
             <input id="f-search" type="search" @bind="search" placeholder="подшипник, 6205…" />
         </div>
         <div class="field">
@@ -196,7 +196,7 @@ else
                                     <tr class="@(row.OffBookQuantity >= row.Quantity ? "row-offbook" : null)">
                                         <td><Thumb ItemId="row.ItemId" ImageVersion="row.ImageVersion" /></td>
                                         <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
-                                        <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /> <MolTags Mols="row.Mols" /></td>
+                                        <td class="col-name"><a href="/items/@row.ItemId">@row.ItemName</a> <OffBookTag Quantity="row.OffBookQuantity" Total="row.Quantity" /> <MolTags Mols="row.Mols" /><NoteHit Hit="HitOf(row.ItemId)" Term="@searched" /></td>
                                         <td>@row.CategoryName</td>
                                         <td class="num">@Ui.Qty(row.Quantity) @row.UnitCode</td>
                                         @if (ShowValue)
@@ -244,6 +244,7 @@ else
                                 <a href="/items/@first.ItemId">@first.ItemName</a>
                                 <OffBookTag Quantity="totalOffBook" Total="total" />
                                 <MolTags Mols="MolsOf(group)" />
+                                <NoteHit Hit="HitOf(first.ItemId)" Term="@searched" />
                                 @if (belowMinimum)
                                 {
                                     <div class="line-hint">минимум @Ui.Qty(first.MinStock) @first.UnitCode</div>
@@ -288,6 +289,7 @@ else
                         <a class="card-title card-link" href="/items/@first.ItemId">@first.ItemName</a>
                         <span class="card-qty @(low ? "qty-warn" : null)">@Ui.Qty(total) @first.UnitCode</span>
                     </span>
+                    <NoteHit Hit="HitOf(first.ItemId)" Term="@searched" />
                     <span class="card-bottom">
                         <span class="card-meta"><span class="mono">@first.Sku</span> · @string.Join(", ", group.Select(r => Address(r).Short).Take(3))@(group.Count() > 3 ? $" +{group.Count() - 3}" : "")</span>
                         @if (totalOffBook > 0)
@@ -319,6 +321,12 @@ else
     [SupplyParameterFromQuery(Name = "mol")] public int? MolParam { get; set; }
 
     private string? search;
+
+    /// <summary>Что искали при последней загрузке — подсвечивается в отрывке заметки.</summary>
+    private string? searched;
+
+    /// <summary>Заметка, по которой нашлась позиция (если не нашлась по названию или артикулу).</summary>
+    private ItemNoteHitDto? HitOf(int itemId) => result?.NoteHits?.GetValueOrDefault(itemId);
     private string? location;
     private int? warehouseId;
     private int? categoryId;
@@ -378,6 +386,7 @@ else
             }
 
             result = await Api.SearchStockAsync(new StockQuery(warehouseId, location, search, categoryId, belowMinimum, offBook, molId));
+            searched = search?.Trim();
             error = null;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
