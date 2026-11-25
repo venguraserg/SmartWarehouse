@@ -10,6 +10,9 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Item> Items => Set<Item>();
     public DbSet<ItemImage> ItemImages => Set<ItemImage>();
     public DbSet<ItemNote> ItemNotes => Set<ItemNote>();
+    public DbSet<InventoryCount> Inventories => Set<InventoryCount>();
+    public DbSet<InventoryLine> InventoryLines => Set<InventoryLine>();
+    public DbSet<InventoryPlace> InventoryPlaces => Set<InventoryPlace>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StorageLocation> Locations => Set<StorageLocation>();
     public DbSet<StockBalance> Balances => Set<StockBalance>();

@@ -49,4 +49,7 @@ public class StorageLocation
     public string FullCode { get; set; } = string.Empty;
 
     public string? Name { get; set; }
+
+    /// <summary>Когда место последний раз проверено инвентаризацией (проведённой); null — не проверялось.</summary>
+    public DateTimeOffset? CheckedAt { get; set; }
 }
