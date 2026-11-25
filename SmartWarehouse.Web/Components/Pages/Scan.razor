@@ -9,7 +9,7 @@
 <h1>Сканирование</h1>
 @if (InventoryId is int invId)
 {
-    <p class="alert alert-warn" role="status">Инвентаризация: отсканируйте наклейку ячейки@(PlaceId is null ? "" : " или позицию") — откроется подсчёт. <a href="/inventory/@invId@(PlaceId is int p ? $"/place/{p}" : "")">Назад</a></p>
+    <p class="alert alert-warn" role="status">Инвентаризация: отсканируйте наклейку ячейки@(PlaceId is null ? "" : " или позицию") — откроется подсчёт. <a href="@InventoryBack(invId)">Назад</a></p>
 }
 <p class="muted" style="margin-top: -.5rem">
     QR-наклейка ячейки или позиции, заводской штрих-код на упаковке, код места или артикул.
@@ -58,6 +58,8 @@
     [SupplyParameterFromQuery(Name = "inv")] public int? InventoryId { get; set; }
 
     [SupplyParameterFromQuery(Name = "place")] public int? PlaceId { get; set; }
+
+    private string InventoryBack(int inv) => PlaceId is int p ? $"/inventory/{inv}/place/{p}" : $"/inventory/{inv}";
 
     private ElementReference input;
     private IJSObjectReference? module;
