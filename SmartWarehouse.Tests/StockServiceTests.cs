@@ -42,7 +42,7 @@ public class StockServiceTests
         _repo.Employees.Add(new Employee { Id = Worker, LastName = "Петров", FirstName = "Сергей", Position = "Слесарь" });
         _repo.Employees.Add(new Employee { Id = 3, LastName = "Сидоров", FirstName = "Олег", IsActive = false });
 
-        _service = new StockService(_repo, new FixedTimeProvider(Now));
+        _service = new StockService(_repo, new FixedTimeProvider(Now), new FakeItemNoteRepository());
     }
 
     private static DocumentLineRequest Line(decimal qty, int? from = null, int? to = null, int item = Bearing) =>

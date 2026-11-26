@@ -37,8 +37,8 @@ public class ReceivingService(
     IStockService stock,
     IStockRepository repo,
     TimeProvider clock,
-    IEmployeeService? employees = null,
-    IMolService? mols = null) : IReceivingService
+    IEmployeeService employees,
+    IMolService mols) : IReceivingService
 {
     /// <summary>Код места «Приёмка» (верхний уровень склада): WH1-RCV.</summary>
     public const string ReceptionCode = "RCV";
@@ -222,11 +222,9 @@ public class ReceivingService(
             recipient?.ShortName ?? invoice.Recipient, invoice.Sender);
     }
 
-    /// <summary>Кладовщики-МОЛ склада; null — не проверяется (сервис собран без сотрудников, например в тестах приёмки).</summary>
+    /// <summary>Кладовщики-МОЛ склада.</summary>
     private async Task<IReadOnlyList<EmployeeDto>?> StorekeepersAsync(CancellationToken ct)
     {
-        if (employees is null || mols is null)
-            return null;
         var ids = (await mols.ListAsync(ct)).Select(m => m.EmployeeId).ToHashSet();
         return (await employees.ListAsync(null, includeInactive: true, ct)).Where(e => ids.Contains(e.Id)).ToList();
     }

@@ -46,7 +46,7 @@ public class InventoryTests
         _stock.Items.Add(new Item { Id = Motor, Sku = "MTR-80", Name = "Электродвигатель АИР80", UnitId = 1, Unit = pcs, IsActive = true });
 
         var clock = new FixedTimeProvider(Now);
-        _stockService = new StockService(_stock, clock);
+        _stockService = new StockService(_stock, clock, new FakeItemNoteRepository());
         _repo = new FakeInventoryRepository(_stock);
         _service = new InventoryService(_repo, _locations, _stock, _stockService, clock);
     }

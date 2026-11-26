@@ -53,7 +53,7 @@ public class WriteOffActServiceTests
         _employees.Employees.AddRange(people);
 
         var clock = new FixedTimeProvider(Now);
-        _stockService = new StockService(_stock, clock);
+        _stockService = new StockService(_stock, clock, new FakeItemNoteRepository());
         _acts = new FakeActRepository(_stock);
         _service = new WriteOffActService(_acts, _stock, _employees, _stockService, clock);
     }

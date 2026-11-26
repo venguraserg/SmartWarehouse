@@ -53,7 +53,7 @@ public class PostgresTests(PostgresFixture pg) : IClassFixture<PostgresFixture>
         return new Rack(warehouse.Id, rack.Id, cell1.Id, cell2.Id, floor.Id, bearing.Id, belt.Id, tag);
     }
 
-    private StockService Stock(WarehouseDbContext db) => new(new StockRepository(db), new FixedTimeProvider(Now));
+    private StockService Stock(WarehouseDbContext db) => new(new StockRepository(db), new FixedTimeProvider(Now), new ItemNoteRepository(db));
 
     private InventoryService Inventory(WarehouseDbContext db) =>
         new(new InventoryRepository(db), new LocationRepository(db), new StockRepository(db), Stock(db), new FixedTimeProvider(Now));
