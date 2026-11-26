@@ -1,0 +1,74 @@
+name: Снимки экранов
+
+# Демо-склад в PostgreSQL → API и веб-интерфейс → снимки главных страниц на компьютере и телефоне.
+# Снимки и замечания (ошибки на странице, страница шире экрана телефона) — в артефакте «ui-snapshots».
+on:
+  pull_request:
+
+jobs:
+  ui-snapshots:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CONN: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=smartwarehouse
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Сборка
+        run: |
+          dotnet build SmartWarehouse.API/SmartWarehouse.API.csproj -c Release
+          dotnet build SmartWarehouse.Web/SmartWarehouse.Web.csproj -c Release
+          dotnet build tools/DemoSeed/DemoSeed.csproj -c Release
+
+      - name: Демо-данные
+        run: dotnet run --no-build -c Release --project tools/DemoSeed -- "$CONN" seed.json
+
+      - name: Запуск API и веб-интерфейса
+        run: |
+          ConnectionStrings__Default="$CONN" ASPNETCORE_ENVIRONMENT=Development \
+            nohup dotnet run --no-build --no-launch-profile -c Release --project SmartWarehouse.API -- --urls http://localhost:5113 > api.log 2>&1 &
+          Api__BaseUrl=http://localhost:5113 ASPNETCORE_ENVIRONMENT=Development \
+            nohup dotnet run --no-build --no-launch-profile -c Release --project SmartWarehouse.Web -- --urls http://localhost:5200 > web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:5200/login > /dev/null && break; sleep 2; done
+          curl -sf http://localhost:5200/login > /dev/null || { cat api.log web.log; exit 1; }
+
+      - name: Снимки
+        working-directory: tools/ui-snapshots
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node snap.mjs http://localhost:5200 ../../seed.json ../../shots
+
+      - name: Замечания
+        if: always()
+        run: cat shots/problems.txt 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-snapshots
+          path: |
+            shots
+            api.log
+            web.log
+          retention-days: 14

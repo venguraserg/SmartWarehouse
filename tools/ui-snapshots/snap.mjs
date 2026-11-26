@@ -14,7 +14,7 @@ const pages = [
   ["02-stock-places", "/stock"],
   ["03-stock-items", "/stock?view=items"],
   ["04-items", "/items"],
-  ["05-items-search-note", "/items?search=" + encodeURIComponent("подшипник гомогенизатор")],
+  ["05-stock-search-note", "/stock?view=items&search=" + encodeURIComponent("подшипник гомогенизатор")],
   ["06-item-card", `/items/${ids.b6205}`],
   ["07-custody", "/custody"],
   ["08-warehouses", "/warehouses"],
