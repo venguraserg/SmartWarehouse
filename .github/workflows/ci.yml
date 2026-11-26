@@ -39,6 +39,26 @@ jobs:
       - name: Тесты
         run: dotnet test SmartWarehouse.slnx --no-build -c Release --logger "console;verbosity=normal" --logger GitHubActions
 
+  # Скрипты сервера (deploy/windows/*.ps1) запускаются только на Windows-сервере — проверяем хотя бы синтаксис.
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Синтаксис PowerShell-скриптов
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($file in Get-ChildItem deploy -Recurse -Filter *.ps1) {
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            foreach ($e in $errors) {
+              Write-Host "::error file=$($file.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+          Write-Host "Синтаксис скриптов в порядке."
+
   docker:
     runs-on: ubuntu-latest
     needs: build-and-test
