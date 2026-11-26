@@ -51,7 +51,7 @@ public sealed record PlaceAddress(
         {
             var custom = CustomName(n);
             if (custom is not null)
-                note = custom; // самое глубокое описание — оно точнее
+                note = n.Id == place.Id ? custom : null; // описание самого места; описание стеллажа — в заголовке группы
 
             switch (n.Type)
             {

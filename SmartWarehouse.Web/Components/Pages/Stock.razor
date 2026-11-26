@@ -162,6 +162,10 @@ else
                                         <Icon Name="@(open ? "collapse" : "expand")" Size="14" />
                                     </button>
                                     <span class="place-title">@head.GroupTitle</span>
+                                    @if (!single && placeTree.ById.TryGetValue(rack.Key, out var groupNode) && PlaceAddress.CustomName(groupNode) is string groupNote)
+                                    {
+                                        <span class="place-note">@groupNote</span>
+                                    }
                                     @if (single && head.Note is not null)
                                     {
                                         <span class="place-note">@head.Note</span>
