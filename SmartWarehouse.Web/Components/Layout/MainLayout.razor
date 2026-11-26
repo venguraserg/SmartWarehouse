@@ -99,7 +99,7 @@
             }
             else
             {
-                <NavLink href="/custody"><Icon Name="custody" Size="22" /><span>Подотчёт</span></NavLink>
+                <NavLink href="/custody"><Icon Name="custody" Size="22" /><span>В работе</span></NavLink>
             }
             <button type="button" class="@(menuOpen ? "active" : null)" @onclick:stopPropagation="true" @onclick="() => menuOpen = !menuOpen"
                     aria-expanded="@(menuOpen ? "true" : "false")">
@@ -158,7 +158,7 @@
     /// <summary>Сайт открыт в приложении «Склад» для Android (там есть сканирование камерой и сканер ТСД).</summary>
     private bool isNativeApp;
 
-    /// <summary>Выдаёт со склада (кладовщик, администратор, старший смены) — в нижней панели «Запросы», а не «Подотчёт».</summary>
+    /// <summary>Выдаёт со склада (кладовщик, администратор, старший смены) — в нижней панели «Запросы», а не «В работе».</summary>
     private bool isIssuer;
     private int actsToApprove;
     private int reportsToConfirm;
