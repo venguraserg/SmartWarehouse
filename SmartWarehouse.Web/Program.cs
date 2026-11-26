@@ -170,6 +170,9 @@ app.MapGet("/account/logout-expired", async (HttpContext context) =>
     return Results.LocalRedirect("/login?expired=1");
 });
 
+// Проверка после обновления (update.ps1): веб-интерфейс запущен.
+app.MapGet("/health", () => Results.Text("ok")).AllowAnonymous();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

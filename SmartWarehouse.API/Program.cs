@@ -106,4 +106,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Проверка после обновления (update.ps1): API запущен, база доступна, все миграции применены.
+app.MapGet("/health", async (WarehouseDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        if (!await db.Database.CanConnectAsync(ct))
+            return Results.Text("database unavailable", statusCode: StatusCodes.Status503ServiceUnavailable);
+        var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+        return pending.Count == 0
+            ? Results.Text("ok")
+            : Results.Text($"pending migrations: {string.Join(", ", pending)}", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception ex)
+    {
+        return Results.Text($"error: {ex.GetType().Name}", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
+
 app.Run();
