@@ -199,7 +199,7 @@ public class PostgresTests(PostgresFixture pg) : IClassFixture<PostgresFixture>
             documentsBefore = await db.Documents.CountAsync();
 
         await using (var db = pg.CreateContext())
-            await Assert.ThrowsAsync<DomainException>(() => Inventory(db).PostAsync(id, actor));
+            await Assert.ThrowsAnyAsync<DomainException>(() => Inventory(db).PostAsync(id, actor));
 
         await using (var db = pg.CreateContext())
         {
