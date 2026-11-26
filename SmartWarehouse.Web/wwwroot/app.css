@@ -804,8 +804,8 @@ tr.row-muted td { color: var(--text-muted); }
 .inv-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
 .inv-item-name { font-weight: 600; color: inherit; }
 .inv-item-hint { font-size: .8125rem; color: var(--warn-text); }
-.inv-actions { display: flex; gap: .5rem; }
-.inv-actions .btn { flex: 1; min-height: 44px; justify-content: center; }
+.inv-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.inv-actions .btn { flex: 1 1 auto; min-width: 0; min-height: 44px; justify-content: center; }
 .inv-actions .inv-no { flex: 0 0 auto; color: var(--danger-text); }
 .inv-yes { border-color: var(--brand-primary); color: var(--brand-dark); font-weight: 600; }
 .inv-qty { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }

@@ -5,6 +5,10 @@ name: Снимки экранов
 on:
   pull_request:
 
+# Снимки кладутся и в ветку ci-ui-snapshots (одна, перезаписывается) — их удобно смотреть без скачивания артефакта.
+permissions:
+  contents: write
+
 jobs:
   ui-snapshots:
     runs-on: ubuntu-latest
@@ -62,6 +66,21 @@ jobs:
       - name: Замечания
         if: always()
         run: cat shots/problems.txt 2>/dev/null || true
+
+      - name: Снимки в ветку ci-ui-snapshots
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR: ${{ github.event.number }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          [ -d shots ] || exit 0
+          mkdir -p /tmp/pub/pr-$PR && cp -r shots/. /tmp/pub/pr-$PR/
+          cd /tmp/pub
+          git init -q -b ci-ui-snapshots
+          git -c user.name=ci -c user.email=ci@example.invalid commit -q --allow-empty -m "Снимки PR #$PR" >/dev/null
+          git add . && git -c user.name=ci -c user.email=ci@example.invalid commit -q -m "Снимки PR #$PR ($GITHUB_SHA)"
+          git push -q -f "https://x-access-token:$TOKEN@github.com/$REPO" ci-ui-snapshots
 
       - uses: actions/upload-artifact@v4
         if: always()
