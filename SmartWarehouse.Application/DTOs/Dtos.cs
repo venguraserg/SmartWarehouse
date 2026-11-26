@@ -460,6 +460,12 @@ public record SetExternalNumberRequest(string? ExternalNumber);
 /// <summary>Ссылка на складской документ.</summary>
 public record DocumentRefDto(long Id, string Number);
 
+/// <summary>
+/// Какие пункты бокового меню скрыты для роли: роль («Storekeeper») → ключи пунктов («reconcile»).
+/// Меняет только видимость; права доступа по-прежнему определяют роли.
+/// </summary>
+public record MenuSettingsDto(IReadOnlyDictionary<string, IReadOnlyList<string>> Hidden);
+
 // ---------- Инвентаризация ----------
 
 /// <summary>Начать инвентаризацию места (обычно стеллажа) со всем вложенным.</summary>
