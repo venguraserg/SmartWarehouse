@@ -39,6 +39,9 @@ public class InventoryRepository(WarehouseDbContext db) : IInventoryRepository
             .Where(x => locationIds.Contains(x.LocationId) && x.Quantity > 0)
             .ToListAsync(ct);
 
+    public Task<Item?> GetItemAsync(int itemId, CancellationToken ct = default) =>
+        db.Items.Include(x => x.Unit).FirstOrDefaultAsync(x => x.Id == itemId, ct);
+
     public async Task<IReadOnlyList<(int ItemId, int LocationId, decimal Quantity)>> ListItemPlacesAsync(
         IReadOnlyCollection<int> itemIds, CancellationToken ct = default)
     {

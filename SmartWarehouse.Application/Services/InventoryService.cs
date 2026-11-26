@@ -155,7 +155,9 @@ public class InventoryService(
             var counted = request.Counted.Value;
             if (counted < 0)
                 throw new DomainException("Количество не может быть отрицательным.");
-            var item = (await stockRepo.GetItemsAsync([request.ItemId], ct)).GetValueOrDefault(request.ItemId)
+            // Отслеживаемая позиция: строка ссылается на ту же сущность, что уже загружена со строками
+            // (позиция «только для чтения» из другого запроса дала бы конфликт или лишнюю вставку).
+            var item = await repo.GetItemAsync(request.ItemId, ct)
                        ?? throw new NotFoundException($"Позиция {request.ItemId} не найдена.");
             if (!item.Unit.IsFractional && counted != decimal.Truncate(counted))
                 throw new DomainException($"«{item.Name}» учитывается в «{item.Unit.Code}» — количество должно быть целым.");

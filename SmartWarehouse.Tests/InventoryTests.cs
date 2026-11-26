@@ -221,6 +221,9 @@ internal class FakeInventoryRepository(FakeStockRepository stock) : IInventoryRe
         return Task.FromResult<IReadOnlyList<StockBalance>>(rows);
     }
 
+    public Task<Item?> GetItemAsync(int itemId, CancellationToken ct = default) =>
+        Task.FromResult(stock.Items.FirstOrDefault(i => i.Id == itemId));
+
     public Task<IReadOnlyList<(int ItemId, int LocationId, decimal Quantity)>> ListItemPlacesAsync(
         IReadOnlyCollection<int> itemIds, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<(int, int, decimal)>>(stock.Balances

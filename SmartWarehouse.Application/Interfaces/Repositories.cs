@@ -223,6 +223,9 @@ public interface IInventoryRepository
     /// <summary>Остатки по партиям в этих местах (с позицией, единицей, партией).</summary>
     Task<IReadOnlyList<StockBalance>> ListStockAsync(IReadOnlyCollection<int> locationIds, CancellationToken ct = default);
 
+    /// <summary>Позиция с единицей — отслеживаемая (для новой строки подсчёта: та же сущность, что уже загружена).</summary>
+    Task<Item?> GetItemAsync(int itemId, CancellationToken ct = default);
+
     /// <summary>Где ещё числятся позиции: место → количество (для подсказки «лежит на C3 · п.2»).</summary>
     Task<IReadOnlyList<(int ItemId, int LocationId, decimal Quantity)>> ListItemPlacesAsync(IReadOnlyCollection<int> itemIds, CancellationToken ct = default);
 
