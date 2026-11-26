@@ -1,10 +1,10 @@
 @page "/custody"
 @inject ApiClient Api
 
-<PageTitle>Подотчёт — Склад ОЭТО</PageTitle>
+<PageTitle>Выдано в работу — Склад ОЭТО</PageTitle>
 
 <div class="page-head">
-    <h1>Подотчёт</h1>
+    <h1>Выдано в работу</h1>
     <span class="spacer"></span>
     <AuthorizeView Roles="@AppRoles.Warehouse">
         <a class="btn" href="/documents/new/Issue"><Icon Name="issue" Size="18" /> Выдать</a>
@@ -18,7 +18,7 @@
     <span class="tag tag-mol">МОЛ …</span>.
     <OffBookTag Quantity="1" /> — б/у и неучтённое, в 1С не числится (списывается только для контроля).
     <AuthorizeView Roles="@AppRoles.Warehouse">
-        <NotAuthorized>Показан ваш подотчёт@(context.User.IsInRole(AppRoles.Manager) ? " и подотчёт ваших подчинённых" : "").</NotAuthorized>
+        <NotAuthorized>Показано выданное вам@(context.User.IsInRole(AppRoles.Manager) ? " и вашим подчинённым" : "").</NotAuthorized>
     </AuthorizeView>
 </p>
 

@@ -42,7 +42,7 @@ else
                 <span class="kpi-note">с заданным минимумом</span>
             </a>
             <a class="kpi" href="/custody">
-                <span class="kpi-label"><Icon Name="custody" Size="16" /> В подотчёте</span>
+                <span class="kpi-label"><Icon Name="custody" Size="16" /> Выдано в работу</span>
                 <span class="kpi-value">@summary.CustodyItems.ToString("N0")</span>
                 <span class="kpi-note">у @summary.CustodyEmployees сотрудников</span>
             </a>
@@ -50,7 +50,7 @@ else
         else
         {
             <a class="kpi" href="/custody">
-                <span class="kpi-label"><Icon Name="custody" Size="16" /> Мой подотчёт</span>
+                <span class="kpi-label"><Icon Name="custody" Size="16" /> Выдано мне</span>
                 <span class="kpi-value">@myCustody</span>
                 <span class="kpi-note">позиций за мной</span>
             </a>
@@ -123,7 +123,7 @@ else
         {
             <a class="qa qa-main" href="/requests/new"><Icon Name="request" Size="22" /><span>Запросить со склада</span></a>
             <a class="qa" href="/reports/new"><Icon Name="report" Size="22" /><span>Отчёт об использовании</span></a>
-            <a class="qa" href="/custody"><Icon Name="custody" Size="22" /><span>Мой подотчёт</span></a>
+            <a class="qa" href="/custody"><Icon Name="custody" Size="22" /><span>Выдано мне</span></a>
         }
     </div>
 

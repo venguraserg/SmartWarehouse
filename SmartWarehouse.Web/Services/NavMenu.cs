@@ -30,7 +30,7 @@ public static class NavMenu
 
         new("stock", Accounting, "Остатки", "/stock", "box", All),
         new("requests", Accounting, "Запросы на выдачу", "/requests", "inbox", All),
-        new("custody", Accounting, "Подотчёт", "/custody", "custody", All),
+        new("custody", Accounting, "Выдано в работу", "/custody", "custody", All),
         new("reports", Accounting, "Отчёты об использовании", "/reports", "report", All),
         new("summary-acts", Accounting, "Сводные акты", "/summary-acts", "summary", Warehouse),
         new("acts", Accounting, "Акты на списание", "/acts", "act", All),
