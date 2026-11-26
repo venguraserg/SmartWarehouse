@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Демо-данные для снимков экранов в CI (tools/ui-snapshots). В решение не входит. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SmartWarehouse.Application\SmartWarehouse.Application.csproj" />
+    <ProjectReference Include="..\..\SmartWarehouse.Infrastructure\SmartWarehouse.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
