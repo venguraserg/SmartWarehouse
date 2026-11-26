@@ -13,7 +13,7 @@ public interface IReconcileService
     Task<ReconcileResultDto> ReconcileAsync(IReadOnlyList<SaldoSheet> sheets, string? warehouseMol, CancellationToken ct = default);
 }
 
-public class ReconcileService(IStockRepository stock, IEmployeeService employees, IMolService? molService = null) : IReconcileService
+public class ReconcileService(IStockRepository stock, IEmployeeService employees, IMolService molService) : IReconcileService
 {
     /// <summary>Подпись МОЛ-кладовщика в строках сверки: его партии на складе плюс выданное «в работу».</summary>
     public const string WarehousePlace = "Склад";
@@ -28,7 +28,7 @@ public class ReconcileService(IStockRepository stock, IEmployeeService employees
 
         var staff = await employees.ListAsync(null, includeInactive: true, ct);
         // Кладовщики-МОЛ; без сервиса МОЛ (тесты) — все сотрудники.
-        var storekeeperIds = molService is null ? staff.Select(e => e.Id).ToHashSet() : (await molService.ListAsync(ct)).Select(m => m.EmployeeId).ToHashSet();
+        var storekeeperIds = (await molService.ListAsync(ct)).Select(m => m.EmployeeId).ToHashSet();
         var storekeepers = staff.Where(e => storekeeperIds.Contains(e.Id)).ToList();
 
         var molValues = batches.GroupBy(b => b.Mol)

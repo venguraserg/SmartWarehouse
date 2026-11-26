@@ -164,8 +164,8 @@ public class ImportTests
         employeeRepo.Employees.Add(new Employee { Id = 5, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна" });
         employeeRepo.Employees.Add(new Employee { Id = 6, LastName = "Иванов", FirstName = "Игорь", MiddleName = "Геннадьевич" });
         var service = new OpeningImportService(
-            new CatalogService(catalogRepo, new FixedTimeProvider(Now)), new LocationService(locationRepo),
-            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now)),
+            new CatalogService(catalogRepo, new FixedTimeProvider(Now), new FakeItemNoteRepository()), new LocationService(locationRepo),
+            new EmployeeService(employeeRepo), new StockService(new FakeStockRepository(), new FixedTimeProvider(Now), new FakeItemNoteRepository()),
             new StubMolService(new MolDto(5, "Дорофей С. М.")));   // кладовщик — только Дорофей
 
         OpeningRow Row(int line, string code, decimal qty, decimal value, string? address, bool custody = false, string unit = "шт", string? mol = null,
@@ -221,7 +221,7 @@ public class ImportTests
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
         employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
-        var service = new ReconcileService(stock, new EmployeeService(employees));
+        var service = new ReconcileService(stock, new EmployeeService(employees), StubMolService.Of(employees));
 
         SaldoBatch B(string mol, string code, decimal qty, decimal value) => new("10.6", "Отдел", mol, code, "Позиция " + code, "шт", "ТТН", null, qty, value);
         var sheets = new[]
@@ -255,7 +255,7 @@ public class ImportTests
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
         employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
-        var service = new ReconcileService(stock, new EmployeeService(employees));
+        var service = new ReconcileService(stock, new EmployeeService(employees), StubMolService.Of(employees));
 
         SaldoBatch B(string mol, string code, decimal qty, decimal value) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, value);
         var result = await service.ReconcileAsync(
@@ -287,7 +287,7 @@ public class ImportTests
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 7, LastName = "Рудаков", FirstName = "Максим", MiddleName = "Андреевич", IsActive = true });
         employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
-        var service = new ReconcileService(stock, new EmployeeService(employees));
+        var service = new ReconcileService(stock, new EmployeeService(employees), StubMolService.Of(employees));
 
         SaldoBatch B(string mol, string code, decimal qty) => new("10.6", "Отдел", mol, code, "Ремень", "шт", "ТТН", null, qty, qty * 10);
         var result = await service.ReconcileAsync(
@@ -317,7 +317,7 @@ public class ImportTests
             new StockBalance { ItemId = 3, LocationId = 1, BatchId = 3, Quantity = 1 }]);
         var employees = new FakeEmployeeRepository();
         employees.Employees.Add(new Employee { Id = 9, LastName = "Дорофей", FirstName = "Светлана", MiddleName = "Михайловна", IsActive = true });
-        var service = new ReconcileService(stock, new EmployeeService(employees));
+        var service = new ReconcileService(stock, new EmployeeService(employees), StubMolService.Of(employees));
 
         SaldoBatch B(string code, decimal qty, decimal value) => new("10.6", "Отдел", "Дорофей С.М.", code, "Позиция " + code, "шт", "ТТН", null, qty, value);
         var result = await service.ReconcileAsync([new SaldoSheet("склад.xlsx", "31.10.2026",
@@ -337,4 +337,9 @@ public class ImportTests
 internal class StubMolService(params MolDto[] storekeepers) : IMolService
 {
     public Task<IReadOnlyList<MolDto>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<MolDto>>(storekeepers);
+
+    /// <summary>Все сотрудники — кладовщики-МОЛ (для сверки, где это не важно).</summary>
+    public static StubMolService Of(FakeEmployeeRepository employees) =>
+        new(employees.Employees.Select(e => new MolDto(e.Id, e.LastName)).ToArray());
 }
+

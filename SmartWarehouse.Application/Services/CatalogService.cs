@@ -6,7 +6,7 @@ using SmartWarehouse.Domain.Exceptions;
 namespace SmartWarehouse.Application.Services;
 
 /// <summary>Справочники: категории, единицы измерения, номенклатура.</summary>
-public class CatalogService(ICatalogRepository repo, TimeProvider clock, IItemNoteRepository? notes = null) : ICatalogService
+public class CatalogService(ICatalogRepository repo, TimeProvider clock, IItemNoteRepository notes) : ICatalogService
 {
     // ---------- Категории ----------
 
@@ -105,7 +105,7 @@ public class CatalogService(ICatalogRepository repo, TimeProvider clock, IItemNo
         search = search?.Trim();
         var items = await repo.ListItemsAsync(search, categoryId, all ? null : ListLimit, ct);
         var result = items.Select(ToDto).ToList();
-        if (notes is null || result.Count == 0)
+        if (result.Count == 0)
             return result;
 
         // Заметки: сколько их у позиции; при поиске — отрывок заметки, если слово нашлось не в названии и не в артикуле.

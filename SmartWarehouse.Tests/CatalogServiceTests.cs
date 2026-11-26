@@ -20,7 +20,7 @@ public class CatalogServiceTests
     {
         _repo.Units.Add(new UnitOfMeasure { Id = 1, Code = "шт", Name = "штука" });
         _repo.Units.Add(new UnitOfMeasure { Id = 2, Code = "м", Name = "метр", IsFractional = true });
-        _service = new CatalogService(_repo, new FixedTimeProvider(Now));
+        _service = new CatalogService(_repo, new FixedTimeProvider(Now), new FakeItemNoteRepository());
     }
 
     private Task<ItemDto> CreateItemAsync(string sku = "BRG-1") =>

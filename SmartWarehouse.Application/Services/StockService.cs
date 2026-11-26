@@ -10,7 +10,7 @@ namespace SmartWarehouse.Application.Services;
 /// Ядро учёта. Остаток меняется только проведением документа, напрямую его изменить нельзя.
 /// Документ проводится целиком или не проводится вовсе; уход в минус запрещён.
 /// </summary>
-public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRepository? notes = null) : IStockService
+public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRepository notes) : IStockService
 {
     public const int MaxLines = 500;
 
@@ -666,7 +666,7 @@ public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRe
 
         // Позиции, найденные только по заметке (не по названию и не по артикулу), — с отрывком этой заметки.
         Dictionary<int, ItemNoteHitDto>? hits = null;
-        if (notes is not null && filter.Search is not null)
+        if (filter.Search is not null)
         {
             hits = await CatalogService.NoteHitsAsync(notes,
                 rows.Select(r => (r.ItemId, r.ItemName, r.Sku, (string?)null)), SearchWords.Split(filter.Search), ct);

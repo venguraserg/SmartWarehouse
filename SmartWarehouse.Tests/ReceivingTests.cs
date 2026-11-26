@@ -22,9 +22,16 @@ public class ReceivingTests
         _catalog.Units.Add(new UnitOfMeasure { Id = 2, Code = "м", Name = "метр", IsFractional = true });
         _locations.Warehouses.Add(new Warehouse { Id = 1, Code = "WH1", Name = "Склад" });
         var clock = new FixedTimeProvider(Now);
-        _service = new ReceivingService(new CatalogService(_catalog, clock), new LocationService(_locations),
-            new StockService(_stock, clock), _stock, clock);
+        _service = new ReceivingService(new CatalogService(_catalog, clock, new FakeItemNoteRepository()), new LocationService(_locations),
+            new StockService(_stock, clock, new FakeItemNoteRepository()), _stock, clock,
+            new EmployeeService(_employees), new StubMolService(new MolDto(1, "Кладовщик К.К.")));
     }
+
+    /// <summary>Единственный кладовщик-МОЛ — на него принимаются накладные без «Кому».</summary>
+    private readonly FakeEmployeeRepository _employees = new()
+    {
+        Employees = { new Employee { Id = 1, LastName = "Кладовщик", FirstName = "Константин", MiddleName = "Константинович", IsActive = true } }
+    };
 
     private static InvoiceFile Invoice(params InvoiceLine[] lines) =>
         new("0000016", new DateOnly(2026, 11, 30), "10.6", lines, []);
@@ -156,8 +163,8 @@ public class ReceivingTests
         _stock.Batches.Add(new Batch { Id = 1, ItemId = 7, UnitPrice = 12.5m, MolId = 1, ReceivedAt = Now });
         _stock.Balances.Add(new StockBalance { ItemId = 7, LocationId = 10, BatchId = 1, Quantity = 10 });
         var clock = new FixedTimeProvider(Now);
-        return new ReceivingService(new CatalogService(_catalog, clock), new LocationService(_locations),
-            new StockService(_stock, clock), _stock, clock, new EmployeeService(employees),
+        return new ReceivingService(new CatalogService(_catalog, clock, new FakeItemNoteRepository()), new LocationService(_locations),
+            new StockService(_stock, clock, new FakeItemNoteRepository()), _stock, clock, new EmployeeService(employees),
             new StubMolService(new MolDto(1, "Иванов И. П."), new MolDto(2, "Петров С. В.")));
     }
 
