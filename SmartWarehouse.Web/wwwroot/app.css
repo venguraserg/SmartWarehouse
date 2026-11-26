@@ -816,3 +816,11 @@ tr.row-muted td { color: var(--text-muted); }
 .inv-found { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
 .inv-found-item { width: 100%; display: flex; justify-content: space-between; gap: .5rem; min-height: 44px; padding: .4rem .6rem; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); font: inherit; cursor: pointer; }
 .inv-found-item:hover { border-color: var(--brand-primary); }
+
+/* ===== Настройка меню ===== */
+.menu-matrix th.menu-role { text-align: center; white-space: nowrap; }
+.menu-role-actions { font-weight: 400; font-size: .75rem; }
+.menu-matrix td.menu-cell { text-align: center; }
+.menu-matrix td.menu-cell input { width: 20px; height: 20px; }
+.menu-matrix td.menu-cell input:disabled { opacity: .35; }
+.menu-role-actions .link-button { color: var(--brand-primary); }

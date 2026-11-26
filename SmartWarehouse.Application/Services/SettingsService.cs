@@ -16,6 +16,10 @@ public interface ISettingsService
     Task<ActTemplateDto> GetActTemplateAsync(CancellationToken ct = default);
 
     Task<ActTemplateDto> SaveActTemplateAsync(ActTemplateDto template, string? by, CancellationToken ct = default);
+
+    Task<MenuSettingsDto> GetMenuAsync(CancellationToken ct = default);
+
+    Task<MenuSettingsDto> SaveMenuAsync(MenuSettingsDto settings, string? by, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -26,6 +30,12 @@ public class SettingsService(ISettingsRepository repository, DocumentPrintOption
 {
     public const string LabelsKey = "labels";
     public const string ActTemplateKey = "act-template";
+    public const string MenuKey = "menu";
+
+    /// <summary>Пункты, которые у администратора скрыть нельзя — иначе не вернуть настройку меню.</summary>
+    public static readonly IReadOnlyList<string> AdminRequiredMenu = ["admin-menu", "admin-settings", "admin-users"];
+
+    public static readonly MenuSettingsDto DefaultMenu = new(new Dictionary<string, IReadOnlyList<string>>());
 
     public const int MaxMembers = 10;
     public const int MaxBlankMembers = 10;
@@ -60,6 +70,34 @@ public class SettingsService(ISettingsRepository repository, DocumentPrintOption
         var clean = new LabelSettingsDto(settings.QrContent, LabelService.NormalizeBaseUrl(settings.BaseUrl));
         await WriteAsync(LabelsKey, clean, by, ct);
         return clean;
+    }
+
+    // ---------- Меню ----------
+
+    public async Task<MenuSettingsDto> GetMenuAsync(CancellationToken ct = default) =>
+        await ReadAsync<MenuSettingsDto>(MenuKey, ct) is { Hidden: not null } saved ? saved : DefaultMenu;
+
+    public async Task<MenuSettingsDto> SaveMenuAsync(MenuSettingsDto settings, string? by, CancellationToken ct = default)
+    {
+        var hidden = new Dictionary<string, IReadOnlyList<string>>();
+        foreach (var (role, keys) in settings.Hidden ?? new Dictionary<string, IReadOnlyList<string>>())
+        {
+            // Только известные роли и ключи вида «reconcile», «admin-users».
+            if (!Enum.TryParse<Domain.Enums.UserRole>(role, out var parsed) || parsed == Domain.Enums.UserRole.None
+                || !Enum.IsDefined(parsed))
+                throw new DomainException($"Неизвестная роль «{role}».");
+            var clean = (keys ?? [])
+                .Where(k => !string.IsNullOrWhiteSpace(k) && k.Length <= 40 && k.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'))
+                .Where(k => parsed != Domain.Enums.UserRole.Admin || !AdminRequiredMenu.Contains(k))
+                .Distinct()
+                .Take(100)
+                .ToList();
+            if (clean.Count > 0)
+                hidden[parsed.ToString()] = clean;
+        }
+        var result = new MenuSettingsDto(hidden);
+        await WriteAsync(MenuKey, result, by, ct);
+        return result;
     }
 
     // ---------- Шаблон акта ----------

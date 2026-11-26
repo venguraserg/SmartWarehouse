@@ -42,4 +42,35 @@ public class WebHelpersTests
     [InlineData(25, "позиций")]
     public void Число_и_форма_слова(int n, string expected) =>
         Assert.Equal(expected, Ui.Plural(n, "позиция", "позиции", "позиций"));
+
+    // ---------- Настройка меню ----------
+
+    private static System.Security.Claims.ClaimsPrincipal UserWith(params string[] roles) =>
+        new(new System.Security.Claims.ClaimsIdentity(
+            roles.Select(r => new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r)), "test"));
+
+    private static NavItem Nav(string key) => NavMenu.Items.Single(i => i.Key == key);
+
+    [Fact]
+    public void Меню_скрывает_только_видимость_но_не_даёт_прав()
+    {
+        var settings = new MenuSettingsDto(new Dictionary<string, IReadOnlyList<string>>
+        {
+            [AppRoles.Storekeeper] = ["reconcile", "inventory"],
+            [AppRoles.Employee] = ["equipment"],
+            [AppRoles.Admin] = ["admin-menu"] // нельзя скрыть у администратора
+        });
+        var storekeeper = UserWith(AppRoles.Employee, AppRoles.Storekeeper);
+
+        Assert.False(NavMenu.Visible(settings, Nav("reconcile"), storekeeper));
+        Assert.True(NavMenu.Visible(settings, Nav("receiving"), storekeeper));
+        // Сотруднику скрыто, но кладовщику (вторая роль) — нет: виден.
+        Assert.True(NavMenu.Visible(settings, Nav("equipment"), storekeeper));
+        Assert.False(NavMenu.Visible(settings, Nav("equipment"), UserWith(AppRoles.Employee)));
+        // Механику «Инвентаризация» не видна ни при каких настройках — нет прав.
+        Assert.False(NavMenu.Visible(null, Nav("inventory"), UserWith(AppRoles.Employee)));
+        Assert.True(NavMenu.Visible(settings, Nav("admin-menu"), UserWith(AppRoles.Admin)));
+        // Ключи пунктов уникальны.
+        Assert.Equal(NavMenu.Items.Count, NavMenu.Items.Select(i => i.Key).Distinct().Count());
+    }
 }

@@ -471,6 +471,12 @@ public class ApiClient(HttpClient http, IServiceProvider services)
     public Task<LabelSettingsDto> SaveLabelSettingsAsync(LabelSettingsDto settings, CancellationToken ct = default) =>
         SendAsync<LabelSettingsDto>(HttpMethod.Put, "api/settings/labels", settings, ct);
 
+    public Task<MenuSettingsDto> GetMenuSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<MenuSettingsDto>("api/settings/menu", ct);
+
+    public Task<MenuSettingsDto> SaveMenuSettingsAsync(MenuSettingsDto settings, CancellationToken ct = default) =>
+        SendAsync<MenuSettingsDto>(HttpMethod.Put, "api/settings/menu", settings, ct);
+
     public Task<ActTemplateDto> GetActTemplateAsync(CancellationToken ct = default) =>
         GetAsync<ActTemplateDto>("api/settings/act-template", ct);
 

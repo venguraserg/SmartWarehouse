@@ -20,6 +20,27 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public async Task Меню_скрытые_пункты_по_ролям()
+    {
+        Assert.Empty((await _service.GetMenuAsync()).Hidden);
+
+        var saved = await _service.SaveMenuAsync(new MenuSettingsDto(new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["Storekeeper"] = ["reconcile", "inventory", "reconcile", "Плохой ключ", ""],
+            ["Admin"] = ["admin-menu", "admin-users", "labels"], // нужные администратору — не скрываются
+            ["Employee"] = []
+        }), "Админ");
+
+        Assert.Equal(["reconcile", "inventory"], saved.Hidden["Storekeeper"]);
+        Assert.Equal(["labels"], saved.Hidden["Admin"]);
+        Assert.False(saved.Hidden.ContainsKey("Employee"));
+        Assert.Equal(["reconcile", "inventory"], (await _service.GetMenuAsync()).Hidden["Storekeeper"]);
+
+        await Assert.ThrowsAsync<DomainException>(() => _service.SaveMenuAsync(new MenuSettingsDto(
+            new Dictionary<string, IReadOnlyList<string>> { ["Boss"] = ["stock"] }), "Админ"));
+    }
+
+    [Fact]
     public async Task По_умолчанию_код_в_QR_и_стандартный_акт()
     {
         Assert.Equal(new LabelSettingsDto(QrContent.Code, null), await _service.GetLabelSettingsAsync());

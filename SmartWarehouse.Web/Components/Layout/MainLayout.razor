@@ -25,72 +25,25 @@
         <nav class="nav" @onclick="() => menuOpen = false">
             <AuthorizeView>
                 <Authorized>
-                    <NavLink href="/scan" class="nav-scan"><Icon Name="scan" Size="18" /> Сканировать</NavLink>
-                    <NavLink href="/" Match="NavLinkMatch.All"><Icon Name="home" Size="18" /> Обзор</NavLink>
-
-                    <div class="nav-group">Учёт</div>
-                    <NavLink href="/stock"><Icon Name="box" Size="18" /> Остатки</NavLink>
-                    <NavLink href="/requests">
-                        <Icon Name="inbox" Size="18" /> Запросы на выдачу
-                        @if (openRequests > 0)
-                        {
-                            <span class="nav-badge" title="Ждут выдачи">@openRequests</span>
-                        }
-                    </NavLink>
-                    <NavLink href="/custody"><Icon Name="custody" Size="18" /> Подотчёт</NavLink>
-                    <NavLink href="/reports">
-                        <Icon Name="report" Size="18" /> Отчёты об использовании
-                        @if (reportsToConfirm > 0)
-                        {
-                            <span class="nav-badge" title="Ждут подтверждения кладовщиком">@reportsToConfirm</span>
-                        }
-                    </NavLink>
-                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="summary">
-                        <NavLink href="/summary-acts"><Icon Name="summary" Size="18" /> Сводные акты</NavLink>
-                    </AuthorizeView>
-                    @* Прежние акты по подотчёту 1С больше не оформляются — пункт виден, только пока есть что утвердить. *@
-                    @if (actsToApprove > 0)
+                    @{ var group = (string?)null; }
+                    @foreach (var item in NavMenu.Items.Where(i => Show(i, context.User)))
                     {
-                        <NavLink href="/acts">
-                            <Icon Name="act" Size="18" /> Акты на списание
-                            <span class="nav-badge" title="Ждут вашего утверждения">@actsToApprove</span>
+                        if (item.Group != group)
+                        {
+                            group = item.Group;
+                            if (group.Length > 0)
+                            {
+                                <div class="nav-group">@group</div>
+                            }
+                        }
+                        <NavLink href="@item.Href" class="@(item.Key == "scan" ? "nav-scan" : null)" Match="@(item.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                            <Icon Name="@item.Icon" Size="18" /> @item.Title
+                            @if (Badge(item.Key) is { } badge && badge.Count > 0)
+                            {
+                                <span class="nav-badge" title="@badge.Title">@badge.Count</span>
+                            }
                         </NavLink>
                     }
-                    <NavLink href="/documents"><Icon Name="docs" Size="18" /> Документы</NavLink>
-                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/receiving"><Icon Name="receive" Size="18" /> Приёмка по накладной</NavLink>
-                        <NavLink href="/documents/new/Receipt"><Icon Name="plus" Size="18" /> Приход вручную</NavLink>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="@AppRoles.Issuing" Context="issuing">
-                        <NavLink href="/documents/new/Issue"><Icon Name="issue" Size="18" /> Выдача сотруднику</NavLink>
-                        <NavLink href="/documents/new/Return"><Icon Name="return" Size="18" /> Возврат</NavLink>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/documents/new/Transfer"><Icon Name="transfer" Size="18" /> Перемещение</NavLink>
-                    </AuthorizeView>
-
-                    <div class="nav-group">Данные</div>
-                    <NavLink href="/items"><Icon Name="tag" Size="18" /> Номенклатура</NavLink>
-                    <NavLink href="/equipment"><Icon Name="equipment" Size="18" /> Оборудование</NavLink>
-                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/warehouses"><Icon Name="shelves" Size="18" /> Склады и места</NavLink>
-                        <NavLink href="/inventory"><Icon Name="check" Size="18" /> Инвентаризация</NavLink>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="@($"{AppRoles.Admin},{AppRoles.Storekeeper},{AppRoles.Manager}")" Context="staff">
-                        <NavLink href="/employees"><Icon Name="users" Size="18" /> Сотрудники</NavLink>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="@AppRoles.Warehouse" Context="warehouse">
-                        <NavLink href="/references"><Icon Name="book" Size="18" /> Справочники</NavLink>
-                        <NavLink href="/labels"><Icon Name="qr" Size="18" /> Наклейки QR</NavLink>
-                        <NavLink href="/reconcile"><Icon Name="sync" Size="18" /> Сверка с 1С</NavLink>
-                    </AuthorizeView>
-
-                    <AuthorizeView Roles="@AppRoles.Admin" Context="admin">
-                        <div class="nav-group">Администрирование</div>
-                        <NavLink href="/admin/users"><Icon Name="user" Size="18" /> Пользователи</NavLink>
-                        <NavLink href="/admin/import"><Icon Name="upload" Size="18" /> Импорт остатков</NavLink>
-                        <NavLink href="/admin/settings"><Icon Name="settings" Size="18" /> Настройки</NavLink>
-                    </AuthorizeView>
 
                     <div class="nav-user">
                         <div class="nav-user-name">@context.User.DisplayNameOf()</div>
@@ -181,6 +134,25 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
+    [Inject] private MenuState Menu { get; set; } = null!;
+
+    /// <summary>
+    /// Пункт меню показывается, если хотя бы одна роль пользователя даёт к нему доступ и администратор не скрыл его.
+    /// «Акты на списание» (прежние, по подотчёту 1С) — только пока есть что утвердить.
+    /// </summary>
+    private bool Show(NavItem item, System.Security.Claims.ClaimsPrincipal user) =>
+        (item.Key != "acts" || actsToApprove > 0) && NavMenu.Visible(Menu.Current, item, user);
+
+    private (int Count, string Title)? Badge(string key) => key switch
+    {
+        "requests" => (openRequests, "Ждут выдачи"),
+        "reports" => (reportsToConfirm, "Ждут подтверждения кладовщиком"),
+        "acts" => (actsToApprove, "Ждут вашего утверждения"),
+        _ => null
+    };
+
+    private void OnMenuChanged() => _ = InvokeAsync(StateHasChanged);
+
     private bool menuOpen;
 
     /// <summary>Сайт открыт в приложении «Склад» для Android (там есть сканирование камерой и сканер ТСД).</summary>
@@ -261,8 +233,12 @@
         }
     }
 
+    private bool menuSubscribed;
+
     public async ValueTask DisposeAsync()
     {
+        if (menuSubscribed)
+            Menu.Changed -= OnMenuChanged;
         toastTimer?.Cancel();
         try
         {
@@ -293,6 +269,24 @@
         {
             Nav.NavigateTo("/account/password", forceLoad: true);
             return;
+        }
+
+        // Настройка меню — одна на сервер; первый вошедший загружает, дальше обновляет администратор.
+        if (!menuSubscribed)
+        {
+            Menu.Changed += OnMenuChanged;
+            menuSubscribed = true;
+        }
+        if (Menu.Current is null)
+        {
+            try
+            {
+                Menu.Set(await Api.GetMenuSettingsAsync());
+            }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException)
+            {
+                // без настройки — меню по умолчанию
+            }
         }
 
         // Значки «ждут утверждения / подтверждения» обновляются при каждом переходе по страницам.

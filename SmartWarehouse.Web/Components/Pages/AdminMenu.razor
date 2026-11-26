@@ -1,0 +1,155 @@
+@page "/admin/menu"
+@attribute [Authorize(Roles = AppRoles.Admin)]
+@inject ApiClient Api
+@inject MenuState Menu
+
+@* Настройка бокового меню: какие пункты показывать каждой роли. Права доступа не меняются. *@
+
+<PageTitle>Меню — Склад ОЭТО</PageTitle>
+
+<h1>Меню</h1>
+<p class="muted" style="margin-top: -.5rem; max-width: 760px">
+    Отметьте, какие пункты бокового меню показывать каждой роли — например, открывать кладовщику новые разделы постепенно.
+    Это только видимость: права не меняются. Серая галочка — у роли нет доступа к разделу.
+    Если у человека несколько ролей, пункт виден, когда его показывает хотя бы одна из них.
+    Нижняя панель на телефоне не настраивается.
+</p>
+
+<Alert Error="@error" />
+@if (saved)
+{
+    <div class="alert alert-success" role="status">Сохранено — меню обновится у всех сразу.</div>
+}
+
+@if (hidden is null)
+{
+    @if (error is null)
+    {
+        <p class="loading">Загрузка…</p>
+    }
+}
+else
+{
+    <div class="table-wrap">
+        <table class="menu-matrix">
+            <thead>
+                <tr>
+                    <th>Пункт меню</th>
+                    @foreach (var (role, title) in NavMenu.Roles)
+                    {
+                        <th class="menu-role">
+                            @title
+                            <div class="menu-role-actions">
+                                <button type="button" class="link-button" @onclick="() => SetAll(role, true)">все</button> ·
+                                <button type="button" class="link-button" @onclick="() => SetAll(role, false)">ничего</button>
+                            </div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in NavMenu.Items.GroupBy(i => i.Group))
+                {
+                    @if (group.Key.Length > 0)
+                    {
+                        <tr class="group-row"><td colspan="@(NavMenu.Roles.Count + 1)">@group.Key</td></tr>
+                    }
+                    @foreach (var item in group)
+                    {
+                        <tr>
+                            <td><Icon Name="@item.Icon" Size="16" /> @item.Title</td>
+                            @foreach (var (role, title) in NavMenu.Roles)
+                            {
+                                var allowed = NavMenu.Allowed(item, role);
+                                var required = NavMenu.Required(item, role);
+                                <td class="menu-cell">
+                                    <input type="checkbox"
+                                           aria-label="@($"{item.Title} — {title}")"
+                                           title="@(!allowed ? "У роли нет доступа к этому разделу" : required ? "Администратору нужен всегда" : null)"
+                                           checked="@(allowed && !IsHidden(role, item.Key))"
+                                           disabled="@(!allowed || required)"
+                                           @onchange="e => Toggle(role, item.Key, e.Value is true)" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="actions" style="margin-top: 1rem">
+        <button class="btn btn-primary" type="button" disabled="@busy" @onclick="SaveAsync">Сохранить</button>
+        <button class="btn" type="button" disabled="@busy" @onclick="Reset">Показывать всё (по умолчанию)</button>
+    </div>
+}
+
+@code {
+    /// <summary>Роль → скрытые ключи (редактируемая копия).</summary>
+    private Dictionary<string, HashSet<string>>? hidden;
+    private string? error;
+    private bool busy;
+    private bool saved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var settings = await Api.GetMenuSettingsAsync();
+            hidden = (settings.Hidden ?? new Dictionary<string, IReadOnlyList<string>>())
+                .ToDictionary(x => x.Key, x => x.Value.ToHashSet());
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private bool IsHidden(string role, string key) => hidden!.TryGetValue(role, out var keys) && keys.Contains(key);
+
+    private void Toggle(string role, string key, bool show)
+    {
+        saved = false;
+        if (!hidden!.TryGetValue(role, out var keys))
+            hidden[role] = keys = [];
+        if (show)
+            keys.Remove(key);
+        else
+            keys.Add(key);
+    }
+
+    private void SetAll(string role, bool show)
+    {
+        foreach (var item in NavMenu.Items.Where(i => NavMenu.Allowed(i, role) && !NavMenu.Required(i, role)))
+            Toggle(role, item.Key, show);
+    }
+
+    private void Reset()
+    {
+        hidden = [];
+        saved = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var request = new MenuSettingsDto(hidden!.Where(x => x.Value.Count > 0)
+                .ToDictionary(x => x.Key, x => (IReadOnlyList<string>)x.Value.ToList()));
+            var result = await Api.SaveMenuSettingsAsync(request);
+            Menu.Set(result);
+            hidden = result.Hidden.ToDictionary(x => x.Key, x => x.Value.ToHashSet());
+            saved = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

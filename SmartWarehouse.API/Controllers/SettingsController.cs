@@ -33,6 +33,16 @@ public class SettingsController(ISettingsService settings) : ControllerBase
     public Task<ActTemplateDto> SaveActTemplate(ActTemplateDto request, CancellationToken ct) =>
         settings.SaveActTemplateAsync(request, By(), ct);
 
+    /// <summary>Что скрыто в боковом меню для ролей — нужно каждому вошедшему, чтобы построить меню.</summary>
+    [HttpGet("menu")]
+    [Authorize]
+    public Task<MenuSettingsDto> GetMenu(CancellationToken ct) => settings.GetMenuAsync(ct);
+
+    [HttpPut("menu")]
+    [Authorize(Roles = Roles.Admin)]
+    public Task<MenuSettingsDto> SaveMenu(MenuSettingsDto request, CancellationToken ct) =>
+        settings.SaveMenuAsync(request, By(), ct);
+
     /// <summary>МОЛ склада — кладовщики: для фильтров и выбора.</summary>
     [HttpGet("mols")]
     [Authorize]
