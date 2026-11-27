@@ -6,6 +6,9 @@ namespace SmartWarehouse.Application.Interfaces;
 /// <summary>Позиция номенклатуры с суммарным остатком по всем местам.</summary>
 public record ItemStock(Item Item, decimal Total);
 
+/// <summary>Место с остатком и дата его последней проверки (null — не проверялось никогда).</summary>
+public record StalePlace(int LocationId, string FullCode, DateTimeOffset? CheckedAt, int Items);
+
 /// <summary>Партия и сколько её в выбранном месте / у сотрудника / всего.</summary>
 public record BatchStock(Batch Batch, decimal Quantity, string? DocumentNumber);
 
@@ -141,6 +144,9 @@ public interface IStockRepository
 
     /// <summary>Позиций и мест с остатком; сотрудников и позиций в подотчёте.</summary>
     Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default);
+
+    /// <summary>Места с положительным остатком, проверенные раньше <paramref name="before"/> или ни разу: всего и первые <paramref name="take"/>.</summary>
+    Task<(int Total, IReadOnlyList<StalePlace> Places)> GetStalePlacesAsync(DateTimeOffset before, int take, CancellationToken ct = default);
 
     /// <summary>Сохраняет все изменения одной транзакцией.</summary>
     Task SaveChangesAsync(CancellationToken ct = default);

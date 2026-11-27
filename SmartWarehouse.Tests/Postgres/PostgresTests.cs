@@ -56,7 +56,7 @@ public class PostgresTests(PostgresFixture pg) : IClassFixture<PostgresFixture>
     private StockService Stock(WarehouseDbContext db) => new(new StockRepository(db), new FixedTimeProvider(Now), new ItemNoteRepository(db));
 
     private InventoryService Inventory(WarehouseDbContext db) =>
-        new(new InventoryRepository(db), new LocationRepository(db), new StockRepository(db), Stock(db), new FixedTimeProvider(Now));
+        new(new InventoryRepository(db), new LocationRepository(db), Stock(db), new FixedTimeProvider(Now));
 
     private async Task ReceiveAsync(int item, decimal qty, int location, decimal price = 10)
     {
@@ -122,6 +122,33 @@ public class PostgresTests(PostgresFixture pg) : IClassFixture<PostgresFixture>
         Assert.Equal([r.Bearing], found.Rows.Select(x => x.ItemId));
         Assert.Contains("FAG", found.NoteHits![r.Bearing].Snippet);
         Assert.Single((await stock.SearchStockAsync(new StockQuery(WarehouseId: r.WarehouseId, Search: "spz ремень"))).Rows);
+    }
+
+    [PostgresFact]
+    public async Task Давно_не_проверенные_места_считаются_в_базе()
+    {
+        var r = await SeedAsync();
+        await ReceiveAsync(r.Bearing, 5, r.Cell1);
+        await ReceiveAsync(r.Belt, 2, r.Cell2);
+        await using (var db = pg.CreateContext())
+        {
+            (await db.Locations.FindAsync(r.Cell1))!.CheckedAt = Now.AddDays(-5);   // свежая проверка
+            await db.SaveChangesAsync();
+        }
+
+        await using var ctx = pg.CreateContext();
+        var stock = new StockService(new StockRepository(ctx), new FixedTimeProvider(Now), new ItemNoteRepository(ctx));
+        var stale = await stock.GetStalePlacesAsync(90, 50);
+
+        Assert.DoesNotContain(stale.Places, p => p.LocationId == r.Cell1);
+        var second = Assert.Single(stale.Places, p => p.LocationId == r.Cell2);
+        Assert.Null(second.CheckedAt);
+        Assert.Equal(1, second.Items);
+        Assert.True(stale.Total >= 1);
+        // Не проверенные ни разу идут раньше проверенных давно.
+        var firstChecked = stale.Places.ToList().FindIndex(p => p.CheckedAt is not null);
+        if (firstChecked >= 0)
+            Assert.All(stale.Places.Take(firstChecked), p => Assert.Null(p.CheckedAt));
     }
 
     [PostgresFact]

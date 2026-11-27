@@ -603,6 +603,19 @@ html[data-theme="sage"] {
 .qa-main { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
 .qa-main:hover { background: var(--brand-hover); color: #fff; }
 
+/* Обзор: «Что ждёт меня», «Выдано мне», «Давно не проверялись» — строки-ссылки со счётчиком */
+.todo { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.todo-row { display: flex; align-items: center; gap: .75rem; min-height: 52px; padding: .55rem .9rem; color: var(--text); }
+.todo-row + .todo-row { border-top: 1px solid var(--border); }
+.todo-row:hover { background: var(--btn-hover); color: var(--text); text-decoration: none; }
+.todo-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .1rem; font-weight: 500; overflow-wrap: anywhere; }
+.todo-sub { font-size: .8125rem; font-weight: 400; color: var(--text-muted); }
+.todo-count { min-width: 2rem; padding: .1rem .55rem; border-radius: 999px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--warn-weak); color: var(--warn-text); }
+.todo-qty { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+h2 .more { margin-left: .5rem; font-size: .875rem; font-weight: 400; }
+.kpis-home { margin-top: 1rem; }
+.kpis-home:empty { display: none; }
+
 /* ===== Карточки вместо таблиц на телефоне и ТСД ===== */
 .cards { display: flex; flex-direction: column; gap: .5rem; }
 /* Только для телефона: на широком экране скрыто. Правило ниже .cards и сильнее его — иначе карточки видны везде. */

@@ -48,7 +48,7 @@ public class InventoryTests
         var clock = new FixedTimeProvider(Now);
         _stockService = new StockService(_stock, clock, new FakeItemNoteRepository());
         _repo = new FakeInventoryRepository(_stock);
-        _service = new InventoryService(_repo, _locations, _stock, _stockService, clock);
+        _service = new InventoryService(_repo, _locations, _stockService, clock);
     }
 
     private Task ReceiveAsync(int item, decimal qty, int location, decimal price = 10) =>

@@ -703,6 +703,14 @@ public class StockService(IStockRepository repo, TimeProvider clock, IItemNoteRe
             custodyEmployees, custodyItems);
     }
 
+    public async Task<StalePlacesDto> GetStalePlacesAsync(int days = IStockService.StaleDays, int take = 5, CancellationToken ct = default)
+    {
+        days = Math.Clamp(days, 1, 3650);
+        take = Math.Clamp(take, 1, 50);
+        var (total, places) = await repo.GetStalePlacesAsync(clock.GetUtcNow().AddDays(-days), take, ct);
+        return new StalePlacesDto(total, places.Select(p => new StalePlaceDto(p.LocationId, p.FullCode, p.CheckedAt, p.Items)).ToList());
+    }
+
     /// <summary>МОЛ — только кладовщик склада (сотрудник с учётной записью и ролью «Кладовщик»).</summary>
     private async Task EnsureMolAsync(int employeeId, IReadOnlyList<int> storekeepers, CancellationToken ct)
     {

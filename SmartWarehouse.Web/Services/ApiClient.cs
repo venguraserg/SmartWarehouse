@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using SmartWarehouse.Application.DTOs;
+using SmartWarehouse.Application.Interfaces;
 using SmartWarehouse.Domain.Enums;
 
 namespace SmartWarehouse.Web.Services;
@@ -578,6 +579,9 @@ public class ApiClient(HttpClient http, IServiceProvider services)
 
         return GetAsync<StockSearchResult>(parts.Count == 0 ? "api/stock" : $"api/stock?{string.Join('&', parts)}", ct);
     }
+
+    public Task<StalePlacesDto> GetStalePlacesAsync(int days = IStockService.StaleDays, int take = 5, CancellationToken ct = default) =>
+        GetAsync<StalePlacesDto>($"api/stock/stale-places?days={days}&take={take}", ct);
 
     public Task<List<LowStockItemDto>> GetBelowMinimumAsync(CancellationToken ct = default) =>
         GetAsync<List<LowStockItemDto>>("api/stock/below-minimum", ct);

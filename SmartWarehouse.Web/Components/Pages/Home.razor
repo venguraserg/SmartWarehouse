@@ -22,84 +22,25 @@
 }
 else
 {
-    @* ---------- Показатели: каждая плашка ведёт в нужный список ---------- *@
-    <div class="kpis">
-        @if (warehouse && summary is not null)
-        {
-            <a class="kpi" href="/stock">
-                <span class="kpi-label"><Icon Name="box" Size="16" /> Позиций на складе</span>
-                <span class="kpi-value">@summary.ItemsInStock.ToString("N0")</span>
-                <span class="kpi-note">в @summary.LocationsUsed.ToString("N0") местах</span>
-            </a>
-            <a class="kpi @(summary.BelowMinimum > 0 ? "kpi-warn" : null)" href="/stock?low=true">
-                <span class="kpi-label"><Icon Name="alert" Size="16" /> Ниже минимума</span>
-                <span class="kpi-value">@summary.BelowMinimum</span>
-                <span class="kpi-note">пора пополнить</span>
-            </a>
-            <a class="kpi @(summary.OutOfStock > 0 ? "kpi-danger" : null)" href="#low">
-                <span class="kpi-label"><Icon Name="empty" Size="16" /> Нет в наличии</span>
-                <span class="kpi-value">@summary.OutOfStock</span>
-                <span class="kpi-note">с заданным минимумом</span>
-            </a>
-            <a class="kpi" href="/custody">
-                <span class="kpi-label"><Icon Name="custody" Size="16" /> Выдано в работу</span>
-                <span class="kpi-value">@summary.CustodyItems.ToString("N0")</span>
-                <span class="kpi-note">у @summary.CustodyEmployees сотрудников</span>
-            </a>
-        }
-        else
-        {
-            <a class="kpi" href="/custody">
-                <span class="kpi-label"><Icon Name="custody" Size="16" /> Выдано мне</span>
-                <span class="kpi-value">@myCustody</span>
-                <span class="kpi-note">позиций за мной</span>
-            </a>
-            <a class="kpi @(myOverdue > 0 ? "kpi-warn" : null)" href="/custody">
-                <span class="kpi-label"><Icon Name="clock" Size="16" /> Без отчёта</span>
-                <span class="kpi-value">@myOverdue</span>
-                <span class="kpi-note">в работе дольше @Options.WorkReportDays дн.</span>
-            </a>
-            <a class="kpi" href="/requests">
-                <span class="kpi-label"><Icon Name="request" Size="16" /> Мои запросы</span>
-                <span class="kpi-value">@myOpenRequests</span>
-                <span class="kpi-note">ждут выдачи</span>
-            </a>
-        }
-
-        @* То, что ждёт этого пользователя — только когда есть *@
-        @if (openRequests > 0)
-        {
-            <a class="kpi kpi-warn" href="/requests">
-                <span class="kpi-label"><Icon Name="inbox" Size="16" /> Запросы на выдачу</span>
-                <span class="kpi-value">@openRequests</span>
-                <span class="kpi-note">ждут сборки</span>
-            </a>
-        }
-        @if (toPlace > 0)
-        {
-            <a class="kpi kpi-warn" href="/receiving">
-                <span class="kpi-label"><Icon Name="receive" Size="16" /> В приёмке</span>
-                <span class="kpi-value">@toPlace</span>
-                <span class="kpi-note">партий ждут размещения</span>
-            </a>
-        }
-        @if (reportsToConfirm > 0)
-        {
-            <a class="kpi kpi-warn" href="/reports?scope=approve">
-                <span class="kpi-label"><Icon Name="report" Size="16" /> Отчёты</span>
-                <span class="kpi-value">@reportsToConfirm</span>
-                <span class="kpi-note">ждут подтверждения</span>
-            </a>
-        }
-        @if (actsToApprove > 0)
-        {
-            <a class="kpi kpi-warn" href="/acts?scope=approve">
-                <span class="kpi-label"><Icon Name="act" Size="16" /> Акты</span>
-                <span class="kpi-value">@actsToApprove</span>
-                <span class="kpi-note">ждут вашего утверждения</span>
-            </a>
-        }
-    </div>
+    @* ---------- Что ждёт именно этого пользователя (только то, что не ноль) ---------- *@
+    @if (todo.Count > 0)
+    {
+        <h2>Что ждёт меня</h2>
+        <div class="todo">
+            @foreach (var t in todo)
+            {
+                <a class="todo-row" href="@t.Href">
+                    <Icon Name="@t.Icon" Size="20" />
+                    <span class="todo-text">@t.Title</span>
+                    <span class="todo-count">@t.Count</span>
+                </a>
+            }
+        </div>
+    }
+    else if (warehouse)
+    {
+        <div class="panel empty">Всё разобрано: запросов, приёмки и актов на утверждение нет.</div>
+    }
 
     @* ---------- Быстрые действия по роли ---------- *@
     <h2>Быстрые действия</h2>
@@ -116,6 +57,7 @@ else
             <a class="qa qa-main" href="/receiving"><Icon Name="receive" Size="22" /><span>Приёмка по накладной</span></a>
             <a class="qa" href="/documents/new/Receipt"><Icon Name="plus" Size="22" /><span>Приход вручную</span></a>
             <a class="qa" href="/documents/new/Transfer"><Icon Name="transfer" Size="22" /><span>Перемещение</span></a>
+            <a class="qa" href="/inventory"><Icon Name="check" Size="22" /><span>Инвентаризация</span></a>
             <a class="qa" href="/summary-acts/new"><Icon Name="act" Size="22" /><span>Сводный акт</span></a>
             <a class="qa" href="/documents/new/Adjustment"><Icon Name="adjust" Size="22" /><span>Корректировка</span></a>
         }
@@ -127,9 +69,96 @@ else
         }
     </div>
 
+    @* ---------- Показатели: только непустые, каждая плашка ведёт в нужный список ---------- *@
+    <div class="kpis kpis-home">
+        @if (warehouse && summary is not null)
+        {
+            <a class="kpi" href="/stock">
+                <span class="kpi-label"><Icon Name="box" Size="16" /> Позиций на складе</span>
+                <span class="kpi-value">@summary.ItemsInStock.ToString("N0")</span>
+                <span class="kpi-note">в @summary.LocationsUsed.ToString("N0") местах</span>
+            </a>
+            @if (summary.BelowMinimum > 0)
+            {
+                <a class="kpi kpi-warn" href="/stock?low=true">
+                    <span class="kpi-label"><Icon Name="alert" Size="16" /> Ниже минимума</span>
+                    <span class="kpi-value">@summary.BelowMinimum</span>
+                    <span class="kpi-note">пора пополнить</span>
+                </a>
+            }
+            @if (summary.OutOfStock > 0)
+            {
+                <a class="kpi kpi-danger" href="#low">
+                    <span class="kpi-label"><Icon Name="empty" Size="16" /> Нет в наличии</span>
+                    <span class="kpi-value">@summary.OutOfStock</span>
+                    <span class="kpi-note">с заданным минимумом</span>
+                </a>
+            }
+            @if (summary.CustodyItems > 0)
+            {
+                <a class="kpi" href="/custody">
+                    <span class="kpi-label"><Icon Name="custody" Size="16" /> Выдано в работу</span>
+                    <span class="kpi-value">@summary.CustodyItems.ToString("N0")</span>
+                    <span class="kpi-note">у @summary.CustodyEmployees сотрудников</span>
+                </a>
+            }
+        }
+        else if (myOverdue > 0)
+        {
+            <a class="kpi kpi-warn" href="/custody">
+                <span class="kpi-label"><Icon Name="clock" Size="16" /> Без отчёта</span>
+                <span class="kpi-value">@myOverdue</span>
+                <span class="kpi-note">в работе дольше @Options.WorkReportDays дн.</span>
+            </a>
+        }
+    </div>
+
+    @* ---------- Сотрудник: мои запросы и выданное мне ---------- *@
+    @if (!warehouse)
+    {
+        <h2>Мои запросы</h2>
+        @if (myRequests.Count == 0)
+        {
+            <div class="panel empty">Открытых запросов нет. <a href="/requests/new">Запросить со склада</a></div>
+        }
+        else
+        {
+            <div class="todo">
+                @foreach (var r in myRequests)
+                {
+                    <a class="todo-row" href="/requests">
+                        <Icon Name="request" Size="20" />
+                        <span class="todo-text">№ @r.Number · @r.LineCount @Ui.Plural(r.LineCount, "позиция", "позиции", "позиций")<span class="todo-sub">от @Ui.Day(r.CreatedAt)</span></span>
+                        <span class="tag @Ui.RequestStateClass(r.Status)">@Ui.RequestState(r.Status)</span>
+                    </a>
+                }
+            </div>
+        }
+
+        <h2>Выдано мне @if (myCustody > 0) { <a class="more" href="/custody">все @myCustody ›</a> }</h2>
+        @if (myCustodyRecent.Count == 0)
+        {
+            <div class="panel empty">За вами ничего не числится.</div>
+        }
+        else
+        {
+            <div class="todo">
+                @foreach (var r in myCustodyRecent)
+                {
+                    <a class="todo-row" href="/items/@r.ItemId">
+                        <Icon Name="custody" Size="20" />
+                        <span class="todo-text">@r.ItemName<span class="todo-sub mono">@r.Sku</span></span>
+                        <span class="todo-qty">@Ui.Qty(r.Quantity) @r.UnitCode</span>
+                        <span class="todo-sub"><CustodyAge Since="r.HeldSince" Kind="r.Kind" Unreported="r.Quantity - r.Reserved" /></span>
+                    </a>
+                }
+            </div>
+        }
+    }
+
     @if (warehouse || manager)
     {
-        <h2 id="low">Ниже минимального остатка</h2>
+        <h2 id="low">Ниже минимального остатка @if (lowStock.Count > LowShown) { <a class="more" href="/stock?low=true">все @lowStock.Count ›</a> }</h2>
         @if (lowStock.Count == 0)
         {
             <div class="panel empty">Все позиции в норме.</div>
@@ -148,7 +177,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in lowStock)
+                        @foreach (var row in lowStock.Take(LowShown))
                         {
                             <tr>
                                 <td class="mono"><a href="/items/@row.ItemId">@row.Sku</a></td>
@@ -168,7 +197,7 @@ else
                 </table>
             </div>
             <div class="cards only-phone">
-                @foreach (var row in lowStock)
+                @foreach (var row in lowStock.Take(LowShown))
                 {
                     <a class="card" href="/items/@row.ItemId">
                         <span class="card-top">
@@ -185,11 +214,30 @@ else
         }
     }
 
+    @if (warehouse && stale is { Total: > 0 })
+    {
+        <h2>Давно не проверялись <a class="more" href="/inventory">@stale.Total @Ui.Plural(stale.Total, "место", "места", "мест") ›</a></h2>
+        <div class="todo">
+            @foreach (var p in stale.Places)
+            {
+                var address = places?.AddressOf(p.LocationId, p.FullCode);
+                <a class="todo-row" href="/l/@Uri.EscapeDataString(p.FullCode)">
+                    <Icon Name="check" Size="20" />
+                    <span class="todo-text">@(address?.Full ?? p.FullCode)<span class="todo-sub">@p.Items @Ui.Plural(p.Items, "позиция", "позиции", "позиций") · @StaleText(p)</span></span>
+                </a>
+            }
+        </div>
+    }
+
     <h2>@recentTitle</h2>
     <DocumentTable Documents="recent.Take(10).ToList()" />
 }
 
 @code {
+    private const int LowShown = 8;
+
+    private sealed record TodoRow(string Icon, string Title, string Href, int Count);
+
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool loaded;
@@ -199,21 +247,25 @@ else
 
     private StockSummaryDto? summary;
     private List<LowStockItemDto> lowStock = [];
+    private StalePlacesDto? stale;
+    private PlaceTree? places;
     private List<DocumentSummaryDto> recent = [];
-    private int actsToApprove;
-    private int reportsToConfirm;
-    private int toPlace;
-    private int openRequests;
+    private readonly List<TodoRow> todo = [];
 
     // Для сотрудника — своё
     private int myCustody;
     private int myOverdue;
-    private int myOpenRequests;
+    private List<IssueRequestSummaryDto> myRequests = [];
+    private List<CustodyRowDto> myCustodyRecent = [];
 
     private string? error;
 
     /// <summary>Документы видны по роли: склад — все, руководитель — свои и подчинённых, остальные — свои.</summary>
     private string recentTitle = "Последние документы";
+
+    private string StaleText(StalePlaceDto p) => p.CheckedAt is { } at
+        ? $"{(int)(DateTimeOffset.Now - at).TotalDays} дн. назад"
+        : "не проверялось";
 
     protected override async Task OnInitializedAsync()
     {
@@ -234,12 +286,13 @@ else
         {
             // Счётчик «на утверждении» общий: для кладовщика в нём и отчёты, ждущие подтверждения.
             var toDecide = await Api.GetActsToApproveCountAsync();
-            reportsToConfirm = warehouse && toDecide > 0
+            var reportsToConfirm = warehouse && toDecide > 0
                 ? (await Api.GetActsAsync(ActScope.ToApprove, kind: ActKind.UsageReport)).Count
                 : 0;
-            actsToApprove = toDecide - reportsToConfirm;
+            var actsToApprove = toDecide - reportsToConfirm;
             recent = await Api.GetDocumentsAsync(take: 10);
-            openRequests = await Api.GetOpenIssueRequestCountAsync();   // 0 для тех, кто не выдаёт
+            var openRequests = await Api.GetOpenIssueRequestCountAsync();   // 0 для тех, кто не выдаёт
+            var toPlace = 0;
 
             if (warehouse || manager)
                 lowStock = await Api.GetBelowMinimumAsync();
@@ -247,8 +300,10 @@ else
             if (warehouse)
             {
                 summary = await Api.GetStockSummaryAsync();
-                var pending = await Api.GetPendingPlacementAsync();
-                toPlace = pending.Count;
+                toPlace = (await Api.GetPendingPlacementAsync()).Count;
+                stale = await Api.GetStalePlacesAsync();
+                if (stale.Places.Count > 0)
+                    places = await Api.GetPlacesAsync();
             }
             else if (me is int employeeId)
             {
@@ -256,9 +311,19 @@ else
                 myCustody = custody.Count;
                 myOverdue = custody.Count(r => r.Kind == CustodyKind.Work && r.Quantity - r.Reserved > 0
                     && r.HeldSince is { } since && (DateTimeOffset.Now - since).TotalDays >= Options.WorkReportDays);
-                myOpenRequests = (await Api.GetIssueRequestsAsync(IssueRequestStatus.Open))
-                    .Count(r => r.EmployeeId == employeeId);
+                myCustodyRecent = custody.OrderByDescending(r => r.HeldSince ?? DateTimeOffset.MinValue).Take(5).ToList();
+                myRequests = (await Api.GetIssueRequestsAsync(IssueRequestStatus.Open))
+                    .Where(r => r.EmployeeId == employeeId).OrderByDescending(r => r.CreatedAt).Take(5).ToList();
             }
+
+            if (openRequests > 0)
+                todo.Add(new("inbox", "Запросы на выдачу", "/requests", openRequests));
+            if (toPlace > 0)
+                todo.Add(new("receive", "К размещению (приёмка)", "/receiving", toPlace));
+            if (reportsToConfirm > 0)
+                todo.Add(new("report", "Отчёты ждут подтверждения", "/reports?scope=approve", reportsToConfirm));
+            if (actsToApprove > 0)
+                todo.Add(new("act", "Акты ждут вашего утверждения", "/acts?scope=approve", actsToApprove));
             loaded = true;
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)

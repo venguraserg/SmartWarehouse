@@ -147,5 +147,15 @@ var inventoryId = await In(async sp =>
 });
 ids["inventory"] = inventoryId;
 
+// Открытый запрос сотрудника — для главной под ролью «Сотрудник».
+await In(async sp =>
+{
+    var requests = sp.GetRequiredService<IIssueRequestService>();
+    var actor = new IssueRequestActor(ids["mechanic"], "Иванов П.А.", false, null);
+    await requests.CreateAsync(new CreateIssueRequestRequest(null, "Для ремонта насоса",
+        [new IssueRequestLineRequest(ids["b6304"], 2), new IssueRequestLineRequest(ids["cuff"], 4)]), actor);
+    return 0;
+});
+
 await File.WriteAllTextAsync(output, JsonSerializer.Serialize(ids));
 Console.WriteLine($"Демо-данные готовы: {output}");
