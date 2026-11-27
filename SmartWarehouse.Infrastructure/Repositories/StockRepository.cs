@@ -380,5 +380,23 @@ public class StockRepository(WarehouseDbContext db) : IStockRepository
             await custody.Select(b => new { b.EmployeeId, b.ItemId }).Distinct().CountAsync(ct));
     }
 
+    public async Task<StalePlacesDto> GetStalePlacesAsync(DateTimeOffset before, int take, CancellationToken ct = default)
+    {
+        var places = db.Balances.AsNoTracking()
+            .Where(b => b.Quantity > 0)
+            .GroupBy(b => new { b.LocationId, b.Location.FullCode, b.Location.CheckedAt })
+            .Where(g => g.Key.CheckedAt == null || g.Key.CheckedAt < before)
+            .Select(g => new { g.Key.LocationId, g.Key.FullCode, g.Key.CheckedAt, Items = g.Select(x => x.ItemId).Distinct().Count() });
+
+        var total = await places.CountAsync(ct);
+        var rows = await places
+            .OrderBy(p => p.CheckedAt != null)      // ни разу не проверенные — первыми
+            .ThenBy(p => p.CheckedAt)
+            .ThenBy(p => p.FullCode)
+            .Take(take)
+            .ToListAsync(ct);
+        return new StalePlacesDto(total, rows.Select(p => new StalePlaceDto(p.LocationId, p.FullCode, p.CheckedAt, p.Items)).ToList());
+    }
+
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

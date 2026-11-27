@@ -28,20 +28,23 @@ const pages = [
   ["16-documents", "/documents"],
 ];
 
+// Главная под сотрудником (вход mech) — вторая роль.
+const employeePages = [["17-home-employee", "/"]];
+
 const problems = [];
 
-async function shoot(name, viewport) {
+async function shoot(name, viewport, login = "demo", list = pages) {
   const browser = await chromium.launch();
   const context = await browser.newContext(viewport);
   const page = await context.newPage();
   page.on("pageerror", e => problems.push(`${name}: ошибка JS: ${e.message}`));
 
   await page.goto(base + "/login");
-  await page.fill("#login", "demo");
+  await page.fill("#login", login);
   await page.fill("#password", "demo12345");
   await Promise.all([page.waitForURL(u => !u.pathname.startsWith("/login")), page.click("button[type=submit]")]);
 
-  for (const [file, url] of pages) {
+  for (const [file, url] of list) {
     const response = await page.goto(base + url, { waitUntil: "networkidle" });
     await page.waitForTimeout(700); // Blazor дорисовывает после подключения
     if (!response || response.status() >= 400) problems.push(`${name} ${url}: код ${response?.status()}`);
@@ -59,6 +62,8 @@ async function shoot(name, viewport) {
 
 await shoot("desktop", { viewport: { width: 1366, height: 900 } });
 await shoot("phone", { ...devices["iPhone 12"] });
+await shoot("desktop", { viewport: { width: 1366, height: 900 } }, "mech", employeePages);
+await shoot("phone", { ...devices["iPhone 12"] }, "mech", employeePages);
 
 fs.writeFileSync(path.join(out, "problems.txt"), problems.join("\n") || "Замечаний нет.");
 console.log(problems.length ? "Замечания:\n" + problems.join("\n") : "Замечаний нет.");

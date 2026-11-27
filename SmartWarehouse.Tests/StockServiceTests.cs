@@ -858,4 +858,28 @@ public class StockServiceTests
         var batches = await _service.GetBatchesAsync(Bearing, CellA, null);
         Assert.Equal(new[] { 11m, 2.5m }, batches.Select(b => b.UnitPrice!.Value).ToArray());
     }
+
+    [Fact]
+    public async Task Давно_не_проверенные_места_только_с_остатком_никогда_не_проверенные_первыми()
+    {
+        await Post(MovementType.Receipt, Line(5, to: CellA), Line(3, to: CellB));
+        var a = _repo.Locations.Single(l => l.Id == CellA);
+        var b = _repo.Locations.Single(l => l.Id == CellB);
+        a.CheckedAt = Now.AddDays(-10);   // свежая проверка
+        b.CheckedAt = null;               // не проверялось никогда
+
+        var stale = await _service.GetStalePlacesAsync(90, 5);
+        Assert.Equal(1, stale.Total);
+        var only = Assert.Single(stale.Places);
+        Assert.Equal(CellB, only.LocationId);
+        Assert.Null(only.CheckedAt);
+        Assert.Equal(1, only.Items);
+
+        a.CheckedAt = Now.AddDays(-100);  // устарела
+        stale = await _service.GetStalePlacesAsync(90, 1);
+        Assert.Equal(2, stale.Total);                       // всего — два места…
+        Assert.Equal([CellB], stale.Places.Select(p => p.LocationId));   // …показано одно, непроверенное первым
+        Assert.Equal([CellB, CellA], (await _service.GetStalePlacesAsync(90, 5)).Places.Select(p => p.LocationId));
+        Assert.Empty((await _service.GetStalePlacesAsync(365, 5)).Places.Where(p => p.LocationId == CellA)); // срок шире — A не считается старой
+    }
 }

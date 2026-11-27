@@ -142,6 +142,9 @@ public interface IStockRepository
     /// <summary>Позиций и мест с остатком; сотрудников и позиций в подотчёте.</summary>
     Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default);
 
+    /// <summary>Места с положительным остатком, проверенные раньше <paramref name="before"/> или ни разу: всего и первые <paramref name="take"/>.</summary>
+    Task<StalePlacesDto> GetStalePlacesAsync(DateTimeOffset before, int take, CancellationToken ct = default);
+
     /// <summary>Сохраняет все изменения одной транзакцией.</summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }

@@ -22,6 +22,11 @@ public class StockController(IStockService stock) : ControllerBase
     [HttpGet("summary")]
     public Task<StockSummaryDto> Summary(CancellationToken ct) => stock.GetSummaryAsync(ct);
 
+    /// <summary>Места с товаром, которые давно не проверяли (для «Обзора» кладовщика).</summary>
+    [HttpGet("stale-places")]
+    public Task<StalePlacesDto> StalePlaces([FromQuery] int days = IStockService.StaleDays, [FromQuery] int take = 5, CancellationToken ct = default) =>
+        stock.GetStalePlacesAsync(days, take, ct);
+
     [HttpGet("below-minimum")]
     public Task<IReadOnlyList<LowStockItemDto>> BelowMinimum(CancellationToken ct) =>
         stock.GetBelowMinimumAsync(ct);

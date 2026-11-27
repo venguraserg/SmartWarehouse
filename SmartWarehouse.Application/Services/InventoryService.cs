@@ -39,7 +39,6 @@ public interface IInventoryService
 public class InventoryService(
     IInventoryRepository repo,
     ILocationRepository locations,
-    IStockRepository stockRepo,
     StockService stock,
     TimeProvider clock) : IInventoryService
 {

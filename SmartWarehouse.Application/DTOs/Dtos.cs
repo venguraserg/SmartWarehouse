@@ -396,6 +396,12 @@ public record SetBatchPriceRequest(decimal UnitPrice);
 /// <param name="CustodyItems">Позиций в подотчёте (сотрудник × позиция).</param>
 public record StockSummaryDto(int ItemsInStock, int LocationsUsed, int BelowMinimum, int OutOfStock, int CustodyEmployees, int CustodyItems);
 
+/// <summary>Место, где что-то лежит, но его давно не проверяли (или не проверяли никогда — CheckedAt пуст).</summary>
+public record StalePlaceDto(int LocationId, string FullCode, DateTimeOffset? CheckedAt, int Items);
+
+/// <summary>Места с остатком без свежей проверки: сколько всего и самые «старые» (никогда не проверенные — первыми).</summary>
+public record StalePlacesDto(int Total, IReadOnlyList<StalePlaceDto> Places);
+
 public record LowStockItemDto(
     int ItemId,
     string Sku,

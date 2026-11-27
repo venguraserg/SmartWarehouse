@@ -37,6 +37,12 @@ public interface IStockService
 
     /// <summary>Показатели склада для «Обзора»: сколько позиций, ниже минимума, нет, в подотчёте.</summary>
     Task<StockSummaryDto> GetSummaryAsync(CancellationToken ct = default);
+
+    /// <summary>Места, где лежит товар, но инвентаризации не было больше <paramref name="days"/> дней (или никогда).</summary>
+    Task<StalePlacesDto> GetStalePlacesAsync(int days = StaleDays, int take = 5, CancellationToken ct = default);
+
+    /// <summary>Срок «давно не проверялось» по умолчанию, дней.</summary>
+    const int StaleDays = 90;
 }
 
 public interface ICatalogService
