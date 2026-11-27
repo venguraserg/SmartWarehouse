@@ -223,8 +223,7 @@ else
                 var address = places?.AddressOf(p.LocationId, p.FullCode);
                 <a class="todo-row" href="/l/@Uri.EscapeDataString(p.FullCode)">
                     <Icon Name="check" Size="20" />
-                    <span class="todo-text">@(address?.Full ?? p.FullCode)<span class="todo-sub">@p.Items @Ui.Plural(p.Items, "позиция", "позиции", "позиций")</span></span>
-                    <span class="todo-sub">@StaleText(p)</span>
+                    <span class="todo-text">@(address?.Full ?? p.FullCode)<span class="todo-sub">@p.Items @Ui.Plural(p.Items, "позиция", "позиции", "позиций") · @StaleText(p)</span></span>
                 </a>
             }
         </div>

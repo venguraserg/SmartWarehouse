@@ -613,6 +613,7 @@ html[data-theme="sage"] {
 .todo-count { min-width: 2rem; padding: .1rem .55rem; border-radius: 999px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--warn-weak); color: var(--warn-text); }
 .todo-qty { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 h2 .more { margin-left: .5rem; font-size: .875rem; font-weight: 400; }
+.kpis-home { margin-top: 1rem; }
 .kpis-home:empty { display: none; }
 
 /* ===== Карточки вместо таблиц на телефоне и ТСД ===== */
