@@ -246,7 +246,7 @@ internal class FakeStockRepository : IStockRepository
             query.OrderBy(b => b.Location.FullCode, StringComparer.Ordinal).ThenBy(b => b.Item.Name).Take(take).ToList());
     }
 
-    public Task<StalePlacesDto> GetStalePlacesAsync(DateTimeOffset before, int take, CancellationToken ct = default)
+    public Task<(int Total, IReadOnlyList<StalePlace> Places)> GetStalePlacesAsync(DateTimeOffset before, int take, CancellationToken ct = default)
     {
         var places = Balances.Where(b => b.Quantity > 0)
             .GroupBy(b => b.LocationId)
@@ -254,8 +254,8 @@ internal class FakeStockRepository : IStockRepository
             .Where(p => p.Location.CheckedAt is null || p.Location.CheckedAt < before)
             .OrderBy(p => p.Location.CheckedAt != null).ThenBy(p => p.Location.CheckedAt).ThenBy(p => p.Location.FullCode, StringComparer.Ordinal)
             .ToList();
-        return Task.FromResult(new StalePlacesDto(places.Count,
-            places.Take(take).Select(p => new StalePlaceDto(p.Location.Id, p.Location.FullCode, p.Location.CheckedAt, p.Items)).ToList()));
+        return Task.FromResult<(int, IReadOnlyList<StalePlace>)>((places.Count,
+            places.Take(take).Select(p => new StalePlace(p.Location.Id, p.Location.FullCode, p.Location.CheckedAt, p.Items)).ToList()));
     }
 
     public Task<(int Items, int Locations, int CustodyEmployees, int CustodyItems)> CountStockAsync(CancellationToken ct = default) =>
